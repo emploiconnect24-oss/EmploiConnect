@@ -1,0 +1,183 @@
+EXPLICATION DETAILLEE DU DIAGRAMME D’ACTIVITE PROJET : EMPLOICONNECT
+SCENARIO : PROCESSUS DE RECRUTEMENT
+
+============================================================ 1.
+INTRODUCTION AU DIAGRAMME D’ACTIVITE
+============================================================
+
+Le diagramme d’activité représente le déroulement global d’un processus
+métier.
+
+Contrairement au diagramme de séquence qui montre les échanges entre
+objets dans le temps, le diagramme d’activité montre le flux logique des
+actions.
+
+Dans ce cas, il illustre le processus complet de recrutement sur la
+plateforme EmploiConnect.
+
+Le flux se lit de haut en bas.
+
+============================================================ 2. ETAPE 1
+: CREER COMPTE
+============================================================
+
+Le processus commence par :
+
+Créer compte
+
+Cela signifie :
+
+-   Le chercheur d’emploi s’inscrit sur la plateforme.
+-   Il fournit ses informations personnelles.
+-   Le système enregistre le profil.
+-   Le compte est créé et activé.
+
+Sans cette étape, aucune action ultérieure n’est possible.
+
+============================================================ 3. ETAPE 2
+: UPLOADER CV
+============================================================
+
+Une fois le compte créé, le candidat :
+
+Upload son CV.
+
+Cela implique :
+
+-   Téléversement du fichier (PDF/DOCX).
+-   Stockage du document.
+-   Extraction automatique du texte.
+
+Cette étape prépare les données pour l’analyse IA.
+
+============================================================ 4. ETAPE 3
+: ANALYSE IA
+============================================================
+
+Après l’upload, le système lance :
+
+Analyse IA
+
+Cela inclut :
+
+-   Extraction des compétences.
+-   Identification du domaine d’activité.
+-   Analyse du niveau d’expérience.
+-   Vectorisation du profil.
+
+Cette étape transforme le CV en données exploitables.
+
+============================================================ 5. ETAPE 4
+: SUGGESTIONS D’OFFRES
+============================================================
+
+Après l’analyse, le système génère :
+
+Suggestions offres
+
+Cela signifie :
+
+-   Comparaison entre le profil et les offres disponibles.
+-   Calcul des scores de compatibilité.
+-   Classement des meilleures correspondances.
+-   Affichage des offres recommandées.
+
+Le candidat peut alors choisir une offre pertinente.
+
+============================================================ 6. ETAPE 5
+: POSTULER ============================================================
+
+Le candidat décide de :
+
+Postuler
+
+Cette action implique :
+
+-   Création d’une candidature.
+-   Association du CV à l’offre.
+-   Enregistrement du score IA.
+-   Notification à l’entreprise.
+
+============================================================ 7. ETAPE 6
+: ENTREPRISE ANALYSE
+============================================================
+
+L’entreprise reçoit la candidature et effectue :
+
+Entreprise analyse
+
+Cela inclut :
+
+-   Consultation du CV.
+-   Vérification du score IA.
+-   Evaluation du profil.
+-   Comparaison avec autres candidats.
+
+============================================================ 8. ETAPE 7
+: DECISION ============================================================
+
+Après analyse, l’entreprise prend une :
+
+Décision
+
+Cette étape est un point critique du processus.
+
+Elle correspond à un choix logique.
+
+============================================================ 9. ETAPE 8
+: ACCEPTE / REFUSE
+============================================================
+
+La décision mène à deux résultats possibles :
+
+Accepté ou Refusé
+
+Si accepté : - Le candidat passe à l’étape suivante (entretien,
+embauche).
+
+Si refusé : - Le candidat est notifié. - Le processus s’arrête pour
+cette offre.
+
+============================================================ 10. ANALYSE
+GLOBALE DU PROCESSUS
+============================================================
+
+Flux complet :
+
+Créer compte → Uploader CV → Analyse IA → Suggestions offres → Postuler
+→ Entreprise analyse → Décision → Accepté / Refusé
+
+Ce flux montre :
+
+-   Une progression logique
+-   Une intégration forte de l’IA
+-   Une interaction entre candidat et entreprise
+-   Une finalité claire
+
+============================================================ 11. ROLE DU
+DIAGRAMME D’ACTIVITE
+============================================================
+
+Ce diagramme permet :
+
+-   De visualiser le processus métier complet
+-   De comprendre les étapes obligatoires
+-   D’identifier les points de décision
+-   D’analyser le parcours utilisateur
+
+Il représente la vue métier du recrutement.
+
+============================================================ CONCLUSION
+============================================================
+
+Le diagramme d’activité du processus de recrutement illustre le cycle
+complet de mise en relation entre candidat et entreprise.
+
+Il met en évidence :
+
+-   Le rôle central du CV
+-   L’importance du module IA
+-   La logique décisionnelle finale
+-   La structure globale du workflow
+
+FIN DU DOCUMENT

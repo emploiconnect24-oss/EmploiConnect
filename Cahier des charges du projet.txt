@@ -1,0 +1,185 @@
+REPUBLIQUE DE GUINEE 
+TRAVAIL - JUSTICE - SOLIDARITE 
+Ministère de l'Enseignement Supérieur, de la Recherche 
+Scientifique et de l'Innovation 
+Mémoire de Fin de Cycle 
+Pour l'obtention du Diplôme de Licence Professionnelle 
+Option : Génie Logiciel 
+EmploiConnect 
+Plateforme intelligente d’offres et de recherche d’emploi 
+Réalisé et soutenu par : 
+BARRY YOUSSOUF – 22 000 46 
+DIALLO ISMAILA – 23 008 60 
+Encadré par : 
+Monsieur DIALLO BOUBACAR  
+CEO de Rasenty. 
+Année universitaire : 2025-2026 
+Année de soutenance : 2026 
+Table des matières 
+Introduction ........................................................................................................................................... 3 
+Problématique .......................................................................................................................................... 3 
+Objectif Général ...................................................................................................................................... 4 
+Objectifs Spécifiques ............................................................................................................................... 4 
+1. Faciliter l’accès des chercheurs d’emploi aux opportunités disponibles ..................................... 4 
+2. Permettre aux entreprises de publier et de gérer efficacement leurs offres ................................. 4 
+3. Automatiser l’analyse des CV grâce à l’intelligence artificielle ................................................. 4 
+4. Optimiser le “matching” entre candidats et recruteurs ................................................................ 4 
+5. Assurer une gestion centralisée et modérée par l’administrateur ................................................ 4 
+6. Promouvoir la digitalisation du marché de l’emploi en Guinée .................................................. 4 
+Présentation des Acteurs et Fonctionnalités du Système ......................................................................... 5 
+2.1 Acteurs principaux ........................................................................................................................ 5 
+1. Chercheur d’emploi ..................................................................................................................... 5 
+2. Entreprise / Recruteur .................................................................................................................. 5 
+3. Administrateur ............................................................................................................................. 5 
+2.2 Fonctionnalités principales ............................................................................................................ 5 
+A. Côté chercheur d’emploi ............................................................................................................ 5 
+B. Côté entreprise ............................................................................................................................ 5 
+C. Côté administrateur ..................................................................................................................... 5 
+2.3 Composante intelligente (IA) ........................................................................................................ 6 
+Analyse automatique des CV .......................................................................................................... 6 
+Matching automatisé (correspondance IA)...................................................................................... 6 
+Conclusion ............................................................................................................................................... 7 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Introduction 
+Le marché de l’emploi en Guinée fait face depuis plusieurs années à de profondes difficultés 
+liées à la faible digitalisation du secteur, au manque de visibilité des offres et à l’inadéquation 
+entre les compétences disponibles et les besoins des entreprises. Les démarches de recherche 
+d’emploi restent majoritairement informelles, peu structurées et souvent inefficaces, tant pour 
+les 
+chercheurs 
+d’emploi 
+que 
+pour 
+les 
+recruteurs. 
+Dans ce contexte, il devient essentiel de mettre en place des solutions technologiques modernes 
+capables de faciliter, d’accélérer et d’optimiser la mise en relation entre les acteurs du marché 
+du travail. 
+Le projet EmploiConnect s’inscrit dans cette dynamique en proposant une plateforme web 
+intelligente destinée à centraliser les offres d’emploi, les candidatures et les interactions entre 
+entreprises et chercheurs d’emploi. Grâce à l’intégration de techniques avancées de traitement 
+du langage naturel (IA / NLP), EmploiConnect se distingue par sa capacité à analyser 
+automatiquement les CV, à identifier les compétences des candidats et à leur recommander les 
+offres les plus pertinentes. 
+EmploiConnect ambitionne ainsi de devenir un outil essentiel pour moderniser le processus de 
+recrutement en Guinée, en offrant une solution intuitive, rapide, fiable et adaptée aux réalités 
+locales. 
+Problématique  
+Malgré la croissance du nombre de diplômés et de chercheurs d’emploi en Guinée, le marché 
+du travail demeure marqué par une forte informalité, un manque de digitalisation et une faible 
+visibilité des compétences disponibles. Les candidats peinent à accéder à des offres fiables et 
+adaptées à leur profil, tandis que les entreprises perdent du temps et des ressources à rechercher 
+manuellement 
+les 
+talents 
+répondant 
+à 
+leurs 
+besoins. 
+La difficulté réside donc dans l’absence d’un système centralisé, intelligent et automatisé 
+permettant d’établir une correspondance pertinente et rapide entre les offres d’emploi et les 
+profils des candidats. 
+Ainsi, la problématique centrale :  
+�
+� Comment développer un système intelligent qui automatise le “matching” entre les 
+compétences des chercheurs d’emploi et les besoins des entreprises, afin de rendre le marché de 
+l’emploi guinéen plus efficace, transparent et accessible ? 
+Objectif Général 
+L’objectif général du projet EmploiConnect est de développer une plateforme web 
+intelligente de mise en relation entre chercheurs d’emploi et entreprises, permettant une 
+meilleure valorisation des compétences, une recherche d’opportunités plus rapide et une 
+simplification globale du processus de recrutement grâce à l’intégration d’outils d’intelligence 
+artificielle. 
+Objectifs Spécifiques 
+Les objectifs spécifiques du projet sont les suivants : 
+1. Faciliter l’accès des chercheurs d’emploi aux opportunités disponibles 
+ Permettre la création de comptes sécurisés. 
+ Offrir un espace personnel pour consulter, filtrer et suivre les offres d’emploi. 
+ Automatiser la suggestion d’offres compatibles grâce à l’analyse du CV. 
+2. Permettre aux entreprises de publier et de gérer efficacement leurs offres 
+ Créer un espace dédié aux recruteurs pour publier, modifier ou supprimer leurs 
+annonces. 
+ Offrir un tableau de bord pour suivre les candidatures reçues. 
+ Proposer des suggestions intelligentes de profils pertinents. 
+3. Automatiser l’analyse des CV grâce à l’intelligence artificielle 
+ Utiliser un modèle NLP pour extraire les compétences, l'expérience et les domaines 
+d’expertise. 
+ Générer un score de compatibilité entre un candidat et une offre. 
+4. Optimiser le “matching” entre candidats et recruteurs 
+ Réduire le temps de recherche d’un candidat et le temps de sélection des entreprises. 
+ Améliorer la pertinence des profils suggérés grâce à un algorithme de recommandation. 
+5. Assurer une gestion centralisée et modérée par l’administrateur 
+ Superviser les comptes utilisateurs et les annonces publiées. 
+ Garantir la qualité et la conformité des contenus. 
+ Accéder à des statistiques globales pour améliorer le fonctionnement du système. 
+6. Promouvoir la digitalisation du marché de l’emploi en Guinée 
+ Offrir une solution accessible, moderne et adaptée au contexte local. 
+ Renforcer la transparence et la traçabilité des compétences et opportunités
+Présentation des Acteurs et Fonctionnalités du Système 
+2.1 Acteurs principaux 
+1. Chercheur d’emploi 
+ Création de compte et gestion de profil. 
+ Téléversement du CV (formats PDF ou DOCX). 
+ Extraction automatique des compétences par IA. 
+ Suggestions personnalisées d’offres d’emploi. 
+ Consultation et recherche filtrée d’annonces. 
+ Postulation directe aux offres compatibles. 
+ Possibilité d’être contacté par les entreprises. 
+2. Entreprise / Recruteur 
+ Création et gestion d’un compte entreprise. 
+ Publication d’offres d’emploi (titre, description, exigences, salaire, localisation…). 
+ Réception et gestion des candidatures. 
+ Système intelligent de recommandation de CV pertinents. 
+ Consultation des profils et CV en ligne. 
+3. Administrateur 
+ Supervision générale du système. 
+ Validation ou suppression des comptes et des offres. 
+ Modération des contenus publiés. 
+ Consultation des statistiques globales (nombre d’offres, CV, candidatures, etc.). 
+2.2 Fonctionnalités principales 
+A. Côté chercheur d’emploi 
+ Création de compte et connexion sécurisée. 
+ Téléversement du CV. 
+ Extraction automatique des compétences (NLP / IA). 
+ Suggestions d’offres adaptées au profil. 
+ Recherche filtrée (poste, domaine, lieu, salaire…). 
+ Postulation en ligne. 
+ Tableau de bord personnel (candidatures, messages, suggestions…). 
+B. Côté entreprise 
+ Création d’un compte entreprise. 
+ Publication, modification et suppression d’offres. 
+ Suggestions automatiques de CV en fonction du poste recherché. 
+ Consultation de profils et CV. 
+ Gestion complète des candidatures reçues. 
+C. Côté administrateur 
+ Validation ou suppression de comptes et d’annonces. 
+ Gestion des anomalies ou signalements. 
+ Accès aux statistiques globales. 
+ Modération des contenus. 
+2.3 Composante intelligente (IA) 
+Analyse automatique des CV 
+Utilisation d’un modèle NLP (spaCy, BERT, ou similaire) pour extraire : 
+ Les compétences clés, 
+ Le domaine d’activité, 
+ Le niveau d’expérience, 
+ Les mots-clés pertinents. 
+Matching automatisé (correspondance IA) 
+L’algorithme de correspondance réalise : 
+ La comparaison entre les compétences du candidat et les exigences des offres, 
+ Le calcul d’un score de compatibilité, 
+ La suggestion automatique des offres les mieux adaptées au profil, 
+ Une mise en avant ciblée pour les recruteurs des profils les plus pertinents. 
+Conclusion 
+Le projet EmploiConnect se positionne comme une solution innovante pour moderniser le marché de 
+l’emploi en Guinée. Grâce à l’intégration de l’intelligence artificielle, il permettra une mise en relation 
+plus pertinente et rapide entre chercheurs d’emploi et entreprises, tout en valorisant les compétences 
+locales. Cette plateforme contribuera à réduire le chômage, à améliorer la visibilité des talents et à 
+renforcer la digitalisation du marché du travail guinéen.

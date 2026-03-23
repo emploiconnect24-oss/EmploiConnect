@@ -1,0 +1,139 @@
+EXPLICATION COMPLETE DES DIAGRAMMES UML PROJET : EMPLOICONNECT
+
+============================================================ PARTIE 1 :
+DIAGRAMME DE CAS D’UTILISATION (USE CASE)
+============================================================
+
+1.  INTRODUCTION
+
+Le diagramme de cas d’utilisation représente les interactions entre les
+acteurs externes et le système.
+
+Il répond à la question : QUI FAIT QUOI DANS LE SYSTEME ?
+
+Il montre : - Les acteurs - Les fonctionnalités - Les limites du système
+
+  ------------------------------------------------------------
+  2. LES ACTEURS
+  ------------------------------------------------------------
+  2.2 Entreprise / Recruteur
+
+  Fonctionnalités : - Créer compte entreprise - Publier
+  offre - Modifier offre - Supprimer offre - Consulter
+  candidatures - Consulter profils candidats - Recevoir
+  suggestions de profils via IA - Contacter candidats
+
+  Objectif : Recruter le meilleur profil.
+  ------------------------------------------------------------
+
+2.3 Administrateur
+
+Fonctionnalités : - Valider comptes - Supprimer comptes - Modérer
+contenus - Gérer signalements - Voir statistiques globales
+
+Objectif : Garantir la qualité et la sécurité du système.
+
+  ------------------------------------------------------------
+  3. RELATIONS DANS LE USE CASE
+  ------------------------------------------------------------
+  2. CLASSE UTILISATEUR
+
+  Classe parent contenant : - id - nom - email - motDePasse -
+  role
+
+  Méthodes : - seConnecter() - modifierProfil()
+  ------------------------------------------------------------
+
+3.  HERITAGE
+
+Trois classes héritent de Utilisateur : - ChercheurEmploi - Entreprise -
+Administrateur
+
+Cela permet : - Réduction duplication - Organisation logique -
+Polymorphisme
+
+  ------------------------------------------------------------
+  4. CLASSE CHERCHEUREMPLOI
+  ------------------------------------------------------------
+  5. CLASSE ENTREPRISE
+
+  Attributs : - nomEntreprise - description
+
+  Relation : 1 Entreprise -> 0..* Offres
+  ------------------------------------------------------------
+
+6.  CLASSE OFFREEMPLOI
+
+Attributs : - titre - description - exigences - salaire - localisation
+
+Relation : 1 Offre -> 0..* Candidatures
+
+  ------------------------------------------------------------
+  7. CLASSE CANDIDATURE
+  ------------------------------------------------------------
+  8. CLASSE CV
+
+  Attributs : - fichier - competences - experience
+
+  Utilisé par le module IA.
+  ------------------------------------------------------------
+
+9.  CLASSE ANALYSEIA
+
+Méthodes : - extraireCompetences() - calculerScore() - matcher()
+
+Dépend du CV et des Offres.
+
+  ------------------------------------------------------------
+  10. CARDINALITES
+  ------------------------------------------------------------
+  2. SEQUENCE : POSTULER A UNE OFFRE
+
+  Etapes :
+
+  1. Chercheur sélectionne une offre 2. Il clique sur Postuler
+  3. Le système envoie le CV à l’IA 4. L’IA analyse le CV 5.
+  L’IA calcule un score 6. Le système enregistre la
+  candidature 7. L’entreprise reçoit la candidature 8. Le
+  chercheur reçoit confirmation
+  ------------------------------------------------------------
+
+3.  SEQUENCE : PUBLICATION D’OFFRE
+
+4.  Entreprise saisit les informations
+
+5.  Le système valide les données
+
+6.  L’offre est enregistrée en base
+
+7.  L’offre devient visible
+
+------------------------------------------------------------------------
+
+4.  SEQUENCE : MATCHING IA
+
+5.  Le système récupère le CV
+
+6.  Le texte est analysé (NLP)
+
+7.  Les compétences sont extraites
+
+8.  Le profil est vectorisé
+
+9.  Les offres sont vectorisées
+
+10. Similarité calculée
+
+11. Classement des offres
+
+12. Suggestions affichées
+
+============================================================ CONCLUSION
+GENERALE ============================================================
+
+Les trois diagrammes sont complémentaires :
+
+Use Case -> Vision fonctionnelle Classe -> Vision structurelle Séquence
+-> Vision dynamique
+
+Ensemble, ils décrivent entièrement le fonctionnement de la plateforme.

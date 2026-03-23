@@ -1,0 +1,161 @@
+EXPLICATION DETAILLEE DU DIAGRAMME DE CLASSE PROJET : EMPLOICONNECT
+
+==================================================== 1. INTRODUCTION AU
+DIAGRAMME DE CLASSE ====================================================
+
+Le diagramme de classe représente la structure statique du système. Il
+montre :
+
+-   Les classes principales
+-   Les attributs de chaque classe
+-   Les méthodes principales
+-   Les relations entre les classes
+-   Les cardinalités
+
+Ce diagramme permet de comprendre comment les données sont organisées et
+comment les objets interagissent dans le système.
+
+==================================================== 2. CLASSE
+UTILISATEUR (CLASSE PARENTE)
+====================================================
+
+La classe Utilisateur est la classe principale. Elle contient les
+informations communes à tous les types d’utilisateurs.
+
+Attributs : - id : identifiant unique - nom : nom complet - email :
+email unique - motDePasse : mot de passe - role : type d’utilisateur
+(chercheur, entreprise, admin)
+
+Méthodes : - seConnecter() - modifierProfil()
+
+Pourquoi cette classe ? Parce que tous les acteurs du système sont des
+utilisateurs.
+
+==================================================== 3. HERITAGE
+(GENERALISATION) ====================================================
+
+Trois classes héritent de Utilisateur :
+
+-   ChercheurEmploi
+-   Entreprise
+-   Administrateur
+
+Cela signifie que ces classes récupèrent automatiquement les attributs
+et méthodes de Utilisateur.
+
+Avantage : - Réduction de duplication - Organisation claire - Bonne
+pratique orientée objet
+
+==================================================== 4. CLASSE
+CHERCHEUREMPLOI ====================================================
+
+Représente un candidat.
+
+Attributs supplémentaires : - competences - cv
+
+Méthodes : - televerserCV() - postuler() - consulterOffres()
+
+Relation importante : Un ChercheurEmploi possède : 1 CV 0..*
+Candidatures
+
+==================================================== 5. CLASSE
+ENTREPRISE ====================================================
+
+Représente un recruteur.
+
+Attributs : - nomEntreprise - description
+
+Méthodes : - publierOffre() - gererCandidatures()
+
+Relation importante : Une entreprise publie : 0..* Offres
+
+==================================================== 6. CLASSE
+ADMINISTRATEUR ====================================================
+
+Gère la plateforme.
+
+Méthodes : - validerCompte() - supprimerCompte() - voirStatistiques()
+
+Il supervise le système mais n’intervient pas directement dans les
+candidatures.
+
+==================================================== 7. CLASSE CV
+====================================================
+
+Contient les informations du curriculum vitae.
+
+Attributs : - fichier - competences - experience
+
+Relation : 1 Chercheur possède 1 CV
+
+Le CV est utilisé par l’IA pour le matching.
+
+==================================================== 8. CLASSE
+OFFREEMPLOI ====================================================
+
+Représente une annonce.
+
+Attributs : - titre - description - exigences - salaire - localisation
+
+Relation : 1 Entreprise publie 0..* Offres 1 Offre reçoit 0..*
+Candidatures
+
+==================================================== 9. CLASSE
+CANDIDATURE (CLASSE ASSOCIATIVE)
+====================================================
+
+Relie Chercheur et Offre.
+
+Attributs : - date - statut - scoreCompatibilite
+
+Pourquoi classe associative ? Parce qu’elle relie : - 1 Chercheur - 1
+Offre
+
+Cardinalités : Un Chercheur peut faire plusieurs candidatures. Une Offre
+peut recevoir plusieurs candidatures.
+
+==================================================== 10. CLASSE
+ANALYSEIA ====================================================
+
+Représente le module intelligent.
+
+Méthodes : - extraireCompetences() - calculerScore() - matcher()
+
+Relation : Dépend du CV et des Offres. Elle ne possède pas ces classes
+mais les utilise.
+
+==================================================== 11. EXPLICATION DES
+CARDINALITES ====================================================
+
+1 = exactement un 0..* = zéro ou plusieurs 1..* = au moins un
+
+Exemples dans le projet :
+
+Entreprise (1) -> (0..) Offre Chercheur (1) -> (0..) Candidature Offre
+(1) -> (0..*) Candidature Chercheur (1) -> (1) CV
+
+==================================================== 12. STRUCTURE
+GLOBALE DU SYSTEME ====================================================
+
+Le diagramme montre :
+
+-   Une hiérarchie d’utilisateurs
+-   Un processus recrutement
+-   Une classe centrale (Candidature)
+-   Un module IA dépendant des données métier
+
+Il reflète parfaitement la logique du marché de l’emploi : Entreprise ->
+Publie Offre Chercheur -> Postule IA -> Calcule Score
+
+==================================================== 13. CONCLUSION
+====================================================
+
+Le diagramme de classe permet de :
+
+-   Comprendre la structure du système
+-   Visualiser les relations métier
+-   Préparer la base de données
+-   Faciliter le développement backend
+-   Montrer une conception professionnelle en soutenance
+
+FIN DU DOCUMENT

@@ -1,0 +1,139 @@
+EXPLICATION DETAILLEE DU DIAGRAMME DE SEQUENCE 2 PROJET : EMPLOICONNECT
+SCENARIO : PUBLICATION D’UNE OFFRE
+
+============================================================ 1.
+INTRODUCTION AU DIAGRAMME DE SEQUENCE
+============================================================
+
+Le diagramme de séquence illustre le déroulement chronologique des
+interactions entre les composants du système.
+
+Dans ce scénario, nous analysons le processus : PUBLICATION D’UNE OFFRE.
+
+Acteurs et composants impliqués : - Entreprise (acteur principal) -
+Plateforme (système applicatif) - BaseDeDonnees (stockage persistant)
+
+Le diagramme montre l’échange des messages dans le temps, de haut en
+bas.
+
+============================================================ 2. ETAPE 1
+: L’ENTREPRISE PUBLIE UNE OFFRE
+============================================================
+
+L’entreprise envoie une requête à la plateforme :
+
+Entreprise -> Plateforme : Publier offre
+
+Cela signifie : - L’entreprise remplit un formulaire (titre,
+description, exigences, salaire, localisation). - Elle clique sur
+“Publier”. - Les données sont envoyées au backend.
+
+La plateforme reçoit la requête.
+
+============================================================ 3. ETAPE 2
+: VALIDATION PAR LA PLATEFORME
+============================================================
+
+Avant d’enregistrer l’offre, la plateforme :
+
+-   Vérifie que l’utilisateur est authentifié.
+-   Vérifie que son rôle est bien “Entreprise”.
+-   Vérifie que les champs obligatoires sont remplis.
+-   Prépare les données pour l’insertion.
+
+Cette étape garantit la cohérence et la sécurité.
+
+============================================================ 4. ETAPE 3
+: SAUVEGARDE DANS LA BASE DE DONNEES
+============================================================
+
+La plateforme envoie la requête suivante :
+
+Plateforme -> BaseDeDonnees : Sauvegarder offre
+
+Cela signifie : - Insertion d’un nouvel enregistrement dans la table
+“Offres”. - Association avec l’ID de l’entreprise. - Enregistrement de
+la date de publication. - Statut initial (ex: active ou brouillon).
+
+============================================================ 5. ETAPE 4
+: CONFIRMATION DE LA BASE DE DONNEES
+============================================================
+
+La base de données renvoie un message :
+
+BaseDeDonnees -> Plateforme : Confirmation
+
+Cela signifie : - L’insertion s’est faite avec succès. - Aucun conflit
+ou erreur n’a été détecté. - L’ID de l’offre peut être retourné.
+
+Si une erreur survient (ex: contrainte violée), la plateforme gérerait
+l’exception.
+
+============================================================ 6. ETAPE 5
+: CONFIRMATION A L’ENTREPRISE
+============================================================
+
+Après confirmation de la base de données, la plateforme renvoie :
+
+Plateforme -> Entreprise : Offre publiée
+
+Cela signifie : - L’offre est maintenant enregistrée. - Elle est visible
+pour les chercheurs d’emploi. - Elle peut apparaître dans les résultats
+de recherche.
+
+L’entreprise reçoit un message de succès.
+
+============================================================ 7. ANALYSE
+DU FLUX COMPLET
+============================================================
+
+Chronologie complète :
+
+1.  Entreprise remplit le formulaire
+2.  Envoi vers la plateforme
+3.  Validation backend
+4.  Insertion en base de données
+5.  Confirmation base de données
+6.  Confirmation à l’entreprise
+
+============================================================ 8. ROLE DE
+CHAQUE COMPOSANT
+============================================================
+
+Entreprise : Initie l’action.
+
+Plateforme : - Valide les données - Gère la logique métier - Communique
+avec la base de données
+
+BaseDeDonnees : - Stocke les informations - Garantit l’intégrité des
+données
+
+============================================================ 9.
+IMPORTANCE DU DIAGRAMME
+============================================================
+
+Ce diagramme montre :
+
+-   La séparation entre logique applicative et stockage
+-   Le rôle central du backend
+-   Le flux exact des messages
+-   La structure en trois niveaux (acteur / backend / base)
+
+Il permet de comprendre : - Comment une offre devient persistante -
+Comment les données sont sécurisées - Comment la plateforme garantit la
+cohérence
+
+============================================================ CONCLUSION
+============================================================
+
+Le diagramme de séquence “Publication d’offre” décrit précisément le
+flux technique d’enregistrement d’une annonce.
+
+Il démontre :
+
+-   Une architecture claire
+-   Une séparation des responsabilités
+-   Une validation sécurisée
+-   Une interaction cohérente entre acteur et système
+
+FIN DU DOCUMENT

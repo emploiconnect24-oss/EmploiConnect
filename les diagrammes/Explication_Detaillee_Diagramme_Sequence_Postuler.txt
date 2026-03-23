@@ -1,0 +1,153 @@
+EXPLICATION DETAILLEE DU DIAGRAMME DE SEQUENCE 1 PROJET : EMPLOICONNECT
+SCENARIO : POSTULER A UNE OFFRE
+
+============================================================ 1.
+INTRODUCTION AU DIAGRAMME DE SEQUENCE
+============================================================
+
+Le diagramme de séquence représente le déroulement chronologique des
+interactions entre les différents acteurs et composants du système.
+
+Dans ce scénario, nous analysons le processus : POSTULER A UNE OFFRE.
+
+Acteurs et composants impliqués : - Chercheur (acteur principal) -
+Plateforme (système backend) - IA (module intelligent) - Entreprise
+(recruteur)
+
+Le diagramme montre comment les messages sont échangés dans le temps, de
+haut en bas.
+
+============================================================ 2. ETAPE 1
+: CONSULTER LES OFFRES
+============================================================
+
+Le Chercheur envoie une requête à la Plateforme : “Consulter offres”
+
+Cela signifie : - Le candidat accède à la liste des offres
+disponibles. - La plateforme interroge la base de données. - Les offres
+actives sont affichées.
+
+Aucune interaction avec l’IA à cette étape.
+
+============================================================ 3. ETAPE 2
+: POSTULER ============================================================
+
+Le Chercheur clique sur “Postuler”.
+
+Message envoyé : Chercheur -> Plateforme : Postuler
+
+La plateforme : - Vérifie que le candidat est authentifié - Vérifie
+qu’il possède un CV - Prépare les données nécessaires pour l’analyse IA
+
+============================================================ 4. ETAPE 3
+: ANALYSER LE CV (INTERACTION IA)
+============================================================
+
+La Plateforme envoie une requête au module IA :
+
+Plateforme -> IA : Analyser CV
+
+Le module IA effectue : - Extraction des compétences (NLP) - Analyse des
+expériences - Comparaison avec les exigences de l’offre
+
+C’est ici que la partie intelligente du système intervient.
+
+============================================================ 5. ETAPE 4
+: CALCUL DU SCORE DE COMPATIBILITE
+============================================================
+
+L’IA retourne le résultat :
+
+IA -> Plateforme : Score compatibilité
+
+Le score représente : - Le niveau d’adéquation entre le CV du candidat -
+Et les exigences de l’offre
+
+Exemple : Score = 85%
+
+La plateforme enregistre ce score dans la candidature.
+
+============================================================ 6. ETAPE 5
+: ENVOYER LA CANDIDATURE A L’ENTREPRISE
+============================================================
+
+Après réception du score, la plateforme envoie :
+
+Plateforme -> Entreprise : Envoyer candidature
+
+Cela signifie : - La candidature est enregistrée en base de données -
+L’entreprise reçoit la notification - Le score est attaché à la
+candidature
+
+============================================================ 7. ETAPE 6
+: RECEPTION PAR L’ENTREPRISE
+============================================================
+
+L’entreprise reçoit la candidature.
+
+Entreprise -> Plateforme : Recevoir candidature (confirmation)
+
+L’entreprise peut : - Consulter le CV - Voir le score de compatibilité -
+Accepter ou refuser
+
+============================================================ 8. ETAPE 7
+: CONFIRMATION AU CHERCHEUR
+============================================================
+
+La plateforme renvoie un message final :
+
+Plateforme -> Chercheur : Confirmation
+
+Cela informe le candidat que : - Sa candidature a été envoyée avec
+succès - Elle est maintenant en attente de décision
+
+============================================================ 9. ANALYSE
+DU FLUX GLOBAL
+============================================================
+
+Chronologie complète :
+
+1.  Chercheur consulte offres
+2.  Chercheur postule
+3.  Plateforme demande analyse IA
+4.  IA calcule score
+5.  Plateforme envoie candidature
+6.  Entreprise reçoit candidature
+7.  Plateforme confirme au chercheur
+
+============================================================ 10. ROLE DE
+CHAQUE COMPOSANT
+============================================================
+
+Chercheur : Initie l’action.
+
+Plateforme : Coordonne toutes les interactions.
+
+IA : Analyse et calcule le score.
+
+Entreprise : Reçoit et traite la candidature.
+
+============================================================ 11.
+IMPORTANCE DU DIAGRAMME
+============================================================
+
+Ce diagramme montre :
+
+-   Le fonctionnement dynamique du système
+-   L’intégration de l’IA dans le processus
+-   L’ordre exact des opérations
+-   La séparation des responsabilités
+
+Il permet de comprendre comment les composants collaborent pour
+accomplir une tâche métier.
+
+============================================================ CONCLUSION
+============================================================
+
+Le diagramme de séquence “Postuler à une offre” décrit précisément le
+flux d’exécution du système.
+
+Il démontre : - Une architecture organisée - Une intégration IA fluide -
+Un processus métier clair - Une interaction cohérente entre acteurs
+
+FIN DU DOCUMENT

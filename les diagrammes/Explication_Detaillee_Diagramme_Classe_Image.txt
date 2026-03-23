@@ -1,0 +1,128 @@
+EXPLICATION DETAILLEE DU DIAGRAMME DE CLASSE PROJET : EMPLOICONNECT
+
+============================================================
+INTRODUCTION
+============================================================
+
+Ce document explique en détail le diagramme de classe fourni. Le
+diagramme représente la structure statique du système EmploiConnect.
+
+Il montre : - Les classes - Les attributs - Les méthodes - Les
+relations - Les cardinalités - Le rôle du module IA
+
+Nous allons analyser chaque partie étape par étape.
+
+============================================================ ETAPE 1 :
+CLASSE UTILISATEUR (CLASSE PARENTE)
+============================================================
+
+La classe Utilisateur est la classe centrale du système. Elle représente
+tout acteur utilisant la plateforme.
+
+ATTRIBUTS : + id + nom + email + motDePasse + role
+
+Ces attributs sont communs à tous les types d’utilisateurs.
+
+METHODES : + creerCompte() + seConnecter() + modifierProfil()
+
+Ces méthodes permettent : - L’inscription - L’authentification - La mise
+à jour des informations
+
+Cette classe sert de base aux autres utilisateurs.
+
+============================================================ ETAPE 2 :
+HERITAGE (GENERALISATION)
+============================================================
+
+Trois classes héritent de Utilisateur :
+
+-   Administrateur
+-   Entreprise
+-   ChercheurEmploi
+
+La flèche avec triangle vide indique un héritage UML.
+
+Ces classes récupèrent automatiquement : - id - nom - email -
+motDePasse - role - creerCompte() - seConnecter() - modifierProfil()
+
+============================================================ ETAPE 3 :
+CLASSE ADMINISTRATEUR
+============================================================
+
+Rôle : Supervision du système
+
+METHODES : + validerCompte() + supprimerCompte() + moderation() +
+consulterStatistiques()
+
+L’administrateur contrôle la plateforme.
+
+============================================================ ETAPE 4 :
+CLASSE ENTREPRISE
+============================================================
+
+ATTRIBUTS : + nomEntreprise + description
+
+METHODES : + publierOffre() + gererCandidatures() + consulterProfils()
+
+RELATION : Entreprise (1) —- (0..*) OffreEmploi
+
+============================================================ ETAPE 5 :
+CLASSE CHERCHEUREMPLOI
+============================================================
+
+ATTRIBUTS : + CV + competences
+
+METHODES : + postuler() + televerserCV() + consulterOffres()
+
+RELATIONS : 1 Chercheur -> 1 CV 1 Chercheur -> 0..* Candidatures
+
+============================================================ ETAPE 6 :
+CLASSE CV ============================================================
+
+ATTRIBUTS : + id + fichier + competences + experience
+
+METHODE : + extraireInfos()
+
+============================================================ ETAPE 7 :
+CLASSE OFFREEMPLOI
+============================================================
+
+ATTRIBUTS : + id + titre + description + exigences + salaire +
+localisation + datePublication
+
+METHODES : + publier() + modifier() + supprimer()
+
+RELATION : OffreEmploi (1) -> (0..*) Candidature
+
+============================================================ ETAPE 8 :
+CLASSE CANDIDATURE
+============================================================
+
+Relie ChercheurEmploi et OffreEmploi
+
+ATTRIBUTS : + id + date + statut + scoreCompatibilite
+
+METHODES : + postuler() + mettreAJourStatut()
+
+============================================================ ETAPE 9 :
+CLASSE ANALYSEIA
+============================================================
+
+METHODES : + extraireCompetences() + calculerScore() + matcherProfil()
+
+Depend de CV et OffreEmploi.
+
+============================================================ ETAPE 10 :
+CARDINALITES
+============================================================
+
+1 = exactement un 0..* = zéro ou plusieurs
+
+Entreprise (1) -> (0..) OffreEmploi Chercheur (1) -> (1) CV Chercheur
+(1) -> (0..) Candidature Offre (1) -> (0..*) Candidature
+
+============================================================ CONCLUSION
+============================================================
+
+Le diagramme est cohérent et représente : - Une hiérarchie claire - Un
+processus métier structuré - Une intégration IA logique

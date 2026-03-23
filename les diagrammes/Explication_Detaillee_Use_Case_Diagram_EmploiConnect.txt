@@ -1,0 +1,172 @@
+EXPLICATION DETAILLEE DU USE CASE DIAGRAM PROJET : EMPLOICONNECT
+
+============================================================ 1.
+INTRODUCTION
+============================================================
+
+Le diagramme de cas d’utilisation (Use Case Diagram) représente la vue
+fonctionnelle du système.
+
+Il répond à la question : QUI FAIT QUOI DANS LE SYSTEME ?
+
+Il montre : - Les acteurs externes - Les fonctionnalités offertes par la
+plateforme - Les interactions entre acteurs et système
+
+Dans ce diagramme, le système central est : EmploiConnect.
+
+============================================================ 2. ACTEURS
+DU SYSTEME ============================================================
+
+Trois acteurs principaux interagissent avec la plateforme :
+
+1)  Chercheur d’emploi
+2)  Entreprise
+3)  Administrateur
+
+Chaque acteur possède des fonctionnalités spécifiques.
+
+============================================================ 3. ACTEUR 1
+: CHERCHEUR D’EMPLOI
+============================================================
+
+Le chercheur d’emploi est l’utilisateur qui recherche un travail.
+
+FONCTIONNALITES :
+
+1.  Créer compte Permet au candidat de s’inscrire sur la plateforme.
+
+2.  Consulter offres Permet de voir la liste des offres disponibles.
+
+3.  Uploader CV Permet de téléverser son curriculum vitae.
+
+4.  Postuler Permet de candidater à une offre.
+
+5.  Recevoir suggestions IA Permet d’obtenir des recommandations
+    automatiques basées sur l’analyse du CV.
+
+OBJECTIF : Trouver un emploi correspondant à son profil.
+
+============================================================ 4. ACTEUR 2
+: ENTREPRISE
+============================================================
+
+L’entreprise représente le recruteur.
+
+FONCTIONNALITES :
+
+1.  Créer compte entreprise Permet à une entreprise de s’enregistrer.
+
+2.  Publier offre Permet de créer une annonce d’emploi.
+
+3.  Voir candidatures Permet de consulter les candidatures reçues.
+
+4.  Consulter profils Permet d’explorer les profils des candidats.
+
+5.  Recevoir suggestions CV Permet d’obtenir automatiquement des profils
+    pertinents grâce au module IA.
+
+OBJECTIF : Recruter le meilleur candidat.
+
+============================================================ 5. ACTEUR 3
+: ADMINISTRATEUR
+============================================================
+
+L’administrateur supervise la plateforme.
+
+FONCTIONNALITES :
+
+1.  Valider comptes Permet d’approuver les nouveaux utilisateurs.
+
+2.  Modérer contenus Permet de contrôler les offres et profils publiés.
+
+3.  Supprimer offres Permet de retirer une annonce non conforme.
+
+4.  Voir statistiques Permet d’accéder aux indicateurs globaux (nombre
+    d’utilisateurs, offres, candidatures).
+
+OBJECTIF : Garantir la qualité, la sécurité et la fiabilité du système.
+
+============================================================ 6.
+RELATIONS ENTRE ACTEURS ET SYSTEME
+============================================================
+
+Chaque ligne reliant un acteur à EmploiConnect représente une
+association.
+
+Cela signifie que l’acteur peut utiliser cette fonctionnalité.
+
+Exemple : Chercheur -> Postuler Entreprise -> Publier offre
+Administrateur -> Valider comptes
+
+============================================================ 7. ROLE
+CENTRAL DE LA PLATEFORME
+============================================================
+
+EmploiConnect est au centre du diagramme.
+
+Elle agit comme :
+
+-   Interface entre acteurs
+-   Système de gestion des données
+-   Coordinateur des interactions
+-   Intégrateur du module IA
+
+Toutes les actions passent par elle.
+
+============================================================ 8.
+INTEGRATION DE L’IA
+============================================================
+
+Deux fonctionnalités montrent l’intégration de l’IA :
+
+-   Recevoir suggestions IA (côté chercheur)
+-   Recevoir suggestions CV (côté entreprise)
+
+Cela signifie que la plateforme utilise un module d’intelligence
+artificielle pour :
+
+-   Analyser les CV
+-   Comparer avec les offres
+-   Générer des recommandations
+
+============================================================ 9. VISION
+GLOBALE DU SYSTEME
+============================================================
+
+Le diagramme montre :
+
+-   Une séparation claire des rôles
+-   Une organisation fonctionnelle structurée
+-   Un système centré sur le matching intelligent
+-   Une gouvernance assurée par l’administrateur
+
+============================================================ 10.
+IMPORTANCE DU USE CASE DIAGRAM
+============================================================
+
+Ce diagramme permet :
+
+-   De comprendre les besoins fonctionnels
+-   D’identifier les responsabilités
+-   De définir les fonctionnalités principales
+-   De préparer la conception technique
+
+Il constitue la base de l’analyse fonctionnelle du projet.
+
+============================================================ CONCLUSION
+============================================================
+
+Le Use Case Diagram d’EmploiConnect montre l’ensemble des interactions
+entre les acteurs et la plateforme.
+
+Il met en évidence :
+
+-   Le rôle du chercheur
+-   Le rôle de l’entreprise
+-   Le rôle de l’administrateur
+-   L’importance du module IA
+-   La centralisation des actions dans la plateforme
+
+Ce diagramme représente la vision globale fonctionnelle du système.
+
+FIN DU DOCUMENT

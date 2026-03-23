@@ -1,0 +1,185 @@
+EXPLICATION DETAILLEE DU DIAGRAMME DE SEQUENCE 3 PROJET : EMPLOICONNECT
+SCENARIO : MATCHING IA
+
+============================================================ 1.
+INTRODUCTION AU DIAGRAMME DE SEQUENCE
+============================================================
+
+Ce diagramme de séquence illustre le fonctionnement interne du module
+d’intelligence artificielle lors du processus de matching.
+
+Contrairement aux deux précédents scénarios, ce diagramme montre
+principalement une interaction technique entre les composants internes
+du système.
+
+Composants impliqués :
+
+-   Plateforme (backend)
+-   IA (module intelligent)
+-   CV (données du candidat)
+-   Offre (données de l’annonce)
+
+Le diagramme montre l’ordre chronologique des échanges de haut en bas.
+
+============================================================ 2. ETAPE 1
+: DEMANDE DE MATCHING
+============================================================
+
+La Plateforme envoie une requête au module IA :
+
+Plateforme -> IA : Demander matching
+
+Cela signifie :
+
+-   Un candidat a téléversé son CV OU
+-   Un candidat consulte des offres OU
+-   Le système veut recommander des offres automatiquement
+
+La plateforme déclenche donc l’analyse.
+
+============================================================ 3. ETAPE 2
+: EXTRACTION DES COMPETENCES DU CV
+============================================================
+
+L’IA interagit avec les données du CV :
+
+IA -> CV : Extraire compétences
+
+Cette étape inclut :
+
+-   Lecture du texte extrait du CV
+-   Analyse NLP (tokenisation)
+-   Détection des mots-clés
+-   Identification des compétences techniques
+-   Identification des compétences soft skills
+
+Le résultat est une liste structurée de compétences.
+
+============================================================ 4. ETAPE 3
+: LECTURE DES EXIGENCES DE L’OFFRE
+============================================================
+
+L’IA interagit ensuite avec l’offre :
+
+IA -> Offre : Lire exigences
+
+Cette étape comprend :
+
+-   Récupération des exigences du poste
+-   Extraction des compétences demandées
+-   Identification du niveau d’expérience requis
+-   Lecture du domaine d’activité
+
+Les données sont préparées pour comparaison.
+
+============================================================ 5. ETAPE 4
+: CALCUL DU SCORE
+============================================================
+
+L’IA compare :
+
+-   Compétences du candidat
+-   Exigences de l’offre
+
+Techniquement, cela peut utiliser :
+
+-   Similarité cosinus (embeddings vectoriels)
+-   Matching par mots-clés
+-   Pondération des compétences importantes
+-   Algorithme de scoring personnalisé
+
+Résultat : Un score de compatibilité est calculé.
+
+Exemple : Score = 0.87 (87%)
+
+============================================================ 6. ETAPE 5
+: GENERATION DES SUGGESTIONS
+============================================================
+
+Après calcul du score, l’IA :
+
+-   Classe les offres par score décroissant
+-   Sélectionne les meilleures correspondances
+-   Génère une liste de suggestions
+
+Cette liste peut contenir : - Top 5 offres - Offres avec score > 70% -
+Offres correspondant au domaine
+
+============================================================ 7. ETAPE 6
+: RETOUR VERS LA PLATEFORME
+============================================================
+
+L’IA renvoie les résultats :
+
+IA -> Plateforme : Score + suggestions
+
+La plateforme reçoit :
+
+-   Le score
+-   La liste des offres recommandées
+-   Les métadonnées associées
+
+============================================================ 8.
+TRAITEMENT PAR LA PLATEFORME
+============================================================
+
+La plateforme peut :
+
+-   Afficher les suggestions au candidat
+-   Enregistrer le score en base de données
+-   Envoyer des notifications
+-   Mettre en avant le profil auprès des entreprises
+
+============================================================ 9. ANALYSE
+TECHNIQUE DU FLUX
+============================================================
+
+Chronologie complète :
+
+1.  Plateforme déclenche matching
+2.  IA analyse le CV
+3.  IA lit les exigences de l’offre
+4.  IA calcule le score
+5.  IA génère suggestions
+6.  Résultat renvoyé à la plateforme
+
+============================================================ 10. ROLE DE
+CHAQUE COMPOSANT
+============================================================
+
+Plateforme : - Déclenche l’analyse - Affiche les résultats
+
+IA : - Analyse - Compare - Calcule - Classe
+
+CV : - Source de données candidat
+
+Offre : - Source de données recruteur
+
+============================================================ 11.
+IMPORTANCE DU DIAGRAMME
+============================================================
+
+Ce diagramme est très important car il montre :
+
+-   Le cœur intelligent du système
+-   L’intégration du NLP
+-   Le fonctionnement du scoring
+-   La logique de recommandation
+
+Il met en évidence que l’IA ne fonctionne pas seule, mais en interaction
+avec les données métier.
+
+============================================================ CONCLUSION
+============================================================
+
+Le diagramme de séquence “Matching IA” explique le fonctionnement
+interne du module intelligent.
+
+Il démontre :
+
+-   Une architecture modulaire
+-   Une séparation claire des responsabilités
+-   Une logique algorithmique structurée
+-   Une intégration cohérente dans la plateforme
+
+FIN DU DOCUMENT

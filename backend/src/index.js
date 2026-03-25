@@ -13,6 +13,31 @@ import { logError, logInfo } from './utils/logger.js';
 const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:8080';
 
+/**
+ * CORS : en dev, Flutter Web utilise un port aléatoire (ex. localhost:58294).
+ * On autorise tout http://localhost:* et http://127.0.0.1:* + les origines listées dans CORS_ORIGIN.
+ * En production, définissez CORS_STRICT=1 et listez uniquement les domaines dans CORS_ORIGIN.
+ */
+function corsOriginCallback(origin, callback) {
+  if (!origin) {
+    return callback(null, true);
+  }
+  const strict = process.env.CORS_STRICT === '1' || process.env.CORS_STRICT === 'true';
+  if (!strict) {
+    if (/^https?:\/\/localhost(:\d+)?$/i.test(origin)) {
+      return callback(null, true);
+    }
+    if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) {
+      return callback(null, true);
+    }
+  }
+  const allowed = CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+  if (allowed.includes(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error(`CORS: origine non autorisée: ${origin}`));
+}
+
 // Sécurité : exiger un secret JWT défini
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET doit être défini dans .env pour démarrer le serveur en sécurité');
@@ -25,10 +50,11 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS strict basé sur la config
 app.use(cors({
-  origin: CORS_ORIGIN.split(',').map((s) => s.trim()),
+  origin: corsOriginCallback,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Limitation de débit globale (rate limiting)

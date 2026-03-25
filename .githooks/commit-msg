@@ -1,0 +1,23 @@
+#!/bin/sh
+# Valide un message de commit lisible (style Conventional Commits simplifié)
+MSG_FILE="$1"
+MSG=$(head -n 1 "$MSG_FILE")
+
+# Longueur minimale
+LEN=$(echo "$MSG" | wc -c)
+if [ "$LEN" -lt 12 ]; then
+  echo "[commit-msg] ERREUR : message trop court (min. ~10 caractères)."
+  echo "  Exemple : feat(auth): connexion utilisateur"
+  exit 1
+fi
+
+# Rejeter les messages trop vagues
+case "$MSG" in
+  update|fix|ok|test|wip|tmp|asdf|" "|"")
+    echo "[commit-msg] ERREUR : message trop vague : \"$MSG\""
+    echo "  Utilisez : feat(scope): description ou fix(scope): ..."
+    exit 1
+    ;;
+esac
+
+exit 0

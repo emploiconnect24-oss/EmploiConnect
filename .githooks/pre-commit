@@ -1,0 +1,30 @@
+#!/bin/sh
+# Bloque les commits accidentels de secrets / .env
+set -e
+
+STAGED=$(git diff --cached --name-only)
+
+# Refuser les fichiers .env réels (pas .env.example)
+BAD_ENV=$(echo "$STAGED" | grep -E '\.env$' | grep -v '\.env\.example$' || true)
+if [ -n "$BAD_ENV" ]; then
+  echo "[pre-commit] ERREUR : fichier(s) .env détecté(s) :"
+  echo "$BAD_ENV"
+  echo "  Retirez-les : git reset HEAD -- <fichier>"
+  echo "  Les secrets doivent rester locaux (voir .gitignore)."
+  exit 1
+fi
+
+# Avertissement si un fichier ressemble à un dump de clés
+echo "$STAGED" | grep -iE 'CLE.*API|secrets\.txt|credentials\.json' >/dev/null 2>&1 && {
+  echo "[pre-commit] ATTENTION : fichier potentiellement sensible détecté."
+  echo "  Vérifiez qu'il ne contient pas de vraies clés avant de continuer."
+}
+
+# Détection grossière de JWT / clés longues en base64 dans le diff (faux positifs possibles)
+if git diff --cached -p 2>/dev/null | grep -E '^\+.*eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.' >/dev/null 2>&1; then
+  echo "[pre-commit] ERREUR : le diff semble contenir un JWT (eyJ...)."
+  echo "  Retirez les secrets du code ou utilisez des variables d'environnement."
+  exit 1
+fi
+
+exit 0

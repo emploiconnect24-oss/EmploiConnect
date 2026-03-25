@@ -1,0 +1,65 @@
+# =============================================================================
+# EmploiConnect - Racine du dépôt
+# Ne jamais committer de secrets. Utiliser .env local (non versionné).
+# =============================================================================
+
+# --- Variables d'environnement & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+**/credentials.json
+
+# Fichiers texte susceptibles de contenir des clés API (à adapter si besoin)
+*CLE*API*.txt
+*KEYS*.txt
+*secrets*.txt
+LES CLE API SUPABASE.txt
+
+# --- Backend Node ---
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/.env.*
+backend/npm-debug.log*
+backend/yarn-error.log*
+
+# --- Frontend Flutter ---
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/build/
+frontend/.pub-cache/
+frontend/.pub/
+frontend/*.iml
+frontend/.idea/
+frontend/.metadata
+
+# --- Base de données (ne pas versionner d'exports avec données réelles) ---
+database/*.dump
+database/*.sql.bak
+
+# --- OS & IDE ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Temporaires ---
+tmp/
+temp/
+.cache/

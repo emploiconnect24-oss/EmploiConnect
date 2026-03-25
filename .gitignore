@@ -63,3 +63,7 @@ logs/
 tmp/
 temp/
 .cache/
+
+# Secrets / clés
+LES CLE API SUPABASE.txt
+

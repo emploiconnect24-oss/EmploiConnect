@@ -501,11 +501,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     confirmLabel: 'Supprimer',
                     confirmColor: const Color(0xFFEF4444),
                   );
-                  if (ok && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Suppression à connecter côté API admin.')),
-                    );
-                  }
+                  if (!ok || !mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(content: Text('Suppression à connecter côté API admin.')),
+                  );
                 },
               ),
             ],

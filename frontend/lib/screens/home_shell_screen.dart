@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 import 'chercheur/chercheur_shell_screen.dart';
-import 'entreprise/entreprise_shell_screen.dart';
+import 'recruteur/recruteur_shell_screen.dart';
 import 'admin/admin_shell_screen.dart';
 
 /// Navigation principale selon le rôle (alignée sur l’API backend).
@@ -33,8 +33,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       return const ChercheurShellScreen();
     }
 
-    if (role == 'entreprise') {
-      return const EntrepriseShellScreen();
+    if (role == 'entreprise' || role == 'recruteur') {
+      return const RecruteurShellScreen();
     }
 
     if (role == 'admin') {

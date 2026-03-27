@@ -72,7 +72,7 @@ class EmploiConnectApp extends StatelessWidget {
 
           return PageRouteBuilder<void>(
             settings: settings,
-            pageBuilder: (_, __, ___) => page,
+            pageBuilder: (context, animation, secondaryAnimation) => page,
             transitionDuration: AppAnimations.normal,
             reverseTransitionDuration: AppAnimations.normal,
             transitionsBuilder: (context, animation, secondaryAnimation, child) {

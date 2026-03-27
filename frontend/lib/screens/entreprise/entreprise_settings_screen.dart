@@ -28,8 +28,21 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
 
   final _pwdCtrl = TextEditingController();
   final _pwdConfirmCtrl = TextEditingController();
+  final _deleteConfirmCtrl = TextEditingController();
   bool _obscurePwd = true;
   bool _obscureConfirm = true;
+  String _language = 'Français';
+  String _timezone = 'Africa/Conakry';
+
+  bool _notifNewApplications = true;
+  bool _notifMessages = true;
+  bool _notifOfferExpiry = true;
+  bool _notifWeeklySummary = false;
+  bool _notifPush = true;
+
+  bool _privacyProfileVisible = true;
+  bool _privacyShowSalaryByDefault = true;
+  bool _privacyAllowDirectContact = true;
 
   bool _loading = true;
   bool _saving = false;
@@ -53,6 +66,7 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
     _logoUrlCtrl.dispose();
     _pwdCtrl.dispose();
     _pwdConfirmCtrl.dispose();
+    _deleteConfirmCtrl.dispose();
     super.dispose();
   }
 
@@ -79,6 +93,90 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _savePreferences() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _service.updateMe({
+        'langue_interface': _language,
+        'fuseau_horaire': _timezone,
+        'notif_nouvelles_candidatures': _notifNewApplications,
+        'notif_messages_recus': _notifMessages,
+        'notif_offres_expiration': _notifOfferExpiry,
+        'notif_resume_hebdo': _notifWeeklySummary,
+        'notif_push': _notifPush,
+        'privacy_profile_visible': _privacyProfileVisible,
+        'privacy_show_salary_default': _privacyShowSalaryByDefault,
+        'privacy_allow_direct_contact': _privacyAllowDirectContact,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Préférences enregistrées')));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _openDangerDialog({required bool delete}) async {
+    _deleteConfirmCtrl.clear();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(delete ? 'Supprimer définitivement le compte ?' : 'Désactiver temporairement le compte ?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              delete
+                  ? 'Cette action est irréversible. Tapez SUPPRIMER pour confirmer.'
+                  : 'Votre compte sera temporairement désactivé.',
+            ),
+            if (delete) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _deleteConfirmCtrl,
+                decoration: const InputDecoration(labelText: 'Tapez SUPPRIMER'),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: delete ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              if (delete && _deleteConfirmCtrl.text.trim() != 'SUPPRIMER') {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Confirmation invalide')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: Text(delete ? 'Supprimer' : 'Désactiver'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          delete
+              ? 'Suppression à brancher avec l’API.'
+              : 'Désactivation temporaire à brancher avec l’API.',
+        ),
+      ),
+    );
   }
 
   Future<void> _saveEntreprise() async {
@@ -154,7 +252,6 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
     }
 
     final scheme = Theme.of(context).colorScheme;
-    const orange = Color(0xFFFF8A00);
     final profilId = _profil?['id']?.toString();
 
     return ResponsiveContainer(
@@ -195,7 +292,7 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Astuce : remplissez au moins le nom entreprise et le site web pour une meilleure visibilité.',
+                        'Astuce : configurez vos notifications et votre confidentialité pour mieux piloter vos recrutements.',
                         style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
                     ],
@@ -204,6 +301,7 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            // SECTION 1 : Infos compte
             RevealOnScroll(
               child: Card(
                 child: Padding(
@@ -213,7 +311,17 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Entreprise', style: TextStyle(fontWeight: FontWeight.w900)),
+                        const Text('1) Informations du compte', style: TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          initialValue: email,
+                          readOnly: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Email du compte',
+                            prefixIcon: Icon(Icons.mail_outline),
+                            isDense: true,
+                          ),
+                        ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _nomEntrepriseCtrl,
@@ -249,6 +357,34 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                             prefixIcon: Icon(Icons.groups_outlined),
                             isDense: true,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: _language,
+                          decoration: const InputDecoration(
+                            labelText: 'Langue interface',
+                            prefixIcon: Icon(Icons.translate),
+                            isDense: true,
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Français', child: Text('Français')),
+                            DropdownMenuItem(value: 'English', child: Text('English')),
+                          ],
+                          onChanged: (v) => setState(() => _language = v ?? 'Français'),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: _timezone,
+                          decoration: const InputDecoration(
+                            labelText: 'Fuseau horaire',
+                            prefixIcon: Icon(Icons.schedule),
+                            isDense: true,
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Africa/Conakry', child: Text('Africa/Conakry')),
+                            DropdownMenuItem(value: 'UTC', child: Text('UTC')),
+                          ],
+                          onChanged: (v) => setState(() => _timezone = v ?? 'Africa/Conakry'),
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
@@ -320,11 +456,6 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: orange,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                ),
                                 onPressed: _saving ? null : _saveEntreprise,
                                 icon: _saving
                                     ? const SizedBox(
@@ -333,7 +464,7 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                       )
                                     : const Icon(Icons.check),
-                                label: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                                label: Text(_saving ? 'Enregistrement…' : 'Sauvegarder section'),
                               ),
                             ),
                           ],
@@ -345,6 +476,114 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            // SECTION 2 : Préférences notifications
+            RevealOnScroll(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('2) Préférences de notification', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        value: _notifNewApplications,
+                        onChanged: (v) => setState(() => _notifNewApplications = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Email : nouvelles candidatures'),
+                      ),
+                      SwitchListTile(
+                        value: _notifMessages,
+                        onChanged: (v) => setState(() => _notifMessages = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Email : messages reçus'),
+                      ),
+                      SwitchListTile(
+                        value: _notifOfferExpiry,
+                        onChanged: (v) => setState(() => _notifOfferExpiry = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Email : offre bientôt expirée'),
+                      ),
+                      SwitchListTile(
+                        value: _notifWeeklySummary,
+                        onChanged: (v) => setState(() => _notifWeeklySummary = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Email : résumé hebdomadaire'),
+                      ),
+                      SwitchListTile(
+                        value: _notifPush,
+                        onChanged: (v) => setState(() => _notifPush = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Push notifications'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // SECTION 3 : Confidentialité
+            RevealOnScroll(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('3) Confidentialité', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        value: _privacyProfileVisible,
+                        onChanged: (v) => setState(() => _privacyProfileVisible = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Visibilité du profil entreprise'),
+                      ),
+                      SwitchListTile(
+                        value: _privacyShowSalaryByDefault,
+                        onChanged: (v) => setState(() => _privacyShowSalaryByDefault = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Afficher le salaire par défaut'),
+                      ),
+                      SwitchListTile(
+                        value: _privacyAllowDirectContact,
+                        onChanged: (v) => setState(() => _privacyAllowDirectContact = v),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Permettre le contact direct candidat'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // SECTION 4 : Facturation
+            RevealOnScroll(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('4) Facturation (futur)', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      const ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.workspace_premium_outlined),
+                        title: Text('Plan actuel : Gratuit'),
+                        subtitle: Text('Upgrade vers plan Pro disponible prochainement'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.upgrade),
+                        label: const Text('Upgrade vers Pro (bientôt)'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Sécurité (mot de passe)
             RevealOnScroll(
               child: Card(
                 child: Padding(
@@ -432,6 +671,53 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                     ),
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // SECTION 5 : Danger zone
+            RevealOnScroll(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('5) Danger Zone', style: TextStyle(fontWeight: FontWeight.w900, color: scheme.error)),
+                      const SizedBox(height: 8),
+                      const Text('Actions sensibles sur votre compte entreprise.'),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _openDangerDialog(delete: false),
+                            icon: const Icon(Icons.pause_circle_outline),
+                            label: const Text('Désactiver temporairement'),
+                          ),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFDC2626),
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => _openDangerDialog(delete: true),
+                            icon: const Icon(Icons.delete_forever),
+                            label: const Text('Supprimer définitivement'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _savePreferences,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Enregistrer préférences'),
               ),
             ),
             const SizedBox(height: 22),

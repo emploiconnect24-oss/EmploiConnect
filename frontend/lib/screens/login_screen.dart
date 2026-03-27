@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:animate_do/animate_do.dart';
 import 'package:provider/provider.dart';
+import '../core/constants/app_animations.dart';
+import '../core/constants/app_colors.dart';
+import '../core/constants/app_text_styles.dart';
 import '../providers/auth_provider.dart';
+import 'auth/widgets/mobile_auth_header.dart';
 import '../widgets/responsive_container.dart';
 import '../widgets/hover_scale.dart';
 
@@ -61,17 +66,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _leftPanel(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    const orange = Color(0xFFFF8A00);
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            scheme.primary.withValues(alpha: 0.95),
-            orange.withValues(alpha: 0.85),
-          ],
+          colors: AppColors.authPanelGradient,
+          stops: AppColors.authPanelStops,
         ),
         borderRadius: BorderRadius.circular(18),
       ),
@@ -92,23 +93,14 @@ class _LoginScreenState extends State<LoginScreen> {
               child: const Icon(Icons.work_outline, color: Colors.white),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Bienvenue sur EmploiConnect',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                height: 1.15,
-              ),
+              style: AppTextStyles.authPanelTitle,
             ),
             const SizedBox(height: 10),
             Text(
               'Connectez-vous pour accéder à vos offres, candidatures, CV et suggestions IA.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                height: 1.4,
-                fontSize: 14,
-              ),
+              style: AppTextStyles.authPanelBody,
             ),
             const SizedBox(height: 18),
             Wrap(
@@ -136,7 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _formCard(BuildContext context) {
-    const orange = Color(0xFFFF8A00);
     final scheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -147,14 +138,18 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Connexion',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+              FadeInDown(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 200),
+                child: Text(
+                  'Connexion',
+                  style: AppTextStyles.authTitle,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
                 'Accédez à votre espace EmploiConnect.',
-                style: TextStyle(color: scheme.onSurfaceVariant),
+                style: AppTextStyles.authSubtitle,
               ),
               const SizedBox(height: 16),
               if (_errorMessage != null) ...[
@@ -174,89 +169,113 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email_outlined),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 250),
+                child: TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Email requis';
+                    final email = v.trim();
+                    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+                    if (!ok) return 'Format email invalide';
+                    return null;
+                  },
                 ),
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Email requis';
-                  final email = v.trim();
-                  final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
-                  if (!ok) return 'Format email invalide';
-                  return null;
-                },
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Mot de passe',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    tooltip: _obscure ? 'Afficher' : 'Masquer',
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 300),
+                child: TextFormField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de passe',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      tooltip: _obscure ? 'Afficher' : 'Masquer',
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    ),
                   ),
+                  obscureText: _obscure,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Mot de passe requis';
+                    return null;
+                  },
+                  onFieldSubmitted: (_) => _loading ? null : _submit(),
                 ),
-                obscureText: _obscure,
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Mot de passe requis';
-                  return null;
-                },
-                onFieldSubmitted: (_) => _loading ? null : _submit(),
               ),
               const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 350),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
                     onPressed: _loading ? null : _goForgotPassword,
-                  child: const Text('Mot de passe oublié ?'),
+                    child: const Text('Mot de passe oublié ?'),
+                  ),
                 ),
               ),
               const SizedBox(height: 6),
-              HoverScale(
-                onTap: _loading ? null : _submit,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 400),
+                child: HoverScale(
+                  onTap: _loading ? null : _submit,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: _loading ? null : _submit,
+                    child: _loading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Se connecter'),
                   ),
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Se connecter'),
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: Divider(color: scheme.outlineVariant)),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: Text('ou'),
-                  ),
-                  Expanded(child: Divider(color: scheme.outlineVariant)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _loading ? null : _googleSignIn,
-                icon: const Icon(Icons.g_mobiledata, size: 28),
-                label: const Text('Continuer avec Google'),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.of(context).pushReplacementNamed('/register'),
-                child: const Text('Pas de compte ? S’inscrire'),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 500),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: scheme.outlineVariant)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text('ou'),
+                        ),
+                        Expanded(child: Divider(color: scheme.outlineVariant)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _loading ? null : _googleSignIn,
+                      icon: const Icon(Icons.g_mobiledata, size: 28),
+                      label: const Text('Continuer avec Google'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pushReplacementNamed('/register'),
+                      child: const Text('Pas de compte ? S’inscrire'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -276,7 +295,7 @@ class _LoginScreenState extends State<LoginScreen> {
             end: Alignment.bottomRight,
             colors: [
               scheme.primary.withValues(alpha: 0.06),
-              const Color(0xFFFF8A00).withValues(alpha: 0.05),
+              AppColors.primary.withValues(alpha: 0.05),
               Colors.white,
             ],
           ),
@@ -291,15 +310,32 @@ class _LoginScreenState extends State<LoginScreen> {
                 final content = desktop
                     ? Row(
                         children: [
-                          Expanded(child: _leftPanel(context)),
+                          Expanded(
+                            child: FadeInLeft(
+                              duration: AppAnimations.slow,
+                              child: _leftPanel(context),
+                            ),
+                          ),
                           const SizedBox(width: 16),
-                          Expanded(child: _formCard(context)),
+                          Expanded(
+                            child: FadeInRight(
+                              duration: AppAnimations.slow,
+                              delay: const Duration(milliseconds: 150),
+                              child: _formCard(context),
+                            ),
+                          ),
                         ],
                       )
                     : Column(
                         children: [
-                          _leftPanel(context),
-                          const SizedBox(height: 12),
+                          FadeInDown(
+                            duration: AppAnimations.slow,
+                            child: const MobileAuthHeader(
+                              title: 'Connexion',
+                              subtitle: 'Accedez a votre espace EmploiConnect',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
                           _formCard(context),
                         ],
                       );

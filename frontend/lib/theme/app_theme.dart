@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../core/constants/app_colors.dart';
+import '../core/constants/app_text_styles.dart';
 
 class AppTheme {
   static ThemeData get light {
-    const seed = Color(0xFF1F6FEB);
-    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
+    const seed = AppColors.primary;
+    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light).copyWith(
+      primary: AppColors.primary,
+      onPrimary: Colors.white,
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      textTheme: GoogleFonts.plusJakartaSansTextTheme(),
-      scaffoldBackgroundColor: const Color(0xFFF7F9FC),
+      textTheme: GoogleFonts.interTextTheme(),
+      scaffoldBackgroundColor: AppColors.bgLight,
       appBarTheme: const AppBarTheme(
         centerTitle: false,
         elevation: 0,
@@ -27,15 +32,35 @@ class AppTheme {
         fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.primary, width: 1.4),
+          borderSide: const BorderSide(color: AppColors.borderFocus, width: 1.4),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          textStyle: AppTextStyles.buttonLabel,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary, width: 1.2),
+          textStyle: AppTextStyles.linkText,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          textStyle: AppTextStyles.linkText,
         ),
       ),
       snackBarTheme: SnackBarThemeData(

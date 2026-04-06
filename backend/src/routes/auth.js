@@ -8,6 +8,10 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabase.js';
 import { ROLES } from '../config/constants.js';
 import { logError } from '../utils/logger.js';
+import { notifNouvelleInscription } from '../services/auto_notification.service.js';
+import { sendWelcomeEmailOnRegister } from '../services/mail.service.js';
+import { getSecurityParamsCached, loginAttemptsGuard } from '../middleware/security.middleware.js';
+import { requestPasswordReset, completePasswordReset } from '../services/passwordReset.service.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -21,6 +25,22 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Trop de tentatives de connexion, réessayez plus tard.' },
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.FORGOT_PASSWORD_RATE_LIMIT_MAX || 8),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de demandes, réessayez plus tard.' },
+});
+
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.RESET_PASSWORD_RATE_LIMIT_MAX || 15),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de tentatives, réessayez plus tard.' },
 });
 
 /**
@@ -42,6 +62,26 @@ router.post('/register', async (req, res) => {
     if (!validRoles.includes(role)) {
       return res.status(400).json({
         message: 'role doit être : chercheur, entreprise ou admin',
+      });
+    }
+
+    // Paramètres plateforme : inscription libre + validation manuelle
+    const { data: params } = await supabase
+      .from('parametres_plateforme')
+      .select('cle, valeur')
+      .in('cle', ['inscription_libre', 'validation_manuelle_comptes']);
+
+    const map = {};
+    (params || []).forEach((p) => {
+      map[p.cle] = p.valeur;
+    });
+
+    const inscriptionLibre = (map.inscription_libre ?? 'true') === 'true';
+    const validationManuelle = (map.validation_manuelle_comptes ?? 'false') === 'true';
+
+    if (!inscriptionLibre && role !== ROLES.ADMIN) {
+      return res.status(403).json({
+        message: 'Les inscriptions sont temporairement désactivées. Veuillez réessayer plus tard.',
       });
     }
 
@@ -80,7 +120,8 @@ router.post('/register', async (req, res) => {
         telephone: telephone || null,
         adresse: adresse || null,
         est_actif: true,
-        est_valide: role === ROLES.ADMIN, // Les admins sont validés par défaut
+        // Admin : validé direct. Autres : dépend du paramètre validation manuelle.
+        est_valide: role === ROLES.ADMIN ? true : !validationManuelle,
       })
       .select('id, email, nom, role, date_creation')
       .single();
@@ -102,11 +143,37 @@ router.post('/register', async (req, res) => {
       await supabase.from('administrateurs').insert({ utilisateur_id: newUser.id });
     }
 
+    // Si validation manuelle ON : notifier les admins pour valider le compte
+    if (role !== ROLES.ADMIN && validationManuelle) {
+      void notifNouvelleInscription(newUser);
+    }
+
+    void sendWelcomeEmailOnRegister(newUser, validationManuelle && role !== ROLES.ADMIN);
+
+    // Expiration JWT dynamique (paramètre jwt_expiration_heures) si configuré
+    const secParams = await getSecurityParamsCached();
+    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
+    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
+
     const token = jwt.sign(
       { userId: newUser.id, email: newUser.email, role: newUser.role },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn }
     );
+
+    // Si validation manuelle activée : ne pas donner de token utilisable (compte non validé),
+    // pour éviter un accès partiel avant validation admin.
+    if (role !== ROLES.ADMIN && validationManuelle) {
+      return res.status(201).json({
+        message: 'Compte créé. En attente de validation par un administrateur.',
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          nom: newUser.nom,
+          role: newUser.role,
+        },
+      });
+    }
 
     res.status(201).json({
       message: 'Compte créé',
@@ -117,7 +184,7 @@ router.post('/register', async (req, res) => {
         role: newUser.role,
       },
       token,
-      expiresIn: JWT_EXPIRES_IN,
+      expiresIn,
     });
   } catch (err) {
     logError('Register - erreur inattendue', err);
@@ -129,7 +196,7 @@ router.post('/register', async (req, res) => {
  * POST /auth/login
  * Body: { email, mot_de_passe }
  */
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', loginAttemptsGuard, loginLimiter, async (req, res) => {
   try {
     const { email, mot_de_passe } = req.body;
 
@@ -166,11 +233,24 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(403).json({ message: 'Compte en attente de validation par un administrateur' });
     }
 
+    const secParams = await getSecurityParamsCached();
+    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
+    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
+
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn }
     );
+
+    const nowIso = new Date().toISOString();
+    const { error: lcErr } = await supabase
+      .from('utilisateurs')
+      .update({ derniere_connexion: nowIso })
+      .eq('id', user.id);
+    if (lcErr) {
+      logError('Login - mise à jour derniere_connexion', lcErr);
+    }
 
     res.json({
       message: 'Connexion réussie',
@@ -181,11 +261,56 @@ router.post('/login', loginLimiter, async (req, res) => {
         role: user.role,
       },
       token,
-      expiresIn: JWT_EXPIRES_IN,
+      expiresIn,
     });
   } catch (err) {
     logError('Login - erreur inattendue', err);
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * POST /auth/forgot-password
+ * Body: { email } — réponse générique (pas d’énumération de comptes).
+ */
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  try {
+    const email = req.body?.email;
+    const emailNorm = String(email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailNorm || !emailRegex.test(emailNorm)) {
+      return res.status(400).json({ message: 'Adresse email invalide' });
+    }
+    await requestPasswordReset(emailNorm);
+    return res.json({
+      message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation.',
+    });
+  } catch (err) {
+    logError('Forgot-password - erreur', err);
+    return res.json({
+      message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation.',
+    });
+  }
+});
+
+/**
+ * POST /auth/reset-password
+ * Body: { token, mot_de_passe }
+ */
+router.post('/reset-password', resetPasswordLimiter, async (req, res) => {
+  try {
+    const { token, mot_de_passe: motDePasse } = req.body || {};
+    if (!token || !motDePasse) {
+      return res.status(400).json({ message: 'token et mot_de_passe requis' });
+    }
+    const result = await completePasswordReset(String(token), motDePasse);
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message || 'Réinitialisation impossible' });
+    }
+    return res.json({ message: 'Mot de passe mis à jour. Vous pouvez vous connecter.' });
+  } catch (err) {
+    logError('Reset-password - erreur', err);
+    return res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 

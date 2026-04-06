@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:animate_do/animate_do.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../../providers/app_config_provider.dart';
+import '../../../app/public_routes.dart';
 
 class HeroSectionWidget extends StatefulWidget {
   const HeroSectionWidget({super.key});
@@ -14,7 +17,9 @@ class HeroSectionWidget extends StatefulWidget {
 
 class _HeroSectionWidgetState extends State<HeroSectionWidget> {
   final PageController _pageController = PageController();
+  final TextEditingController _heroSearchCtrl = TextEditingController();
   int _currentPage = 0;
+  int _slideCount = 3;
   Timer? _timer;
 
   final List<String> heroImages = [
@@ -27,17 +32,20 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
     {
       'badge': '🇬🇳  Plateforme N°1 en Guinée',
       'title': "Trouvez l'Emploi\nde Vos Rêves",
-      'subtitle': "Des milliers d'offres vérifiées vous attendent.\nPostulez en un clic, décrochez votre opportunité.",
+      'subtitle':
+          "Des milliers d'offres vérifiées vous attendent.\nPostulez en un clic, décrochez votre opportunité.",
     },
     {
       'badge': '⚡  Matching intelligent par IA',
       'title': "Votre CV Analysé\nPar l'Intelligence\nArtificielle",
-      'subtitle': "Notre IA extrait vos compétences et vous\nrecommande les offres les plus pertinentes.",
+      'subtitle':
+          "Notre IA extrait vos compétences et vous\nrecommande les offres les plus pertinentes.",
     },
     {
       'badge': '🏢  Espace Recruteurs',
       'title': 'Recrutez les\nMeilleurs Talents\nde Guinée',
-      'subtitle': 'Accédez à une base de candidats qualifiés.\nTrouvez le profil idéal en quelques minutes.',
+      'subtitle':
+          'Accédez à une base de candidats qualifiés.\nTrouvez le profil idéal en quelques minutes.',
     },
   ];
 
@@ -50,7 +58,8 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
   void _startAutoplay() {
     _timer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!_pageController.hasClients || !mounted) return;
-      final nextPage = (_currentPage + 1) % heroImages.length;
+      final count = _slideCount <= 0 ? 1 : _slideCount;
+      final nextPage = (_currentPage + 1) % count;
       _pageController.animateToPage(
         nextPage,
         duration: const Duration(milliseconds: 1000),
@@ -62,16 +71,47 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
   @override
   void dispose() {
     _timer?.cancel();
+    _heroSearchCtrl.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _openPublicOffres({String? initialSearch}) {
+    final q = (initialSearch ?? _heroSearchCtrl.text).trim();
+    Navigator.of(context).pushNamed(
+      PublicRoutes.list(search: q.isEmpty ? null : q),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isMobile = size.width < 768;
-    final heroHeight = isMobile ? size.height * 0.75 : size.height;
-    final compact = heroHeight < 640;
+    // Hauteur bandeau réduite (plus de plein écran sur bureau) — cohérent avec la notice dimensions admin.
+    final heroHeight = isMobile
+        ? (size.height * 0.5).clamp(300.0, 400.0)
+        : 440.0;
+    final compact = heroHeight < 520;
+    final showSearchInHero = !isMobile;
+    final config = context.watch<AppConfigProvider>();
+    final providerSlides = config.bannieres
+        .where((s) => s['est_actif'] != false)
+        .toList();
+    final slides = providerSlides.isNotEmpty
+        ? providerSlides
+        : List.generate(heroImages.length, (i) {
+            final content = heroContent[i];
+            return <String, dynamic>{
+              'image_url': heroImages[i],
+              'texte_badge': content['badge'],
+              'titre': content['title'],
+              'sous_titre': content['subtitle'],
+            };
+          });
+    _slideCount = slides.length;
+    if (_currentPage >= _slideCount && _slideCount > 0) {
+      _currentPage = 0;
+    }
 
     return SizedBox(
       height: heroHeight,
@@ -79,17 +119,21 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
         children: [
           PageView.builder(
             controller: _pageController,
-            itemCount: heroImages.length,
+            itemCount: slides.length,
             onPageChanged: (i) => setState(() => _currentPage = i),
-            itemBuilder: (ctx, i) => CachedNetworkImage(
-              imageUrl: heroImages[i],
+            itemBuilder: (ctx, i) => Image.network(
+              slides[i]['image_url']?.toString() ?? '',
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
-              placeholder: (context, url) => Container(color: const Color(0xFF0F172A)),
-              errorWidget: (context, url, error) => Container(
+              headers: const {'Cache-Control': 'no-cache'},
+              errorBuilder: (context, error, stackTrace) => Container(
                 color: const Color(0xFF0F172A),
-                child: const Icon(Icons.image_outlined, color: Colors.white24, size: 48),
+                child: const Icon(
+                  Icons.image_outlined,
+                  color: Colors.white24,
+                  size: 48,
+                ),
               ),
             ),
           ),
@@ -132,22 +176,29 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 80),
             child: Column(
-              mainAxisAlignment: compact ? MainAxisAlignment.start : MainAxisAlignment.center,
+              mainAxisAlignment: compact
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: compact ? 56 : 80),
+                SizedBox(height: compact ? 44 : 72),
                 FadeInDown(
                   key: ValueKey(_currentPage),
                   duration: const Duration(milliseconds: 600),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Text(
-                      heroContent[_currentPage]['badge']!,
+                      slides[_currentPage]['texte_badge']?.toString() ?? '',
                       style: GoogleFonts.inter(
                         color: Colors.white,
                         fontSize: 13,
@@ -162,7 +213,7 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
                   duration: const Duration(milliseconds: 700),
                   delay: const Duration(milliseconds: 150),
                   child: Text(
-                    heroContent[_currentPage]['title']!,
+                    slides[_currentPage]['titre']?.toString() ?? '',
                     style: isMobile
                         ? GoogleFonts.poppins(
                             fontSize: 34,
@@ -171,7 +222,7 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
                             height: 1.2,
                           )
                         : GoogleFonts.poppins(
-                            fontSize: 54,
+                            fontSize: compact ? 40 : 54,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                             height: 1.15,
@@ -184,7 +235,7 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
                   duration: const Duration(milliseconds: 700),
                   delay: const Duration(milliseconds: 250),
                   child: Text(
-                    heroContent[_currentPage]['subtitle']!,
+                    slides[_currentPage]['sous_titre']?.toString() ?? '',
                     style: GoogleFonts.inter(
                       fontSize: isMobile ? 15 : 18,
                       color: Colors.white.withValues(alpha: 0.80),
@@ -208,38 +259,61 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
                           minimumSize: const Size(190, 48),
                           backgroundColor: const Color(0xFF1A56DB),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 16,
+                          ),
+                          textStyle: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           elevation: 0,
                         ),
-                        onPressed: () {},
+                        onPressed: () => _openPublicOffres(),
                       ),
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.business_center_outlined, size: 18),
+                        icon: const Icon(
+                          Icons.business_center_outlined,
+                          size: 18,
+                        ),
                         label: const Text('Recruter des Talents'),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(210, 48),
                           foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.85), width: 1.5),
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            width: 1.5,
+                          ),
                           backgroundColor: Colors.white.withValues(alpha: 0.08),
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 16,
+                          ),
+                          textStyle: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        onPressed: () {},
+                        onPressed: () =>
+                            Navigator.of(context).pushNamed('/register'),
                       ),
                     ],
                   ),
                 ),
-                if (!compact) ...[
-                  const SizedBox(height: 34),
+                if (showSearchInHero) ...[
+                  SizedBox(height: compact ? 16 : 28),
                   FadeInUp(
                     duration: const Duration(milliseconds: 700),
                     delay: const Duration(milliseconds: 500),
                     child: _buildSearchBar(isMobile),
                   ),
-                  const Spacer(),
+                  if (!compact) const Spacer() else const SizedBox(height: 10),
                 ] else
                   const SizedBox(height: 12),
                 FadeInUp(
@@ -252,14 +326,16 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
                       SizedBox(height: compact ? 12 : 24),
                       Row(
                         children: List.generate(
-                          heroImages.length,
+                          slides.length,
                           (i) => AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
                             margin: const EdgeInsets.only(right: 8),
                             width: i == _currentPage ? 28 : 8,
                             height: 8,
                             decoration: BoxDecoration(
-                              color: i == _currentPage ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                              color: i == _currentPage
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.4),
                               borderRadius: BorderRadius.circular(100),
                             ),
                           ),
@@ -299,9 +375,15 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
+              controller: _heroSearchCtrl,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _openPublicOffres(),
               decoration: InputDecoration(
                 hintText: 'Titre du poste, compétence...',
-                hintStyle: GoogleFonts.inter(color: const Color(0xFF94A3B8), fontSize: 14),
+                hintStyle: GoogleFonts.inter(
+                  color: const Color(0xFF94A3B8),
+                  fontSize: 14,
+                ),
                 border: InputBorder.none,
               ),
             ),
@@ -312,15 +394,21 @@ class _HeroSectionWidgetState extends State<HeroSectionWidget> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A56DB),
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 elevation: 0,
               ),
-              onPressed: () {},
+              onPressed: () => _openPublicOffres(),
               child: isMobile
                   ? const Icon(Icons.search, size: 18, color: Colors.white)
                   : Text(
                       'Rechercher',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Colors.white,
+                      ),
                     ),
             ),
           ),
@@ -355,14 +443,20 @@ class _StatItem extends StatelessWidget {
       children: [
         Text(
           value,
-          style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
+          style: GoogleFonts.poppins(
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
         ),
         Text(
           label,
-          style: GoogleFonts.inter(fontSize: 13, color: Colors.white.withValues(alpha: 0.7)),
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            color: Colors.white.withValues(alpha: 0.7),
+          ),
         ),
       ],
     );
   }
 }
-

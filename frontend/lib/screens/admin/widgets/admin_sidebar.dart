@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../../providers/admin_provider.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../shared/widgets/logo_widget.dart';
 
 class AdminSidebar extends StatelessWidget {
   const AdminSidebar({
@@ -65,6 +71,14 @@ class AdminSidebar extends StatelessWidget {
           badgeKey: 'reports',
           badgeColor: Color(0xFFEF4444),
         ),
+        _SidebarItem(
+          label: 'Témoignages',
+          icon: Icons.format_quote_outlined,
+          activeIcon: Icons.format_quote_rounded,
+          route: '/admin/temoignages',
+          badgeKey: 'pending_testimonials',
+          badgeColor: Color(0xFFF59E0B),
+        ),
       ],
     ),
     _SidebarSection(
@@ -82,6 +96,12 @@ class AdminSidebar extends StatelessWidget {
       title: 'CONFIGURATION',
       items: [
         _SidebarItem(
+          label: 'Recherche globale',
+          icon: Icons.search_outlined,
+          activeIcon: Icons.search_rounded,
+          route: '/admin/recherche',
+        ),
+        _SidebarItem(
           label: 'Notifications',
           icon: Icons.notifications_none_rounded,
           activeIcon: Icons.notifications_rounded,
@@ -97,23 +117,43 @@ class AdminSidebar extends StatelessWidget {
     ),
   ];
 
-  static const Map<String, int> _badges = {
-    'pending_users': 23,
-    'pending_jobs': 23,
-    'reports': 7,
-  };
+  int _badgeFor(AdminProvider admin, String? key) {
+    switch (key) {
+      case 'pending_users':
+        return admin.usersEnAttente;
+      case 'pending_jobs':
+        return admin.offresEnAttente;
+      case 'reports':
+        return admin.signalementsEnAttente;
+      case 'pending_testimonials':
+        return admin.temoignagesEnAttente;
+      default:
+        return 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      width: isDrawer ? 280 : (collapsed ? 64 : 240),
+      width: isDrawer ? 280 : (collapsed ? 64 : 256),
       height: double.infinity,
       decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        border: Border(
-          right: BorderSide(color: Color(0xFF1E293B), width: 1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF0F172A),
+            Color(0xFF1E293B),
+          ],
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 20,
+            offset: Offset(4, 0),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -125,7 +165,10 @@ class AdminSidebar extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _sections
-                    .map((section) => _buildSection(section, collapsed && !isDrawer))
+                    .map(
+                      (section) =>
+                          _buildSection(section, collapsed && !isDrawer),
+                    )
                     .toList(),
               ),
             ),
@@ -140,42 +183,72 @@ class AdminSidebar extends StatelessWidget {
     final hideText = collapsed && !isDrawer;
     return Container(
       height: 64,
-      padding: EdgeInsets.symmetric(horizontal: hideText ? 12 : 20),
+      padding: EdgeInsets.symmetric(horizontal: hideText ? 0 : 20),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+        border: Border(
+          bottom: BorderSide(color: Color(0x20FFFFFF), width: 1),
+        ),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
+      child: hideText
+          ? Tooltip(
+              message: 'EmploiConnect — Administration',
+              child: Center(
+                child: Icon(
+                  Icons.admin_panel_settings_rounded,
+                  size: 26,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
               ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.work_outline, color: Colors.white, size: 18),
+            )
+          : Row(
+        children: [
+          const LogoWidget(
+            height: 30,
+            fallbackTextColor: Colors.white,
+            fallbackAccentColor: Color(0xFF60A5FA),
           ),
           if (!hideText) ...[
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Text(
-                  'EmploiConnect',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'EmploiConnect',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
+                  Text(
+                    'Administration',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A56DB).withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: const Color(0xFF1A56DB).withValues(alpha: 0.5),
                 ),
-                Text(
-                  'Administration',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+              ),
+              child: Text(
+                'Admin',
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF60A5FA),
                 ),
-              ],
+              ),
             ),
           ],
         ],
@@ -192,10 +265,10 @@ class AdminSidebar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 16, 8, 6),
             child: Text(
               section.title!,
-              style: const TextStyle(
+              style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
+                color: const Color(0xFF64748B),
                 letterSpacing: 0.8,
               ),
             ),
@@ -206,49 +279,121 @@ class AdminSidebar extends StatelessWidget {
   }
 
   Widget _buildItem(_SidebarItem item, bool hideText) {
-    final isActive = currentRoute == item.route ||
+    final isActive =
+        currentRoute == item.route ||
         (item.route != '/admin' && currentRoute.startsWith(item.route));
+    if (hideText) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Tooltip(
+          message: item.label,
+          child: Consumer<AdminProvider>(
+            builder: (context, admin, _) {
+              final n = _badgeFor(admin, item.badgeKey);
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => onRouteSelected(item.route),
+                  borderRadius: BorderRadius.circular(10),
+                  hoverColor: const Color(0xFF1E293B),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 40,
+                    height: 40,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF1A56DB) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isActive
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          isActive ? item.activeIcon : item.icon,
+                          size: 20,
+                          color: isActive ? Colors.white : const Color(0xFF94A3B8),
+                        ),
+                        if (n > 0)
+                          Positioned(
+                            right: 2,
+                            top: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: item.badgeColor ?? const Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFF0F172A), width: 1),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Tooltip(
-        message: hideText ? item.label : '',
+        message: '',
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
-            color: isActive ? const Color(0x1A1A56DB) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: isActive ? const Color(0xFF1A56DB) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                  : Colors.transparent,
+            ),
           ),
           child: InkWell(
             onTap: () => onRouteSelected(item.route),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             hoverColor: const Color(0xFF1E293B),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: hideText ? 16 : 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
                   Icon(
                     isActive ? item.activeIcon : item.icon,
-                    size: 20,
-                    color: isActive ? const Color(0xFF60A5FA) : const Color(0xFF94A3B8),
+                    size: 18,
+                    color: isActive ? Colors.white : const Color(0xFF94A3B8),
                   ),
-                  if (!hideText) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                          color: isActive ? Colors.white : const Color(0xFF94A3B8),
-                        ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                        color: isActive ? Colors.white : const Color(0xFFCBD5E1),
                       ),
                     ),
-                    if (item.badgeKey != null && (_badges[item.badgeKey] ?? 0) > 0)
-                      _NotificationBadge(
-                        value: _badges[item.badgeKey]!,
-                        color: item.badgeColor,
-                      ),
-                  ],
+                  ),
+                  if (item.badgeKey != null)
+                    Consumer<AdminProvider>(
+                      builder: (context, admin, _) {
+                        final n = _badgeFor(admin, item.badgeKey);
+                        if (n <= 0) return const SizedBox.shrink();
+                        return _NotificationBadge(
+                          value: n,
+                          color: item.badgeColor,
+                          onActiveBackground: isActive,
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
@@ -259,64 +404,129 @@ class AdminSidebar extends StatelessWidget {
   }
 
   Widget _buildAdminProfile(bool hideText) {
+    if (hideText) {
+      return Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Color(0x20FFFFFF))),
+        ),
+        child: Tooltip(
+          message: 'Appui long pour se déconnecter.',
+          child: Center(
+            child: Consumer2<AdminProvider, AuthProvider>(
+              builder: (context, admin, auth, _) {
+                final photo = admin.adminPhotoUrl?.trim();
+                final nomStr =
+                    (admin.adminNom ?? auth.user?['nom']?.toString() ?? 'A')
+                        .trim();
+                final initial = nomStr.isNotEmpty ? nomStr[0].toUpperCase() : 'A';
+                final hasPhoto = photo != null && photo.isNotEmpty;
+                return GestureDetector(
+                  onLongPress: () => onLogout(),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF1A56DB),
+                    backgroundImage: hasPhoto ? NetworkImage(photo) : null,
+                    child: hasPhoto
+                        ? null
+                        : Text(
+                            initial,
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: hideText ? 12 : 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+        border: Border(top: BorderSide(color: Color(0x20FFFFFF))),
       ),
       child: Row(
         children: [
-          const CircleAvatar(
-            radius: 16,
-            backgroundColor: Color(0xFF1A56DB),
-            child: Text(
-              'A',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+          Consumer2<AdminProvider, AuthProvider>(
+            builder: (context, admin, auth, _) {
+              final photo = admin.adminPhotoUrl?.trim();
+              final nomStr =
+                  (admin.adminNom ?? auth.user?['nom']?.toString() ?? 'A')
+                      .trim();
+              final initial = nomStr.isNotEmpty ? nomStr[0].toUpperCase() : 'A';
+              final hasPhoto = photo != null && photo.isNotEmpty;
+              return CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFF1A56DB),
+                backgroundImage: hasPhoto ? NetworkImage(photo) : null,
+                child: hasPhoto
+                    ? null
+                    : Text(
+                        initial,
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Consumer2<AdminProvider, AuthProvider>(
+              builder: (context, admin, auth, _) {
+                final nom =
+                    (admin.adminNom ??
+                            auth.user?['nom']?.toString() ??
+                            'Administrateur')
+                        .trim();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nom.isEmpty ? 'Administrateur' : nom,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'Super Admin',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          GestureDetector(
+            onTap: () => onLogout(),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                color: Color(0xFFEF4444),
+                size: 14,
               ),
             ),
           ),
-          if (!hideText) ...[
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Administrateur',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'Super Admin',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: onLogout,
-              tooltip: 'Deconnexion',
-              icon: const Icon(
-                Icons.logout_outlined,
-                color: Color(0xFF64748B),
-                size: 18,
-              ),
-            ),
-          ] else
-            IconButton(
-              onPressed: onLogout,
-              tooltip: 'Deconnexion',
-              icon: const Icon(Icons.logout_outlined, color: Color(0xFF64748B), size: 18),
-            ),
         ],
       ),
     );
@@ -324,18 +534,26 @@ class AdminSidebar extends StatelessWidget {
 }
 
 class _NotificationBadge extends StatelessWidget {
-  const _NotificationBadge({required this.value, this.color});
+  const _NotificationBadge({
+    required this.value,
+    this.color,
+    this.onActiveBackground = false,
+  });
 
   final int value;
   final Color? color;
+  final bool onActiveBackground;
 
   @override
   Widget build(BuildContext context) {
+    final bg = onActiveBackground
+        ? Colors.white.withValues(alpha: 0.25)
+        : (color ?? const Color(0xFFEF4444));
     return Container(
       constraints: const BoxConstraints(minWidth: 18),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color ?? const Color(0xFF1A56DB),
+        color: bg,
         borderRadius: BorderRadius.circular(100),
       ),
       child: Text(

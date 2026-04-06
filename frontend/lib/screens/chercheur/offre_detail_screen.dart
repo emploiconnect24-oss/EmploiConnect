@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/offres_service.dart';
 import '../../services/candidatures_service.dart';
-import '../../services/signalements_service.dart';
+import '../../widgets/signalement_content_sheet.dart';
 
 class OffreDetailScreen extends StatefulWidget {
   const OffreDetailScreen({super.key, required this.offreId});
@@ -79,54 +79,14 @@ class _OffreDetailScreenState extends State<OffreDetailScreen> {
   }
 
   Future<void> _signaler() async {
-    final raisonCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Signaler cette offre'),
-        content: TextField(
-          controller: raisonCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Raison (min. 10 caractères)',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Envoyer'),
-          ),
-        ],
-      ),
+    await showSignalementContentDialog(
+      context,
+      typeObjet: 'offre',
+      objetId: widget.offreId,
+      dialogTitle: 'Signaler cette offre',
+      description:
+          'Indiquez pourquoi cette offre vous semble inappropriée, trompeuse ou contraire aux règles de la plateforme.',
     );
-    if (ok != true || !mounted) return;
-    final r = raisonCtrl.text.trim();
-    if (r.length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La raison doit faire au moins 10 caractères')),
-      );
-      return;
-    }
-    try {
-      await SignalementsService().signaler(
-        typeObjet: 'offre',
-        objetId: widget.offreId,
-        raison: r,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Signalement enregistré')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
-    }
   }
 
   @override

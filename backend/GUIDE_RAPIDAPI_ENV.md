@@ -1,166 +1,231 @@
-# Guide : Obtenir les clés RapidAPI et remplir le fichier .env
+# Guide : RapidAPI — liens, `.env`, admin et tests réels (EmploiConnect)
 
-Ce guide vous permet d’obtenir **étape par étape** les valeurs à mettre dans le fichier `backend/.env` pour activer le NLP (analyse de CV et score de compatibilité).
-
----
-
-## Étape 0 : Créer un compte RapidAPI
-
-1. Allez sur **https://rapidapi.com**
-2. Cliquez sur **Sign Up** (ou **Log In** si vous avez déjà un compte)
-3. Inscrivez-vous (email, Google, GitHub, etc.)
-4. Une fois connecté, vous avez **une clé API** valable pour toutes les APIs auxquelles vous vous abonnez
+Ce guide indique **où cliquer sur RapidAPI**, quoi mettre dans **`backend/.env`** (ou dans l’**admin**), et **comment vérifier dans l’app** que chaque API produit un effet visible.
 
 ---
 
-## Étape 1 : Récupérer votre clé API (RAPIDAPI_KEY)
+## Liens directs RapidAPI (ouvrir, s’inscrire, s’abonner au plan gratuit)
 
-Cette clé est **la même** pour toutes les APIs RapidAPI que vous utilisez.
+| API | Rôle dans EmploiConnect | Lien direct |
+|-----|------------------------|-------------|
+| **Dashboard** (même clé pour tout) | Récupérer `RAPIDAPI_KEY` | [rapidapi.com/developer/dashboard](https://rapidapi.com/developer/dashboard) |
+| **Twinword Text Similarity** | Score de compatibilité candidat ↔ offre | [rapidapi.com/twinword/api/text-similarity](https://rapidapi.com/twinword/api/text-similarity) |
+| **Twinword Topic Tagging** | Mots-clés / sujets à partir du texte d’une offre | [rapidapi.com/twinword/api/topic-tagging](https://rapidapi.com/twinword/api/topic-tagging) |
+| **Recherche « resume parser »** | Parser PDF/DOCX du CV (plusieurs fournisseurs possibles) | [rapidapi.com/search/resume%20parser](https://rapidapi.com/search/resume%20parser) |
 
-1. Allez sur **https://rapidapi.com/developer/dashboard**
-2. Dans la page **Dashboard**, repérez la section **Apps** (ou **Applications**)
-3. Cliquez sur votre application par défaut (ou créez-en une : **Create App** → donnez un nom, ex. "EmploiConnect")
-4. Ouvrez l’onglet **Security** (ou **API Keys**)
-5. Vous voyez une clé du type : `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8`
-6. **Copiez cette clé**
+**Important :** pour le **Resume Parser**, il n’existe pas une seule URL « officielle » imposée par le projet : vous choisissez une API avec **plan gratuit**, puis vous copiez **exactement** le **`X-RapidAPI-Host`** et le chemin d’endpoint indiqués sous **Endpoints** (voir plus bas).  
+Les valeurs **par défaut** dans le code (`backend/src/config/rapidApi.js`) sont :
 
-Dans votre fichier **`backend/.env`**, collez-la sur la ligne `RAPIDAPI_KEY=` :
-
-```env
-RAPIDAPI_KEY=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8
-```
-
-*(Remplacez par votre vraie clé.)*
+- Similarité : `twinword-text-similarity-v1.p.rapidapi.com` (vérifiez sur la page Twinword l’host **réel** affiché aujourd’hui — il peut être `…-v1…` ou une variante).
+- Topic Tagging : `twinword-topic-tagging1.p.rapidapi.com`
+- Parser (exemple historique) : `resume-parser3.p.rapidapi.com` — à confirmer sur **votre** fiche RapidAPI après abonnement.
 
 ---
 
-## Étape 2 : API Text Similarity (score de compatibilité)
+## Étape 0 : Compte RapidAPI
 
-Cette API sert à calculer la **similarité sémantique** entre le CV du candidat et l’offre d’emploi.
+1. Ouvrez [rapidapi.com](https://rapidapi.com) → **Sign Up** / **Log In**.
+2. Une fois connecté, la **même** clé sert pour **toutes** les APIs auxquelles vous vous abonnez.
 
-### 2.1 Aller sur l’API
+---
 
-1. Ouvrez : **https://rapidapi.com/twinword/api/text-similarity**
-2. Si une autre API "Text Similarity" vous convient sur RapidAPI, vous pouvez l’utiliser à la place (il faudra alors adapter le **Host** dans le .env)
+## Étape 1 : Clé API (`RAPIDAPI_KEY`)
 
-### 2.2 S’abonner (plan gratuit)
-
-1. Cliquez sur l’onglet **Pricing**
-2. Choisissez le plan **Basic** (gratuit, souvent 9 000 requêtes/mois)
-3. Cliquez sur **Subscribe**
-4. Validez
-
-### 2.3 Récupérer le Host
-
-1. Restez sur la page de l’API
-2. Allez dans l’onglet **Endpoints** (ou **Code Snippets**)
-3. Sélectionnez l’endpoint qui compare deux textes (souvent **GET** avec `text1` et `text2`)
-4. Dans l’exemple de requête (ou dans l’onglet **Headers**), vous voyez :
-   - **X-RapidAPI-Host** : une valeur du type `twinword-text-similarity.p.rapidapi.com`
-5. **Copiez cette valeur** (uniquement le host, sans `https://`)
+1. Allez sur [rapidapi.com/developer/dashboard](https://rapidapi.com/developer/dashboard).
+2. **Apps** → votre application (ou **Create App**).
+3. Onglet **Security** / **API Keys** → copiez la clé.
 
 Dans **`backend/.env`** :
 
 ```env
-RAPIDAPI_SIMILARITY_HOST=twinword-text-similarity.p.rapidapi.com
+RAPIDAPI_KEY=votre_cle_ici
 ```
 
-*(Si votre API affiche un host différent, mettez exactement celui indiqué.)*
+### Priorité **admin** vs **`.env`**
+
+Le backend lit la table **`parametres_plateforme`** puis complète avec le `.env` :
+
+- Si la **clé RapidAPI en admin** est **valide** (texte en clair, ou bien **chiffrée et déchiffrable** avec `ENCRYPTION_KEY` dans le `.env` du serveur), c’est **elle** qui est utilisée.
+- Si la clé en base est **absente** ou **illisible** (déchiffrement impossible), le backend utilise **`RAPIDAPI_KEY`** du `.env`.
+
+**Objectif de l’admin :** ne pas avoir à rouvrir le code pour changer la clé — **à condition** que le serveur ait une **`ENCRYPTION_KEY` d’au moins 16 caractères** (même valeur que celle utilisée lors du premier enregistrement de la clé). Sans ça, la clé peut être stockée en clair ; si elle est chiffrée avec une autre machine / autre secret, le déchiffrement échoue et RapidAPI reçoit une « fausse » clé → les tests échouent jusqu’à ce que vous mettiez la bonne clé dans le `.env` ou corrigiez `ENCRYPTION_KEY`.
+
+**Cache :** après enregistrement des paramètres IA dans l’admin, le cache des clés est **invalidé** immédiatement (plus besoin d’attendre 5 minutes ni de redémarrer uniquement pour ça).
 
 ---
 
-## Étape 3 : API Resume Parser (extraction du CV)
+## Étape 2 : Text Similarity (Twinword)
 
-Cette API permet d’extraire **compétences, expérience, formation** depuis un fichier CV (PDF/DOCX).
-
-### 3.1 Trouver une API Resume Parser sur RapidAPI
-
-1. Allez sur **https://rapidapi.com**
-2. Dans la barre de recherche, tapez : **resume parser** ou **CV parser**
-3. Choisissez une API qui propose un **plan gratuit** (ex. "Resume Parser API", "Resume Parser", etc.)
-4. Exemples de liens possibles (les noms peuvent changer) :
-   - https://rapidapi.com/hiteshw02/api/resumeparser1
-   - https://rapidapi.com/elcaiseri-elcaiseri-default/api/resume-parser-api2
-   - Ou toute autre API dont la description indique "parse resume", "extract skills from CV", etc.
-
-### 3.2 S’abonner (plan gratuit)
-
-1. Sur la page de l’API, ouvrez l’onglet **Pricing**
-2. Sélectionnez le plan **gratuit** (souvent limité en nombre de requêtes par jour/mois)
-3. Cliquez sur **Subscribe**
-
-### 3.3 Récupérer le Host et le chemin (Path)
-
-1. Allez dans l’onglet **Endpoints** (ou **Code Snippets**)
-2. Repérez l’endpoint qui permet d’**envoyer un fichier** (souvent **POST** avec un formulaire multipart)
-3. Dans les **Headers** ou dans l’exemple de code, notez :
-   - **X-RapidAPI-Host** : par ex. `resumeparser-api.p.rapidapi.com` ou `resume-parser-api2.p.rapidapi.com`
-   - L’**URL** de l’endpoint : par ex. `https://resumeparser-api.p.rapidapi.com/` ou `https://xxx.p.rapidapi.com/api/resume`
-4. **Host** : copiez la partie "host" (sans `https://` et sans chemin), ex. `resumeparser-api.p.rapidapi.com`
-5. **Path** : si l’URL se termine par un chemin (ex. `/api/resume`), c’est le **path**. Sinon laissez vide.
-
-Dans **`backend/.env`** :
+1. Ouvrez [rapidapi.com/twinword/api/text-similarity](https://rapidapi.com/twinword/api/text-similarity).
+2. **Pricing** → plan gratuit (ex. **Basic**) → **Subscribe**.
+3. **Endpoints** → repérez l’appel **GET** type `/similarity/` avec `text1` et `text2`.
+4. Copiez **`X-RapidAPI-Host`** (sans `https://`).
 
 ```env
-RAPIDAPI_RESUME_PARSER_HOST=resumeparser-api.p.rapidapi.com
+RAPIDAPI_SIMILARITY_HOST=twinword-text-similarity-v1.p.rapidapi.com
+```
+
+*(Remplacez par la valeur **exacte** affichée sur votre écran RapidAPI.)*
+
+---
+
+## Étape 3 : Topic Tagging (Twinword)
+
+1. Ouvrez [rapidapi.com/twinword/api/topic-tagging](https://rapidapi.com/twinword/api/topic-tagging).
+2. **Pricing** → **Subscribe** (plan gratuit si disponible).
+3. **Endpoints** → endpoint **GET** `/classify/` avec paramètre **`text`**.
+4. Copiez **`X-RapidAPI-Host`**.
+
+```env
+RAPIDAPI_TOPIC_TAGGING_HOST=twinword-topic-tagging1.p.rapidapi.com
+```
+
+---
+
+## Étape 4 : Resume Parser (au choix sur le marketplace)
+
+1. Ouvrez la recherche [rapidapi.com/search/resume%20parser](https://rapidapi.com/search/resume%20parser).
+2. Choisissez une API avec **upload fichier** (multipart, champ souvent nommé `file`) et un **plan gratuit**.
+3. **Subscribe**, puis **Endpoints** :
+   - copiez **`X-RapidAPI-Host`** ;
+   - notez l’URL complète du **POST** : si ce n’est pas la racine `/`, renseignez le chemin.
+
+```env
+RAPIDAPI_RESUME_PARSER_HOST=votre-host.p.rapidapi.com
 RAPIDAPI_RESUME_PARSER_PATH=
 ```
 
-Si l’API utilise par exemple `https://xxx.p.rapidapi.com/api/resume` :
+Exemple si l’URL est `https://xxx.p.rapidapi.com/api/resume` :
 
 ```env
 RAPIDAPI_RESUME_PARSER_HOST=xxx.p.rapidapi.com
 RAPIDAPI_RESUME_PARSER_PATH=/api/resume
 ```
 
-*(Adaptez selon exactement ce que l’interface RapidAPI vous affiche.)*
+Le backend envoie le CV en **multipart** avec le champ **`file`** (`backend/src/services/nlpRapidApi.js`). Si votre API attend un autre nom de champ, il faudra adapter le code ou choisir une API compatible.
 
 ---
 
-## Récapitulatif : à quoi doit ressembler votre .env
-
-À la fin, la partie RapidAPI de votre fichier **`backend/.env`** peut ressembler à ceci (avec **vos** valeurs) :
+## Récapitulatif `.env`
 
 ```env
-# Clé unique (Dashboard RapidAPI → App → Security)
-RAPIDAPI_KEY=votre_cle_longue_ici
-
-# Host de l’API Text Similarity (onglet Endpoints de l’API)
-RAPIDAPI_SIMILARITY_HOST=twinword-text-similarity.p.rapidapi.com
-
-# Host de l’API Resume Parser (onglet Endpoints de l’API)
-RAPIDAPI_RESUME_PARSER_HOST=resumeparser-api.p.rapidapi.com
-
-# Chemin de l’endpoint Resume Parser (souvent vide ou /api/resume)
+RAPIDAPI_KEY=...
+RAPIDAPI_SIMILARITY_HOST=...
+RAPIDAPI_TOPIC_TAGGING_HOST=...
+RAPIDAPI_RESUME_PARSER_HOST=...
 RAPIDAPI_RESUME_PARSER_PATH=
+# Optionnel : seuil matching (admin peut aussi le piloter)
+# IA_SEUIL_MATCHING=40
 ```
 
-- **RAPIDAPI_KEY** : obligatoire pour activer le NLP ; une seule clé pour tout.
-- **RAPIDAPI_SIMILARITY_HOST** : obligatoire si vous utilisez la similarité texte.
-- **RAPIDAPI_RESUME_PARSER_HOST** : obligatoire si vous utilisez le parsing de CV.
-- **RAPIDAPI_RESUME_PARSER_PATH** : à remplir seulement si l’URL de l’API contient un chemin (ex. `/api/resume`).
+Redémarrez le backend après modification : `npm run dev` (dossier `backend`).
 
 ---
 
-## Vérification
+## Admin : test de connexion des 3 APIs
 
-1. Enregistrez le fichier **`.env`**
-2. Redémarrez le serveur backend : `npm run dev` (dans le dossier `backend`)
-3. Uploadez un CV : si la clé et les hosts sont corrects, les compétences peuvent être enrichies par l’API Resume Parser
-4. Postulez à une offre ou consultez les suggestions d’offres : le score utilise l’API Text Similarity si elle est configurée
+1. Connectez-vous en **admin**.
+2. Paramètres / IA (selon votre écran) → renseignez clé + hosts comme sur RapidAPI.
+3. Lancez **Tester la connexion IA** (route qui appelle le test côté serveur).
 
-Si une API renvoie une erreur (401, 403, 404), vérifiez :
-- que vous êtes bien **abonné** au plan gratuit de cette API ;
-- que le **Host** (et le **Path** pour le Resume Parser) correspondent **exactement** à ce qui est affiché sur la page RapidAPI de l’endpoint.
+Interprétation rapide :
+
+- **Similarity OK** : l’API répond avec un score de test.
+- **Parser OK** ou message du type **« API répond, URL test invalide — normal »** : le serveur a bien joint l’API ; l’URL de démo peut échouer tout en ayant une config correcte pour un **vrai fichier** uploadé par un candidat.
+- **Topic Tagging** : OK ou message indiquant que l’API répond (selon les cas 200 / 404 / 422 gérés dans le test).
 
 ---
 
-## Liens utiles
+## Tester les **effets réels** dans la plateforme
 
-| Étape              | Lien |
-|--------------------|------|
-| Compte & clé API   | https://rapidapi.com/developer/dashboard |
-| Text Similarity    | https://rapidapi.com/twinword/api/text-similarity |
-| Recherche Resume Parser | https://rapidapi.com → rechercher "resume parser" |
+Objectif : après activation des clés, chaque API doit se traduire par un **comportement observable** (UI ou données).
 
-Une fois ces valeurs correctement remplacées dans le fichier `.env`, le projet utilisera le NLP RapidAPI pour un comportement plus pertinent.
+### API 1 — Text Similarity → **compte candidat**
+
+| Étape | Action | Si ça a marché, vous voyez… |
+|-------|--------|----------------------------|
+| 1 | Remplir le **profil** (titre, à propos, compétences) et de préférence avoir **uploadé un CV** (pour enrichir le texte). | Profil cohérent avec le poste recherché. |
+| 2 | Menu **Rechercher des offres** ou **Recommandations IA**. | Des **scores / badges de compatibilité** (pourcentage ou libellé type bon match) sur les offres, différents d’une simple liste sans score. |
+| 3 | (Optionnel) Logs backend lors d’un calcul de score | Pas d’erreur répétée `RapidAPI Similarity` / timeout. |
+
+**Interprétation :** sans clé ou sans host correct, le backend utilise une **similarité de secours** (mots communs) : les scores existent encore mais sont **moins « sémantiques »**. Avec Twinword activé, les scores tendent à mieux refléter le **sens** des textes.
+
+---
+
+### API 2 — Resume Parser → **compte candidat**
+
+| Étape | Action | Si ça a marché, vous voyez… |
+|-------|--------|----------------------------|
+| 1 | **Mon Profil & CV** → uploader un **PDF ou DOCX** de CV. | Après traitement / rafraîchissement : **compétences** (ou champs) **enrichis** à partir du fichier, plutôt qu’une liste vide ou uniquement manuelle. |
+| 2 | Logs backend | Lignes liées au parsing sans erreur **401/403** persistante sur l’API parser. |
+
+**Interprétation :** le flux d’upload déclenche l’appel dans `cv` via `parseResumeWithApi` (`nlpRapidApi.js`).
+
+---
+
+### API 3 — Topic Tagging → **compte entreprise / recruteur**
+
+| Étape | Action | Si ça a marché, vous voyez… |
+|-------|--------|----------------------------|
+| 1 | Créer ou **modifier une offre** avec une description riche (ex. *développeur Flutter, Dart, Firebase, REST, Git, Agile*). | Champ **compétences requises** (ou équivalent) **complété ou enrichi** avec des termes extraits du texte (selon l’écran recruteur / BDD). |
+| 2 | Logs backend | Messages du type **`[IA/tagging]`** avec des mots-clés extraits, sans erreur bloquante. |
+
+**Interprétation :** `extraireMotsCles` est appelé depuis les routes **offres** (création / mise à jour côté public ou recruteur). Sans Topic Tagging, un **fallback** par fréquence de mots est utilisé : l’offre fonctionne, mais l’enrichissement est **moins pertinent**.
+
+---
+
+### Synthèse « démo » côté candidat
+
+- Menu **Démo IA & matching** (écran dédié dans l’app candidat) : rappel des 3 briques + bouton vers **Recommandations IA**.
+- Enchaîner : **upload CV** → **recherche / recommandations** avec **scores** → côté recruteur **nouvelle offre** pour valider le **tagging**.
+
+---
+
+## Dépannage
+
+| Problème | Piste |
+|----------|--------|
+| Admin rempli mais test IA KO ; `.env` avec la même clé → OK | Vérifier **`ENCRYPTION_KEY`** (≥ 16 car.) dans le `.env` du **serveur** qui exécute le backend. Ré-enregistrer la clé dans l’admin après avoir fixé `ENCRYPTION_KEY`, ou laisser la clé uniquement dans `RAPIDAPI_KEY` du `.env`. |
+| 401 / 403 | Clé incorrecte ou **non abonné** au plan de **cette** API sur RapidAPI. |
+| Host incorrect | Recopier **tel quel** `X-RapidAPI-Host` depuis **Endpoints**, sans `https://`. |
+| Parser ne remplit rien | Vérifier `RAPIDAPI_RESUME_PARSER_PATH`, le champ fichier attendu par l’API, la taille / type PDF. |
+| Similarité plate | Textes trop courts ; enrichir profil + description d’offre. |
+
+---
+
+## SMTP — emails transactionnels (100 % admin)
+
+1. **Admin** → **Paramètres** → onglet **Notifications** : remplir **Hôte**, **Port** (souvent 587 TLS ou 465 SSL), **Email expéditeur**, **Mot de passe** (ex. mot de passe d’application Gmail), **Nom expéditeur**.
+2. Activer **Activer l’envoi d’emails**, puis **Enregistrer**.
+3. Cliquer **Tester SMTP (envoi)** : le backend exécute `verify()` puis envoie un message de test à **l’email du compte admin** connecté (API : `POST /api/admin/parametres/tester-smtp`, body optionnel `{ "destinataire": "..." }`).
+
+**Comportement automatique** (sans toucher au `.env` pour le SMTP ; `ENCRYPTION_KEY` ≥ 16 car. reste requise pour le chiffrement du mot de passe en base) :
+
+| Événement | Email si service SMTP actif |
+|-----------|------------------------------|
+| **Inscription** | Bienvenue (templates `template_bienvenue_*` ou texte par défaut) ; texte « attente validation » si validation manuelle activée. |
+| **Admin valide le compte** | Message « compte validé » si l’option **Email de validation de compte** est activée. |
+| **Admin rejette le compte** | Email à l’utilisateur si **Email compte rejeté** est activé (migration `023_notif_email_extensions.sql` + interrupteur admin). |
+| **Candidat postule** | Email au **recruteur** si **Email à chaque candidature** ; email de **confirmation au candidat** si **Confirmation candidature** est activé. |
+| **Messagerie** (candidat ↔ entreprise, ou contact talent) | Email au destinataire si **Email pour nouveaux messages** est activé (sauf si l’utilisateur a désactivé les emails de messages dans son profil). |
+| **Modération offre** (admin) | Email au recruteur (validation / refus / mise en vedette) si **Email modération des offres** est activé. |
+| **Alertes admin** | Email à chaque admin actif pour inscription à valider, offre en attente, signalement — si **Emails d’alerte aux administrateurs** est activé. |
+| **Statut candidature** (examen, entretien, acceptée, refusée) | Email + notification in-app au **candidat** si **Email évolution candidature** est activé (recruteur via `/recruteur/candidatures` ou entreprise/admin via `PATCH /candidatures`). |
+| **Candidat annule sa candidature** | Email + notification in-app au **recruteur** si **Email annulation candidature (recruteur)** est activé. |
+| **Signalement traité / classé** | Email + notification in-app à l’**auteur du signalement** si **Email résolution signalement** est activé. |
+| **Signalement — personne concernée** | Email + notification in-app au **propriétaire de l’offre**, du **profil** signalé ou au **candidat** (candidature) si **Email personne concernée** est activé — pas de doublon si signalant = concerné. |
+
+Appliquer sur Supabase les migrations **`023_notif_email_extensions.sql`**, **`024_notif_email_statut_signalement_annulation.sql`**, **`025_notif_email_signalement_concerne.sql`** et **`026_signalements_note_admin.sql`** (colonne `note_admin`, message modération à la clôture).
+
+Les **notifications in-app** (table `notifications`) sont aussi créées pour les évolutions de candidature et la clôture des signalements ; le SMTP **ajoute** l’envoi par email lorsque les interrupteurs admin le permettent.
+
+---
+
+## Liens utiles (copier-coller)
+
+- Tableau de bord clés : [https://rapidapi.com/developer/dashboard](https://rapidapi.com/developer/dashboard)
+- Text Similarity (Twinword) : [https://rapidapi.com/twinword/api/text-similarity](https://rapidapi.com/twinword/api/text-similarity)
+- Topic Tagging (Twinword) : [https://rapidapi.com/twinword/api/topic-tagging](https://rapidapi.com/twinword/api/topic-tagging)
+- Recherche Resume Parser : [https://rapidapi.com/search/resume%20parser](https://rapidapi.com/search/resume%20parser)
+
+Une fois les trois APIs souscrites et les hosts alignés sur RapidAPI, enregistrez dans l’**admin** (le cache se rafraîchit tout seul) ou **redémarrez le backend** si vous ne modifiez que le fichier **`.env`**. Ensuite testez depuis l’**admin**, puis enchaînez les scénarios **candidat** et **recruteur** ci-dessus pour valider les effets visibles.

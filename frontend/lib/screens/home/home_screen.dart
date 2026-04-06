@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../app/public_routes.dart';
 import 'widgets/footer_widget.dart';
 import 'widgets/hero_section_widget.dart';
 import 'widgets/navbar_widget.dart';
 import 'widgets/platform_section_widget.dart';
 import 'widgets/recent_jobs_section_widget.dart';
+import 'widgets/success_stories_section_widget.dart';
+import 'widgets/top_entreprises_marquee_section_widget.dart';
 import 'widgets/solutions_section_widget.dart';
 import 'widgets/tips_carousel_widget.dart';
 
@@ -57,7 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ListTile(
                 leading: const Icon(Icons.work_outline),
                 title: const Text("Offres d'emploi"),
-                onTap: () => Navigator.of(context).pushNamed('/landing'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushNamed(PublicRoutes.listPath);
+                },
               ),
               ListTile(
                 leading: const Icon(Icons.login_outlined),
@@ -86,6 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
             TipsCarouselWidget(),
             SolutionsSectionWidget(),
             RecentJobsSectionWidget(),
+            TopEntreprisesMarqueeSectionWidget(),
+            SuccessStoriesSectionWidget(),
             FooterWidget(),
           ],
         ),

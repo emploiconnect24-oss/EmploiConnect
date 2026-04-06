@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/admin_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/admin_service.dart';
+import '../../services/download_service.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/status_chip.dart';
 import 'package:intl/intl.dart';
 import 'widgets/admin_search_bar.dart';
-import 'widgets/action_menu.dart';
+import 'widgets/user_actions_menu.dart';
 import 'widgets/admin_empty_state.dart';
+import 'widgets/admin_page_shimmer.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -28,6 +34,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _activeTab = 'Tous';
   int _currentPage = 1;
   static const int _perPage = 20;
+  bool _exportingCsv = false;
 
   @override
   void initState() {
@@ -54,6 +61,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
+  void _syncAdminBadges() {
+    if (!mounted) return;
+    context.read<AdminProvider>().loadDashboard();
+  }
+
   List<Map<String, dynamic>> get _filtered {
     final q = _query.trim().toLowerCase();
     return _users.where((u) {
@@ -62,7 +74,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       final role = u['role']?.toString() ?? '';
       final estValide = u['est_valide'] == true;
       final estActif = u['est_actif'] == true;
-      final city = (u['ville']?.toString() ?? '').trim();
+      final city = _displayCity(u);
 
       if (q.isNotEmpty && !email.contains(q) && !nom.contains(q)) return false;
       if (_roleFilter != 'tous' && role != _roleFilter) return false;
@@ -119,46 +131,34 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     };
   }
 
-  Future<void> _valider(String id, bool valide) async {
-    try {
-      await _admin.patchUtilisateur(id, estValide: valide);
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(valide ? 'Compte validé' : 'Validation retirée')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
-    }
-  }
-
-  Future<void> _actif(String id, bool actif) async {
-    try {
-      await _admin.patchUtilisateur(id, estActif: actif);
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(actif ? 'Compte activé' : 'Compte désactivé')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_loading) {
+      return ResponsiveContainer(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: const AdminListScreenShimmer(showHeaderAction: true),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            FilledButton(
+              onPressed: _load,
+              child: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
 
     final list = _paged;
     final counts = _tabCounts;
@@ -169,16 +169,21 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     return ResponsiveContainer(
       child: RefreshIndicator(
         onRefresh: _load,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Column(
+        color: const Color(0xFF1A56DB),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+            LayoutBuilder(
+              builder: (context, bc) {
+                final narrow = bc.maxWidth < 520;
+                final titleBlock = const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -195,17 +200,46 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                     ),
                   ],
-                ),
-                FilledButton.icon(
-                  onPressed: _showAddUserDialog,
-                  icon: const Icon(Icons.person_add_outlined, size: 18),
-                  label: const Text('Ajouter un utilisateur'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A56DB),
-                    foregroundColor: Colors.white,
+                );
+                final exportHeaderBtn = OutlinedButton.icon(
+                  icon: _exportingCsv
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined, size: 16),
+                  label: Text(_exportingCsv ? 'Export…' : 'Exporter CSV'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF64748B),
+                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    textStyle: GoogleFonts.inter(fontSize: 14),
                   ),
-                ),
-              ],
+                  onPressed: _exportingCsv ? null : _exportCsv,
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      titleBlock,
+                      const SizedBox(height: 12),
+                      exportHeaderBtn,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: titleBlock),
+                    const SizedBox(width: 12),
+                    exportHeaderBtn,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 20),
             Container(
@@ -295,9 +329,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           }),
                         ),
                         OutlinedButton.icon(
-                          onPressed: _exportCsv,
-                          icon: const Icon(Icons.download_outlined, size: 16),
-                          label: const Text('Exporter'),
+                          onPressed: _exportingCsv ? null : _exportCsv,
+                          icon: _exportingCsv
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.download_outlined, size: 16),
+                          label: Text(_exportingCsv ? 'Export…' : 'Exporter'),
                         ),
                       ],
                     ),
@@ -351,38 +391,82 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 child: Column(
                   children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
+                    LayoutBuilder(
+                      builder: (context, tableBc) {
+                        final minW = tableBc.hasBoundedWidth && tableBc.maxWidth > 0
+                            ? tableBc.maxWidth
+                            : 900.0;
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minWidth: minW),
+                            child: DataTable(
                         columnSpacing: 22,
                         headingTextStyle: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF64748B),
                         ),
-                        columns: const [
-                          DataColumn(label: Text('UTILISATEUR')),
-                          DataColumn(label: Text('EMAIL')),
-                          DataColumn(label: Text('RÔLE')),
-                          DataColumn(label: Text('STATUT')),
-                          DataColumn(label: Text('VILLE')),
-                          DataColumn(label: Text('INSCRIT LE')),
-                          DataColumn(label: Text('')),
+                        columns: [
+                          const DataColumn(label: Text('UTILISATEUR')),
+                          const DataColumn(label: Text('EMAIL')),
+                          const DataColumn(label: Text('RÔLE')),
+                          const DataColumn(label: Text('STATUT')),
+                          DataColumn(
+                            label: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('VILLE', style: _tableHeadStyle()),
+                                Text(
+                                  '(adresse)',
+                                  style: _tableHeadStyle().copyWith(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          DataColumn(
+                            label: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('INSCRIT LE', style: _tableHeadStyle()),
+                                Text(
+                                  '(date création)',
+                                  style: _tableHeadStyle().copyWith(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const DataColumn(label: Text('')),
                         ],
                         rows: list.map((u) => _buildRow(context, u)).toList(),
-                      ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const Divider(height: 1, color: Color(0xFFE2E8F0)),
                     Padding(
                       padding: const EdgeInsets.all(14),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 8,
                         children: [
                           Text(
                             'Affichage $from-$to sur $totalFiltered utilisateurs',
                             style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                           ),
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
                                 onPressed: _currentPage > 1
@@ -412,139 +496,103 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           ],
         ),
       ),
-    ),
+    );
+          },
+        ),
+      ),
     );
   }
 
   DataRow _buildRow(BuildContext context, Map<String, dynamic> u) {
-    final id = u['id']?.toString() ?? '';
     final email = u['email']?.toString() ?? '';
     final nom = u['nom']?.toString() ?? '';
     final role = u['role']?.toString() ?? '';
     final valide = u['est_valide'] == true;
     final actif = u['est_actif'] == true;
-    final city = (u['ville']?.toString() ?? '-').trim();
-    final createdAt = _formatDate(u['created_at']?.toString());
+    final city = _displayCity(u);
+    final createdAt = _formatDate(_createdAtRaw(u));
     return DataRow(
       cells: [
         DataCell(
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 15,
-                backgroundColor: const Color(0xFF1A56DB),
-                child: Text(
-                  (nom.isNotEmpty ? nom[0] : (email.isNotEmpty ? email[0] : 'U')).toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 15,
+                  backgroundColor: const Color(0xFF1A56DB),
+                  child: Text(
+                    (nom.isNotEmpty ? nom[0] : (email.isNotEmpty ? email[0] : 'U')).toUpperCase(),
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                nom.isEmpty ? '—' : nom,
-                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    nom.isEmpty ? '—' : nom,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        DataCell(Text(email)),
+        DataCell(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              email,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
         DataCell(StatusChip(value: role)),
         DataCell(StatusChip(value: actif ? (valide ? 'actif' : 'en_attente') : 'bloque')),
         DataCell(Text(city.isEmpty ? '-' : city)),
         DataCell(Text(createdAt)),
         DataCell(
-          ActionMenu(
-            actions: [
-              ActionItem(
-                icon: Icons.visibility_outlined,
-                label: 'Voir le profil',
-                onTap: () {},
-              ),
-              if (!valide)
-                ActionItem(
-                  icon: Icons.check_circle_outline,
-                  label: 'Valider',
-                  color: const Color(0xFF10B981),
-                  onTap: () async {
-                    final ok = await _showConfirmDialog(
-                      title: 'Valider cet utilisateur ?',
-                      message: 'Le compte sera activé.',
-                      confirmLabel: 'Valider',
-                      confirmColor: const Color(0xFF10B981),
-                    );
-                    if (ok) await _valider(id, true);
-                  },
-                ),
-              if (actif)
-                ActionItem(
-                  icon: Icons.block_outlined,
-                  label: 'Bloquer',
-                  color: const Color(0xFFF59E0B),
-                  onTap: () async {
-                    final ok = await _showConfirmDialog(
-                      title: 'Bloquer cet utilisateur ?',
-                      message: 'L\'utilisateur ne pourra plus se connecter.',
-                      confirmLabel: 'Bloquer',
-                      confirmColor: const Color(0xFFF59E0B),
-                    );
-                    if (ok) await _actif(id, false);
-                  },
-                ),
-              ActionItem(
-                icon: Icons.delete_outline,
-                label: 'Supprimer',
-                color: const Color(0xFFEF4444),
-                dividerBefore: true,
-                onTap: () async {
-                  final ok = await _showConfirmDialog(
-                    title: 'Supprimer cet utilisateur ?',
-                    message: 'Cette action est irreversible.',
-                    confirmLabel: 'Supprimer',
-                    confirmColor: const Color(0xFFEF4444),
-                  );
-                  if (!ok || !mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(content: Text('Suppression à connecter côté API admin.')),
-                  );
-                },
-              ),
-            ],
+          UserActionsMenu(
+            user: u,
+            onRefresh: () async {
+              await _load();
+              _syncAdminBadges();
+            },
           ),
         ),
       ],
     );
   }
 
-  Future<bool> _showConfirmDialog({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    required Color confirmColor,
-  }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: confirmColor, foregroundColor: Colors.white),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
+  TextStyle _tableHeadStyle() => const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF64748B),
+      );
+
+  /// API Supabase : `adresse` (pas `ville`) ; tolère les deux + alias backend.
+  String _displayCity(Map<String, dynamic> u) {
+    for (final key in ['ville', 'adresse', 'city', 'localisation']) {
+      final v = u[key]?.toString().trim();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return '';
+  }
+
+  String? _createdAtRaw(Map<String, dynamic> u) {
+    for (final key in ['date_creation', 'created_at', 'date_inscription']) {
+      final v = u[key]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
   }
 
   List<String> _extractCities() {
     final cities = <String>{};
     for (final u in _users) {
-      final city = (u['ville']?.toString() ?? '').trim();
+      final city = _displayCity(u);
       if (city.isNotEmpty) cities.add(city);
     }
     final sorted = cities.toList()..sort();
@@ -558,37 +606,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     return DateFormat('dd/MM/yyyy').format(dt);
   }
 
-  void _showAddUserDialog() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ajout utilisateur à implémenter dans l’étape dédiée.')),
-    );
-  }
-
   Future<void> _exportCsv() async {
-    final rows = _filtered;
-    if (rows.isEmpty) {
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune donnée à exporter.')),
+        const SnackBar(content: Text('Connectez-vous pour exporter.')),
       );
       return;
     }
-    final buffer = StringBuffer('nom,email,role,est_valide,est_actif,ville,date_creation\n');
-    for (final u in rows) {
-      final nom = (u['nom']?.toString() ?? '').replaceAll(',', ' ');
-      final email = (u['email']?.toString() ?? '').replaceAll(',', ' ');
-      final role = (u['role']?.toString() ?? '').replaceAll(',', ' ');
-      final valide = (u['est_valide'] == true).toString();
-      final actif = (u['est_actif'] == true).toString();
-      final ville = (u['ville']?.toString() ?? '').replaceAll(',', ' ');
-      final date = (u['created_at']?.toString() ?? '').replaceAll(',', ' ');
-      buffer.writeln('$nom,$email,$role,$valide,$actif,$ville,$date');
+    const fileName = 'utilisateurs_emploiconnect.csv';
+    setState(() => _exportingCsv = true);
+    try {
+      await DownloadService.downloadCsvFromApi(
+        apiPathAndQuery: '/admin/utilisateurs/export/csv',
+        token: token,
+        fileName: fileName,
+        context: context,
+      );
+      if (!mounted) return;
+      DownloadService.showWebDownloadSnackBar(context, fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
     }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('CSV copié dans le presse-papiers.')),
-    );
   }
 }
 

@@ -4,6 +4,37 @@ import 'api_service.dart';
 class CandidaturesService {
   final ApiService _api = ApiService();
 
+  Future<
+    ({List<Map<String, dynamic>> candidatures, Map<String, dynamic> stats})
+  >
+  getMesCandidatures({
+    String? statut,
+    int page = 1,
+    int limite = 50,
+  }) async {
+    final params = <String, String>{
+      'page': '$page',
+      'limite': '$limite',
+    };
+    if (statut != null && statut.isNotEmpty && statut != 'all') {
+      params['statut'] = statut;
+    }
+    final q = params.entries
+        .map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    final res = await _api.get('/candidat/candidatures?$q', useAuth: true);
+    if (res.statusCode != 200) {
+      throw Exception(ApiService.errorMessage(res) ?? 'Erreur candidatures');
+    }
+    final map = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = (map['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final list = (data['candidatures'] as List<dynamic>? ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final stats = (data['stats'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return (candidatures: list, stats: stats);
+  }
+
   Future<List<Map<String, dynamic>>> getCandidatures({String? offreId}) async {
     final path = offreId != null
         ? '/candidatures?offre_id=${Uri.encodeQueryComponent(offreId)}'
@@ -13,7 +44,8 @@ class CandidaturesService {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur candidatures');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final list = (data['candidatures'] as List<dynamic>?)
+    final list =
+        (data['candidatures'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e as Map))
             .toList() ??
         [];
@@ -23,7 +55,9 @@ class CandidaturesService {
   Future<Map<String, dynamic>> getCandidatureById(String id) async {
     final res = await _api.get('/candidatures/$id', useAuth: true);
     if (res.statusCode != 200) {
-      throw Exception(ApiService.errorMessage(res) ?? 'Candidature introuvable');
+      throw Exception(
+        ApiService.errorMessage(res) ?? 'Candidature introuvable',
+      );
     }
     return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
   }
@@ -48,7 +82,11 @@ class CandidaturesService {
   }
 
   Future<Map<String, dynamic>> updateStatut(String id, String statut) async {
-    final res = await _api.patch('/candidatures/$id', body: {'statut': statut}, useAuth: true);
+    final res = await _api.patch(
+      '/candidatures/$id',
+      body: {'statut': statut},
+      useAuth: true,
+    );
     if (res.statusCode != 200) {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur mise à jour');
     }

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/theme/theme_extension.dart';
+import '../../../shared/widgets/logo_widget.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
+import '../../../app/public_routes.dart';
 
 class NavbarWidget extends StatelessWidget {
   const NavbarWidget({super.key, required this.isScrolled});
@@ -9,14 +13,15 @@ class NavbarWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 900;
+    final scheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       decoration: BoxDecoration(
-        color: isScrolled ? Colors.white : Colors.transparent,
+        color: isScrolled ? scheme.surface : Colors.transparent,
         boxShadow: isScrolled
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
+                  color: context.themeExt.navbarShadow,
                   blurRadius: 12,
                   offset: const Offset(0, 2),
                 ),
@@ -46,25 +51,12 @@ class NavbarWidget extends StatelessWidget {
         onTap: () => Navigator.of(context).pushNamed('/landing'),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.work_outline, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'EmploiConnect',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: isScrolled ? const Color(0xFF0F172A) : Colors.white,
-              ),
+            LogoWidget(
+              height: 38,
+              fallbackTextColor: isScrolled
+                  ? const Color(0xFF0F172A)
+                  : Colors.white,
+              fallbackAccentColor: const Color(0xFF1A56DB),
             ),
           ],
         ),
@@ -73,7 +65,8 @@ class NavbarWidget extends StatelessWidget {
   }
 
   Widget _buildDesktopMenu(BuildContext context, bool isScrolled) {
-    final textColor = isScrolled ? const Color(0xFF334155) : Colors.white;
+    final scheme = Theme.of(context).colorScheme;
+    final textColor = isScrolled ? scheme.onSurface : Colors.white;
     return Row(
       children: [
         _NavItem(
@@ -87,18 +80,23 @@ class NavbarWidget extends StatelessWidget {
           label: "Offres d'emploi",
           icon: Icons.work_outline,
           color: textColor,
-          onTap: () => Navigator.of(context).pushNamed('/landing'),
+          onTap: () =>
+              Navigator.of(context).pushNamed(PublicRoutes.listPath),
         ),
         const SizedBox(width: 32),
+        ThemeToggleButton(showLabel: false),
+        const SizedBox(width: 14),
         OutlinedButton.icon(
           icon: const Icon(Icons.login_outlined, size: 16),
           label: const Text('Connexion'),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(120, 44),
-            foregroundColor: isScrolled ? const Color(0xFF1A56DB) : Colors.white,
-            side: BorderSide(color: isScrolled ? const Color(0xFF1A56DB) : Colors.white),
+            foregroundColor: isScrolled ? scheme.primary : Colors.white,
+            side: BorderSide(color: isScrolled ? scheme.primary : Colors.white),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
           onPressed: () => Navigator.of(context).pushNamed('/login'),
         ),
@@ -111,7 +109,9 @@ class NavbarWidget extends StatelessWidget {
             backgroundColor: const Color(0xFF1A56DB),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
             elevation: 0,
           ),
           onPressed: () => Navigator.of(context).pushNamed('/register'),
@@ -121,12 +121,13 @@ class NavbarWidget extends StatelessWidget {
   }
 
   Widget _buildMobileMenuButton(BuildContext context, bool isScrolled) {
+    final scheme = Theme.of(context).colorScheme;
     return Builder(
       builder: (ctx) => IconButton(
         tooltip: 'Ouvrir le menu',
         icon: Icon(
           Icons.menu_rounded,
-          color: isScrolled ? const Color(0xFF0F172A) : Colors.white,
+          color: isScrolled ? scheme.onSurface : Colors.white,
           size: 28,
         ),
         onPressed: () => Scaffold.of(ctx).openEndDrawer(),
@@ -173,4 +174,3 @@ class _NavItem extends StatelessWidget {
     );
   }
 }
-

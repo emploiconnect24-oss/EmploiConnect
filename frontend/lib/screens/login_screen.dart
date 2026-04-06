@@ -6,6 +6,7 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_text_styles.dart';
 import '../providers/auth_provider.dart';
 import 'auth/widgets/mobile_auth_header.dart';
+import '../shared/widgets/logo_widget.dart';
 import '../widgets/responsive_container.dart';
 import '../widgets/hover_scale.dart';
 
@@ -82,15 +83,10 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
-              ),
-              child: const Icon(Icons.work_outline, color: Colors.white),
+            const LogoWidget(
+              height: 40,
+              fallbackTextColor: Colors.white,
+              fallbackAccentColor: Color(0xFFBAE6FD),
             ),
             const SizedBox(height: 14),
             Text(
@@ -107,18 +103,9 @@ class _LoginScreenState extends State<LoginScreen> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _Pill(
-                  icon: Icons.auto_awesome,
-                  label: 'Matching IA',
-                ),
-                _Pill(
-                  icon: Icons.assignment,
-                  label: 'Suivi candidatures',
-                ),
-                _Pill(
-                  icon: Icons.shield,
-                  label: 'Plateforme modérée',
-                ),
+                _Pill(icon: Icons.auto_awesome, label: 'Matching IA'),
+                _Pill(icon: Icons.assignment, label: 'Suivi candidatures'),
+                _Pill(icon: Icons.shield, label: 'Plateforme modérée'),
               ],
             ),
           ],
@@ -141,10 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
               FadeInDown(
                 duration: AppAnimations.medium,
                 delay: const Duration(milliseconds: 200),
-                child: Text(
-                  'Connexion',
-                  style: AppTextStyles.authTitle,
-                ),
+                child: Text('Connexion', style: AppTextStyles.authTitle),
               ),
               const SizedBox(height: 6),
               Text(
@@ -183,7 +167,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Email requis';
                     final email = v.trim();
-                    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+                    final ok = RegExp(
+                      r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                    ).hasMatch(email);
                     if (!ok) return 'Format email invalide';
                     return null;
                   },
@@ -201,7 +187,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     suffixIcon: IconButton(
                       tooltip: _obscure ? 'Afficher' : 'Masquer',
                       onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      icon: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                     ),
                   ),
                   obscureText: _obscure,
@@ -241,7 +231,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const SizedBox(
                             height: 22,
                             width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('Se connecter'),
                   ),
@@ -271,7 +264,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 10),
                     TextButton(
-                      onPressed: () => Navigator.of(context).pushReplacementNamed('/register'),
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pushReplacementNamed('/register'),
                       child: const Text('Pas de compte ? S’inscrire'),
                     ),
                   ],
@@ -296,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
             colors: [
               scheme.primary.withValues(alpha: 0.06),
               AppColors.primary.withValues(alpha: 0.05),
-              Colors.white,
+              scheme.surface,
             ],
           ),
         ),

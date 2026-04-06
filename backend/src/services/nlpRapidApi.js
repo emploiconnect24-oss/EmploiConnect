@@ -6,11 +6,11 @@
  * Sans RAPIDAPI_KEY, les fonctions retournent null et le backend utilise la logique locale.
  */
 
-import { RAPIDAPI_KEY, RAPIDAPI_SIMILARITY_HOST, RAPIDAPI_RESUME_PARSER_HOST, isNlpApiEnabled } from '../config/rapidApi.js';
+import { getRapidApiKeys } from '../config/rapidApi.js';
 
-function getHeaders(host) {
+function getHeaders(host, apiKey) {
   return {
-    'X-RapidAPI-Key': RAPIDAPI_KEY,
+    'X-RapidAPI-Key': apiKey,
     'X-RapidAPI-Host': host,
   };
 }
@@ -23,19 +23,21 @@ function getHeaders(host) {
  * @returns {Promise<number|null>} Score 0-1 ou null si API désactivée/erreur
  */
 export async function getTextSimilarityScore(text1, text2) {
-  if (!isNlpApiEnabled() || !text1?.trim() || !text2?.trim()) return null;
+  const keys = await getRapidApiKeys();
+  if (!keys.apiKey || !text1?.trim() || !text2?.trim()) return null;
 
   const t1 = String(text1).trim().slice(0, 5000);
   const t2 = String(text2).trim().slice(0, 5000);
   if (!t1 || !t2) return null;
 
   try {
-    const host = RAPIDAPI_SIMILARITY_HOST.replace(/^https?:\/\//, '');
+    const host = String(keys.similarityHost || '').replace(/^https?:\/\//, '');
+    if (!host) return null;
     const res = await fetch(
       `https://${host}/similarity/?text1=${encodeURIComponent(t1)}&text2=${encodeURIComponent(t2)}`,
       {
       method: 'GET',
-      headers: getHeaders(host),
+      headers: getHeaders(host, keys.apiKey),
     }
     );
 
@@ -64,18 +66,21 @@ export async function getTextSimilarityScore(text1, text2) {
  * @returns {Promise<{ competences: string[], experience?: object[], domaine_activite?: string, niveau_experience?: string }|null>}
  */
 export async function parseResumeWithApi(fileBuffer, filename, mimeType) {
-  if (!isNlpApiEnabled() || !fileBuffer?.length) return null;
+  const keys = await getRapidApiKeys();
+  if (!keys.apiKey || !fileBuffer?.length) return null;
 
   try {
     const form = new FormData();
     const blob = new Blob([fileBuffer], { type: mimeType });
     form.append('file', blob, filename || 'resume.pdf');
 
+    const parserHost = String(keys.parserHost || '').replace(/^https?:\/\//, '');
+    if (!parserHost) return null;
     const path = (process.env.RAPIDAPI_RESUME_PARSER_PATH || '').trim() || '/';
-    const url = `https://${RAPIDAPI_RESUME_PARSER_HOST}${path.startsWith('/') ? path : '/' + path}`;
+    const url = `https://${parserHost}${path.startsWith('/') ? path : '/' + path}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: getHeaders(RAPIDAPI_RESUME_PARSER_HOST),
+      headers: getHeaders(parserHost, keys.apiKey),
       body: form,
     });
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../../services/candidatures_service.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/cv_service.dart';
+import '../../services/recruteur_service.dart';
 import '../../widgets/responsive_container.dart';
 import 'recruteur_candidature_detail_screen.dart';
 
@@ -13,7 +15,7 @@ class RecruteurCandidaturesScreen extends StatefulWidget {
 }
 
 class _RecruteurCandidaturesScreenState extends State<RecruteurCandidaturesScreen> {
-  final _service = CandidaturesService();
+  final _service = RecruteurService();
   final _cvService = CvService();
   final _searchCtrl = TextEditingController();
 
@@ -41,7 +43,9 @@ class _RecruteurCandidaturesScreenState extends State<RecruteurCandidaturesScree
       _error = null;
     });
     try {
-      final list = await _service.getCandidatures();
+      final token = context.read<AuthProvider>().token ?? '';
+      final res = await _service.getCandidatures(token);
+      final list = List<Map<String, dynamic>>.from(res['data']?['candidatures'] ?? const []);
       setState(() {
         _all = list;
         _loading = false;
@@ -112,7 +116,15 @@ class _RecruteurCandidaturesScreenState extends State<RecruteurCandidaturesScree
 
   Future<void> _updateStatus(String id, String toStatus) async {
     try {
-      await _service.updateStatut(id, toStatus);
+      final token = context.read<AuthProvider>().token ?? '';
+      final action = switch (toStatus) {
+        'en_cours' => 'mettre_en_examen',
+        'entretien' => 'planifier_entretien',
+        'acceptee' => 'accepter',
+        'refusee' => 'refuser',
+        _ => toStatus,
+      };
+      await _service.actionCandidature(token, id, action);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Statut mis à jour')));

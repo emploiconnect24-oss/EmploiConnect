@@ -1,0 +1,235 @@
+### Variables
+@baseUrl = http://localhost:3000/api
+@token = VOTRE_JWT_TOKEN_ADMIN
+
+### ── DASHBOARD ──────────────────────────────────────────────
+
+# GET Dashboard complet
+GET {{baseUrl}}/admin/dashboard
+Authorization: Bearer {{token}}
+
+###
+
+# GET Statistiques (30 jours)
+GET {{baseUrl}}/admin/statistiques?periode=30d
+Authorization: Bearer {{token}}
+
+###
+
+# GET Statistiques (7 jours)
+GET {{baseUrl}}/admin/statistiques?periode=7d
+Authorization: Bearer {{token}}
+
+###
+
+# GET Historique stats
+GET {{baseUrl}}/admin/statistiques/historique?periode=30d
+Authorization: Bearer {{token}}
+
+###
+
+# GET Export CSV
+GET {{baseUrl}}/admin/statistiques/export
+Authorization: Bearer {{token}}
+
+###
+
+# GET Activité admin
+GET {{baseUrl}}/admin/activite?page=1&limite=10
+Authorization: Bearer {{token}}
+
+### ── UTILISATEURS ───────────────────────────────────────────
+
+# GET Liste utilisateurs (tous)
+GET {{baseUrl}}/admin/utilisateurs?page=1&limite=20
+Authorization: Bearer {{token}}
+
+###
+
+# GET Liste utilisateurs (chercheurs en attente)
+GET {{baseUrl}}/admin/utilisateurs?role=chercheur&statut=en_attente
+Authorization: Bearer {{token}}
+
+###
+
+# GET Détail utilisateur
+GET {{baseUrl}}/admin/utilisateurs/UUID_ICI
+Authorization: Bearer {{token}}
+
+###
+
+# PATCH Valider un compte
+PATCH {{baseUrl}}/admin/utilisateurs/UUID_ICI
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "valider"}
+
+###
+
+# PATCH Bloquer un compte
+PATCH {{baseUrl}}/admin/utilisateurs/UUID_ICI
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "bloquer", "raison": "Compte suspect"}
+
+###
+
+# DELETE Supprimer un compte
+DELETE {{baseUrl}}/admin/utilisateurs/UUID_ICI
+Authorization: Bearer {{token}}
+
+### ── OFFRES ─────────────────────────────────────────────────
+
+# GET Liste offres (statut brouillon = en attente de validation côté schéma)
+GET {{baseUrl}}/admin/offres?statut=brouillon
+Authorization: Bearer {{token}}
+
+###
+
+# GET Liste offres — alias PRD (si votre route mappe en_attente → brouillon, sinon utiliser brouillon)
+# GET {{baseUrl}}/admin/offres?statut=brouillon
+
+###
+
+# PATCH Valider une offre
+PATCH {{baseUrl}}/admin/offres/UUID_OFFRE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "valider"}
+
+###
+
+# PATCH Refuser une offre
+PATCH {{baseUrl}}/admin/offres/UUID_OFFRE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "refuser", "raison_refus": "Offre incomplète ou non conforme"}
+
+###
+
+# PATCH Mettre en vedette
+PATCH {{baseUrl}}/admin/offres/UUID_OFFRE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "mettre_en_vedette"}
+
+### ── ENTREPRISES ────────────────────────────────────────────
+
+# GET Entreprises
+GET {{baseUrl}}/admin/entreprises?page=1&limite=20
+Authorization: Bearer {{token}}
+
+###
+
+# PATCH Valider entreprise (id = entreprises.id)
+PATCH {{baseUrl}}/admin/entreprises/UUID_ENTREPRISE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "valider"}
+
+###
+
+# PATCH Suspendre entreprise
+PATCH {{baseUrl}}/admin/entreprises/UUID_ENTREPRISE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"action": "suspendre", "raison": "Non-conformité"}
+
+### ── CANDIDATURES ───────────────────────────────────────────
+
+GET {{baseUrl}}/admin/candidatures?page=1&limite=20
+Authorization: Bearer {{token}}
+
+### ── SIGNALEMENTS ────────────────────────────────────────────
+
+# GET Signalements en attente
+GET {{baseUrl}}/admin/signalements?statut=en_attente
+Authorization: Bearer {{token}}
+
+###
+
+# PATCH Traiter un signalement (statut ou action)
+PATCH {{baseUrl}}/admin/signalements/UUID_SIGNALEMENT
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"statut": "traite"}
+
+###
+
+### ── NOTIFICATIONS ───────────────────────────────────────────
+
+# POST Envoyer notification à tous
+POST {{baseUrl}}/admin/notifications
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titre": "Maintenance planifiée",
+  "message": "La plateforme sera en maintenance samedi de 2h à 4h.",
+  "type": "systeme",
+  "type_destinataire": "tous"
+}
+
+###
+
+# POST Envoyer à un individu
+POST {{baseUrl}}/admin/notifications
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titre": "Bienvenue !",
+  "message": "Votre compte a été validé. Commencez dès maintenant !",
+  "type": "validation_compte",
+  "type_destinataire": "individuel",
+  "destinataire_id": "UUID_USER"
+}
+
+###
+
+# GET Notifications envoyées par admin
+GET {{baseUrl}}/admin/notifications?page=1&limite=20
+Authorization: Bearer {{token}}
+
+### ── PARAMÈTRES ──────────────────────────────────────────────
+
+# GET Tous les paramètres
+GET {{baseUrl}}/admin/parametres
+Authorization: Bearer {{token}}
+
+###
+
+# GET Paramètres d'une catégorie
+GET {{baseUrl}}/admin/parametres?categorie=securite
+Authorization: Bearer {{token}}
+
+###
+
+# PUT Modifier des paramètres
+PUT {{baseUrl}}/admin/parametres
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "parametres": [
+    {"cle": "mode_maintenance", "valeur": false},
+    {"cle": "max_offres_gratuit", "valeur": 10}
+  ]
+}
+
+###
+
+# POST Vider cache (stub)
+POST {{baseUrl}}/admin/parametres/vider-cache
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}

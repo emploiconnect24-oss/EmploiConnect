@@ -2,17 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/recruteur_provider.dart';
 import '../entreprise/entreprise_profile_screen.dart';
 import '../entreprise/entreprise_settings_screen.dart';
 import '../entreprise/mes_offres_screen.dart';
 import '../entreprise/offre_form_screen.dart';
 import '../login_screen.dart';
-import 'recruteur_dashboard_screen.dart';
-import 'recruteur_candidatures_screen.dart';
-import 'recruteur_messagerie_screen.dart';
-import 'recruteur_notifications_screen.dart';
-import 'recruteur_statistics_screen.dart';
-import 'recruteur_talents_screen.dart';
+import 'pages/candidatures_page.dart';
+import 'recruteur_dashboard_connected_screen.dart';
+import 'recruteur_messagerie_connected_screen.dart';
+import 'recruteur_notifications_connected_screen.dart';
+import 'recruteur_statistics_connected_screen.dart';
+import 'recruteur_talents_connected_screen.dart';
 import 'widgets/recruteur_sidebar.dart';
 import 'widgets/recruteur_topbar.dart';
 
@@ -26,6 +27,18 @@ class RecruteurShellScreen extends StatefulWidget {
 class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String _currentRoute = '/dashboard-recruteur';
+  String? _candidaturesOffreId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final token = context.read<AuthProvider>().token ?? '';
+      if (token.isEmpty) return;
+      await context.read<RecruteurProvider>().loadAll(token);
+    });
+  }
 
   Future<void> _logout() async {
     await context.read<AuthProvider>().logout();
@@ -39,27 +52,65 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
   Widget get _activePage {
     switch (_currentRoute) {
       case '/dashboard-recruteur':
-        return const RecruteurDashboardScreen();
+        return RecruteurDashboardConnectedScreen(
+          onShellNavigate: (route) {
+            if (!mounted) return;
+            setState(() => _currentRoute = route);
+          },
+        );
       case '/dashboard-recruteur/offres':
-        return const MesOffresScreen();
+        return MesOffresScreen(
+          onOpenCandidaturesForOffre: (offreId) {
+            if (!mounted) return;
+            setState(() {
+              _candidaturesOffreId = offreId;
+              _currentRoute = '/dashboard-recruteur/candidatures';
+            });
+          },
+        );
       case '/dashboard-recruteur/offres/nouvelle':
         return const OffreFormScreen();
       case '/dashboard-recruteur/candidatures':
-        return const RecruteurCandidaturesScreen();
+        return CandidaturesPage(
+          key: ValueKey<String>(_candidaturesOffreId ?? 'all'),
+          offreId: _candidaturesOffreId,
+          onShellNavigate: (route) {
+            if (!mounted) return;
+            setState(() => _currentRoute = route);
+          },
+        );
       case '/dashboard-recruteur/profil':
         return const EntrepriseProfileScreen();
       case '/dashboard-recruteur/statistiques':
-        return const RecruteurStatisticsScreen();
+        return const RecruteurStatisticsConnectedScreen();
       case '/dashboard-recruteur/notifications':
-        return const RecruteurNotificationsScreen();
+        return const RecruteurNotificationsConnectedScreen();
       case '/dashboard-recruteur/parametres':
-        return const EntrepriseSettingsScreen();
+        return EntrepriseSettingsScreen(
+          onOpenEntrepriseProfile: () {
+            if (!mounted) return;
+            setState(() => _currentRoute = '/dashboard-recruteur/profil');
+          },
+        );
       case '/dashboard-recruteur/talents':
-        return const RecruteurTalentsScreen();
+        return const RecruteurTalentsConnectedScreen();
       case '/dashboard-recruteur/messages':
-        return const RecruteurMessagerieScreen();
+        return RecruteurMessagerieConnectedScreen(
+          onShellNavigate: (route) {
+            if (!mounted) return;
+            setState(() => _currentRoute = route);
+          },
+        );
       default:
-        return const MesOffresScreen();
+        return MesOffresScreen(
+          onOpenCandidaturesForOffre: (offreId) {
+            if (!mounted) return;
+            setState(() {
+              _candidaturesOffreId = offreId;
+              _currentRoute = '/dashboard-recruteur/candidatures';
+            });
+          },
+        );
     }
   }
 
@@ -77,7 +128,12 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
                   isDrawer: true,
                   currentRoute: _currentRoute,
                   onRouteSelected: (route) {
-                    setState(() => _currentRoute = route);
+                    setState(() {
+                      _currentRoute = route;
+                      if (route == '/dashboard-recruteur/candidatures') {
+                        _candidaturesOffreId = null;
+                      }
+                    });
                     Navigator.of(context).pop();
                   },
                   onLogout: _logout,
@@ -90,7 +146,14 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
           if (!isMobile)
             RecruteurSidebar(
               currentRoute: _currentRoute,
-              onRouteSelected: (route) => setState(() => _currentRoute = route),
+              onRouteSelected: (route) {
+                setState(() {
+                  _currentRoute = route;
+                  if (route == '/dashboard-recruteur/candidatures') {
+                    _candidaturesOffreId = null;
+                  }
+                });
+              },
               onLogout: _logout,
             ),
           Expanded(
@@ -101,6 +164,7 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
                   onMenuPressed: isMobile ? () => _scaffoldKey.currentState?.openDrawer() : null,
                   onQuickOffer: () => setState(() => _currentRoute = '/dashboard-recruteur/offres/nouvelle'),
                   onNotifications: () => setState(() => _currentRoute = '/dashboard-recruteur/notifications'),
+                  onOpenProfil: () => setState(() => _currentRoute = '/dashboard-recruteur/profil'),
                 ),
                 Expanded(
                   child: AnimatedSwitcher(

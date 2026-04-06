@@ -1,0 +1,208 @@
+### ==========================================================
+### Seed Offres Recruteur -> Verification Admin (clic par clic)
+### ==========================================================
+
+@base = http://localhost:3000/api
+
+### --- 0) CREDENTIALS (remplis une seule fois) ---------------
+@emailRecruteur = entreprise@test.com
+@passwordRecruteur = 12345678
+@emailAdmin = admin@test.com
+@passwordAdmin = 12345678
+@nomRecruteur = Entreprise Test
+@nomAdmin = Admin Test
+@offreId = 3ee2ca60-abb1-4e8f-9286-9336e07f6d65
+
+### --- 0-bis) TOKENS (colle ici les JWT apres login) ---------
+@tokenRecruteur = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjMjYwMDhjNS1iMTIxLTQ2MWItYmJlNC01Mzk1MDVhZDZhYjMiLCJlbWFpbCI6ImVudHJlcHJpc2VAdGVzdC5jb20iLCJyb2xlIjoiZW50cmVwcmlzZSIsImlhdCI6MTc3NDk3NDk1OSwiZXhwIjoxNzc1MDYxMzU5fQ.CS0ZTsGPYGybzjY5HNlkhqpD8yO4aolYw-X45Fip-WE
+@tokenAdmin = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJkMTA0ZTk3MS1kZmJlLTQ5M2ItOTQ3OC1jY2Q5MGM0ZGM4MGMiLCJlbWFpbCI6ImFkbWluQHRlc3QuY29tIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzc0OTc0OTYwLCJleHAiOjE3NzUwNjEzNjB9.XL7iU-bNBzKdszm52KUETyPGfc6_5H5n5TyqN8OdS24
+
+### ==========================================================
+### 0-bis) LOGIN (si tu as "Token invalide")
+### 1) Execute ces 2 requetes
+### 2) Copie chaque "token" retourne
+### 3) Remplace @tokenRecruteur et @tokenAdmin en haut
+### ==========================================================
+
+### --- 0-ter) REGISTER (optionnel, si login echoue) ----------
+### Si compte existe deja, tu auras 409 (normal) -> passe au login
+
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{emailRecruteur}}",
+  "mot_de_passe": "{{passwordRecruteur}}",
+  "nom": "{{nomRecruteur}}",
+  "role": "entreprise"
+}
+
+###
+
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{emailAdmin}}",
+  "mot_de_passe": "{{passwordAdmin}}",
+  "nom": "{{nomAdmin}}",
+  "role": "admin"
+}
+
+###
+
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{emailRecruteur}}",
+  "mot_de_passe": "{{passwordRecruteur}}"
+}
+
+###
+
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{emailAdmin}}",
+  "mot_de_passe": "{{passwordAdmin}}"
+}
+
+### --- 1) Verifier dashboard admin AVANT seed ---------------
+GET {{base}}/admin/dashboard
+Authorization: Bearer {{tokenAdmin}}
+
+###
+
+### --- 2) Creer offre #1 (statut attendu: en_attente) -------
+POST {{base}}/recruteur/offres
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "titre": "Assistant Comptable Seed #1",
+  "description": "Poste seed automatique pour tester le flux admin/recruteur.",
+  "exigences": "Licence, 1-2 ans, maitrise Excel et comptabilite generale.",
+  "competences_requises": ["Comptabilite", "Excel", "Reporting"],
+  "localisation": "Conakry",
+  "type_contrat": "cdd",
+  "niveau_experience_requis": "1-2 ans",
+  "domaine": "Finance",
+  "salaire_min": 3000000,
+  "salaire_max": 5000000,
+  "devise": "GNF",
+  "nombre_postes": 1,
+  "publier_maintenant": true
+}
+
+###
+
+### --- 3) Creer offre #2 ------------------------------------
+POST {{base}}/recruteur/offres
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "titre": "Assistant Comptable Seed #2",
+  "description": "Poste seed automatique pour tester les compteurs admin.",
+  "exigences": "Licence, 1-2 ans, rigueur et organisation.",
+  "competences_requises": ["Comptabilite", "Excel"],
+  "localisation": "Conakry",
+  "type_contrat": "cdi",
+  "niveau_experience_requis": "1-2 ans",
+  "domaine": "Finance",
+  "salaire_min": 3200000,
+  "salaire_max": 5200000,
+  "devise": "GNF",
+  "nombre_postes": 1,
+  "publier_maintenant": true
+}
+
+###
+
+### --- 4) Creer offre #3 ------------------------------------
+POST {{base}}/recruteur/offres
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "titre": "Assistant Comptable Seed #3",
+  "description": "Poste seed automatique pour verifier notifications admin.",
+  "exigences": "Licence, maitrise des outils bureautiques.",
+  "competences_requises": ["Comptabilite", "Sage", "Excel"],
+  "localisation": "Conakry",
+  "type_contrat": "cdd",
+  "niveau_experience_requis": "1-2 ans",
+  "domaine": "Finance",
+  "salaire_min": 2900000,
+  "salaire_max": 4900000,
+  "devise": "GNF",
+  "nombre_postes": 2,
+  "publier_maintenant": true
+}
+
+###
+
+### --- 5) Lister offres recruteur (voir statut en_attente) ---
+GET {{base}}/recruteur/offres?page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+### --- 6) Dashboard admin APRES seed -------------------------
+### verifier:
+### - data.stats.offres.en_attente augmente
+### - data.offres_en_attente contient les nouvelles offres
+GET {{base}}/admin/dashboard
+Authorization: Bearer {{tokenAdmin}}
+
+###
+
+### --- 7) Liste admin offres en attente ----------------------
+### selon ton backend, essayer en_attente puis brouillon legacy
+GET {{base}}/admin/offres?statut=en_attente&page=1&limite=20
+Authorization: Bearer {{tokenAdmin}}
+
+###
+
+GET {{base}}/admin/offres?statut=brouillon&page=1&limite=20
+Authorization: Bearer {{tokenAdmin}}
+
+###
+
+### --- 8) Notifications admin --------------------------------
+GET {{base}}/admin/notifications?page=1&limite=20
+Authorization: Bearer {{tokenAdmin}}
+
+###
+
+### --- 9) OPTIONNEL: valider une offre -----------------------
+### 1) Lance "GET /admin/offres?statut=en_attente"
+### 2) Copie le premier id retourne dans @offreId en haut
+PATCH {{base}}/admin/offres/{{offreId}}
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "action": "valider"
+}
+
+###
+
+### --- 10) OPTIONNEL: refuser une offre ----------------------
+PATCH {{base}}/admin/offres/{{offreId}}
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "action": "refuser",
+  "raison_refus": "Test refus seed"
+}
+
+###
+
+### --- 11) Notifications recruteur (effet valider/refuser) ---
+GET {{base}}/recruteur/notifications?page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+

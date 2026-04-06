@@ -1,18 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../../services/offres_service.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/admin_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/admin_service.dart';
+import '../../services/download_service.dart';
+import '../../shared/widgets/status_badge.dart';
 import '../../widgets/responsive_container.dart';
-import '../entreprise/offre_form_screen.dart';
+import 'widgets/admin_page_shimmer.dart';
+import 'widgets/offre_actions_menu.dart';
 
 class AdminJobsScreen extends StatefulWidget {
-  const AdminJobsScreen({super.key});
+  const AdminJobsScreen({super.key, this.filterEntrepriseId});
+
+  /// Si renseigné, seules les offres de cette entreprise sont listées.
+  final String? filterEntrepriseId;
 
   @override
   State<AdminJobsScreen> createState() => _AdminJobsScreenState();
 }
 
 class _AdminJobsScreenState extends State<AdminJobsScreen> {
-  final _service = OffresService();
+  final _admin = AdminService();
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _all = [];
@@ -24,6 +34,7 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
   String _activeTab = 'Toutes';
   int _currentPage = 1;
   static const int _perPage = 20;
+  bool _exportingCsv = false;
 
   @override
   void initState() {
@@ -37,9 +48,11 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
       _error = null;
     });
     try {
-      final res = await _service.getOffres(limit: 200, offset: 0);
+      final res = await _admin.getOffres(page: 1, limite: 200);
+      final data = res['data'] as Map<String, dynamic>?;
+      final raw = data?['offres'] as List<dynamic>? ?? const [];
       setState(() {
-        _all = res.offres;
+        _all = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         _loading = false;
       });
     } catch (e) {
@@ -50,21 +63,55 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
     }
   }
 
+  void _syncAdminBadges() {
+    if (!mounted) return;
+    context.read<AdminProvider>().loadDashboard();
+  }
+
+  String _entrepriseNom(Map<String, dynamic> o) {
+    final e = o['entreprises'];
+    if (e is Map) return e['nom_entreprise']?.toString() ?? '';
+    if (e is List && e.isNotEmpty && e.first is Map) {
+      return (e.first as Map)['nom_entreprise']?.toString() ?? '';
+    }
+    return o['nom_entreprise']?.toString() ?? '';
+  }
+
   String _statusOf(Map<String, dynamic> o) {
     final raw = (o['statut']?.toString() ?? '').toLowerCase().trim();
-    if (raw.contains('attente')) return 'En attente';
-    if (raw.contains('refus')) return 'Refusée';
-    if (raw.contains('expire')) return 'Expirée';
-    if (raw.contains('vedette') || (o['featured'] == true)) return 'En vedette';
-    if (raw.contains('publie')) return 'Publiée';
-    return 'Publiée';
+    final ved = o['en_vedette'] == true;
+    if (ved && (raw == 'active' || raw == 'publiee' || raw == 'publiée')) return 'En vedette';
+    switch (raw) {
+      case 'en_attente':
+      case 'brouillon':
+        return 'En attente';
+      case 'publiee':
+      case 'publiée':
+      case 'active':
+        return 'Publiée';
+      case 'refusee':
+      case 'refusée':
+      case 'suspendue':
+        return 'Refusée';
+      case 'expiree':
+      case 'expirée':
+      case 'fermee':
+        return 'Expirée';
+      default:
+        return raw.isEmpty ? '—' : raw;
+    }
   }
 
   List<Map<String, dynamic>> get _filtered {
     final q = _query.trim().toLowerCase();
+    final entFilter = widget.filterEntrepriseId?.trim();
     return _all.where((o) {
+      if (entFilter != null && entFilter.isNotEmpty) {
+        final eid = o['entreprise_id']?.toString() ?? '';
+        if (eid != entFilter) return false;
+      }
       final title = (o['titre']?.toString() ?? '').toLowerCase();
-      final entreprise = (o['nom_entreprise']?.toString() ?? o['entreprise_nom']?.toString() ?? '').toLowerCase();
+      final entreprise = _entrepriseNom(o).toLowerCase();
       final status = _statusOf(o);
       final city = (o['localisation']?.toString() ?? '').trim();
       final sector = (o['domaine']?.toString() ?? '').trim();
@@ -138,99 +185,31 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
     return l;
   }
 
-  Future<void> _setStatus(Map<String, dynamic> offer, String target) async {
-    final id = offer['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    final ok = await _confirm(
-      title: 'Confirmer',
-      message: 'Appliquer le statut "$target" pour cette offre ?',
-      confirmLabel: 'Confirmer',
-      confirmColor: const Color(0xFF1A56DB),
-    );
-    if (!ok) return;
-    try {
-      await _service.updateOffre(id, {'statut': _toBackendStatus(target)});
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Statut mis à jour : $target')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }
-  }
-
-  String _toBackendStatus(String ui) {
-    switch (ui) {
-      case 'En attente':
-        return 'en_attente';
-      case 'Refusée':
-        return 'refusee';
-      case 'Expirée':
-        return 'expiree';
-      case 'En vedette':
-        return 'en_vedette';
-      default:
-        return 'publiee';
-    }
-  }
-
-  Future<void> _deleteOffer(Map<String, dynamic> offer) async {
-    final id = offer['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    final ok = await _confirm(
-      title: 'Supprimer cette offre ?',
-      message: 'Cette action est irreversible.',
-      confirmLabel: 'Supprimer',
-      confirmColor: const Color(0xFFEF4444),
-    );
-    if (!ok) return;
-    try {
-      await _service.deleteOffre(id);
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offre supprimée')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }
-  }
-
-  Future<bool> _confirm({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    required Color confirmColor,
-  }) async {
-    final v = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: confirmColor, foregroundColor: Colors.white),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return v == true;
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_loading) {
+      return ResponsiveContainer(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: const AdminListScreenShimmer(showHeaderAction: false),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            FilledButton(onPressed: _load, child: const Text('Réessayer')),
+          ],
+        ),
+      );
+    }
 
     final tabs = _tabCounts;
     final list = _paged;
@@ -239,293 +218,350 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
     final to = ((_currentPage - 1) * _perPage + list.length).clamp(0, totalFiltered);
 
     return ResponsiveContainer(
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Gestion des Offres d\'emploi',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_all.length} offre(s) au total · $totalFiltered après filtres',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Validation, modification et modération des offres',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Rechercher une offre ou une entreprise...',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (v) => setState(() {
+                      _query = v;
+                      _currentPage = 1;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
-                      Text(
-                        'Gestion des Offres d\'emploi',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                      _JobsFilter(
+                        label: 'Statut',
+                        value: _statusFilter,
+                        items: const {
+                          'tous': 'Tous',
+                          'Publiée': 'Publiée',
+                          'En attente': 'En attente',
+                          'Refusée': 'Refusée',
+                          'Expirée': 'Expirée',
+                          'En vedette': 'En vedette',
+                        },
+                        onChanged: (v) => setState(() {
+                          _statusFilter = v;
+                          _currentPage = 1;
+                        }),
                       ),
-                      SizedBox(height: 4),
-                      Text('Validation, modification et modération des offres',
-                          style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                      _JobsFilter(
+                        label: 'Ville',
+                        value: _cityFilter,
+                        items: {
+                          'toutes': 'Toutes',
+                          ...{for (final city in _cities()) city.toLowerCase(): city},
+                        },
+                        onChanged: (v) => setState(() {
+                          _cityFilter = v;
+                          _currentPage = 1;
+                        }),
+                      ),
+                      _JobsFilter(
+                        label: 'Secteur',
+                        value: _sectorFilter,
+                        items: {
+                          'tous': 'Tous',
+                          ...{for (final s in _sectors()) s.toLowerCase(): s},
+                        },
+                        onChanged: (v) => setState(() {
+                          _sectorFilter = v;
+                          _currentPage = 1;
+                        }),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _exportingCsv ? null : _exportCsv,
+                        icon: _exportingCsv
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.download_outlined, size: 16),
+                        label: Text(_exportingCsv ? 'Export…' : 'Exporter'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tab in const ['Toutes', 'En attente', 'Publiées', 'Refusées', 'Expirées'])
+                        ChoiceChip(
+                          label: Text('$tab (${tabs[tab] ?? 0})'),
+                          selected: _activeTab == tab,
+                          onSelected: (_) => setState(() {
+                            _activeTab = tab;
+                            _currentPage = 1;
+                          }),
+                        ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Rechercher une offre ou une entreprise...',
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onChanged: (v) => setState(() {
-                        _query = v;
-                        _currentPage = 1;
-                      }),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _JobsFilter(
-                          label: 'Statut',
-                          value: _statusFilter,
-                          items: const {
-                            'tous': 'Tous',
-                            'Publiée': 'Publiée',
-                            'En attente': 'En attente',
-                            'Refusée': 'Refusée',
-                            'Expirée': 'Expirée',
-                            'En vedette': 'En vedette',
-                          },
-                          onChanged: (v) => setState(() {
-                            _statusFilter = v;
-                            _currentPage = 1;
-                          }),
-                        ),
-                        _JobsFilter(
-                          label: 'Ville',
-                          value: _cityFilter,
-                          items: {
-                            'toutes': 'Toutes',
-                            ...{for (final city in _cities()) city.toLowerCase(): city},
-                          },
-                          onChanged: (v) => setState(() {
-                            _cityFilter = v;
-                            _currentPage = 1;
-                          }),
-                        ),
-                        _JobsFilter(
-                          label: 'Secteur',
-                          value: _sectorFilter,
-                          items: {
-                            'tous': 'Tous',
-                            ...{for (final s in _sectors()) s.toLowerCase(): s},
-                          },
-                          onChanged: (v) => setState(() {
-                            _sectorFilter = v;
-                            _currentPage = 1;
-                          }),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _exportCsv,
-                          icon: const Icon(Icons.download_outlined, size: 16),
-                          label: const Text('Exporter'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final tab in const ['Toutes', 'En attente', 'Publiées', 'Refusées', 'Expirées'])
-                          ChoiceChip(
-                            label: Text('$tab (${tabs[tab] ?? 0})'),
-                            selected: _activeTab == tab,
-                            onSelected: (_) => setState(() {
-                              _activeTab = tab;
-                              _currentPage = 1;
-                            }),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    color: const Color(0xFF1A56DB),
+                    child: list.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(24),
+                            children: [
+                              Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFEFF6FF),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.work_outline_rounded,
+                                        color: Color(0xFF1A56DB),
+                                        size: 40,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Aucune offre',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Aucune offre ne correspond aux filtres.',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.only(bottom: 16),
+                            itemCount: 2 + list.length,
+                            itemBuilder: (context, index) {
+                              if (index == 0) {
+                                return const _OffresListHeaderRow();
+                              }
+                              if (index == list.length + 1) {
+                                return Padding(
+                                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                                  child: Wrap(
+                                    alignment: WrapAlignment.spaceBetween,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 12,
+                                    runSpacing: 8,
+                                    children: [
+                                      Text(
+                                        'Affichage $from-$to sur $totalFiltered offres',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            onPressed: _currentPage > 1
+                                                ? () => setState(() => _currentPage--)
+                                                : null,
+                                            icon: const Icon(Icons.chevron_left),
+                                          ),
+                                          Text('Page $_currentPage / $_totalPages'),
+                                          IconButton(
+                                            onPressed: _currentPage < _totalPages
+                                                ? () => setState(() => _currentPage++)
+                                                : null,
+                                            icon: const Icon(Icons.chevron_right),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              final o = list[index - 1];
+                              return _OffreListRow(
+                                offre: o,
+                                striped: index.isEven,
+                                entrepriseNom: _entrepriseNom(o),
+                                onAfterAction: () async {
+                                  await _load();
+                                  _syncAdminBadges();
+                                },
+                              );
+                            },
                           ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              if (list.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: const Center(child: Text('Aucune offre ne correspond aux filtres.')),
-                )
-              else
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Column(
-                    children: [
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columnSpacing: 20,
-                          columns: const [
-                            DataColumn(label: Text('OFFRE')),
-                            DataColumn(label: Text('SECTEUR')),
-                            DataColumn(label: Text('VILLE')),
-                            DataColumn(label: Text('TYPE')),
-                            DataColumn(label: Text('STATUT')),
-                            DataColumn(label: Text('CANDIDATURES')),
-                            DataColumn(label: Text('DATE')),
-                            DataColumn(label: Text('')),
-                          ],
-                          rows: list.map((o) => _buildRow(o)).toList(),
-                        ),
-                      ),
-                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                      Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Affichage $from-$to sur $totalFiltered offres',
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                            ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
-                                  icon: const Icon(Icons.chevron_left),
-                                ),
-                                Text('Page $_currentPage / $_totalPages'),
-                                IconButton(
-                                  onPressed:
-                                      _currentPage < _totalPages ? () => setState(() => _currentPage++) : null,
-                                  icon: const Icon(Icons.chevron_right),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  DataRow _buildRow(Map<String, dynamic> o) {
-    final title = o['titre']?.toString() ?? '-';
-    final company = (o['nom_entreprise']?.toString() ?? o['entreprise_nom']?.toString() ?? '').trim();
-    final status = _statusOf(o);
-    final secteur = (o['domaine']?.toString() ?? '-').trim();
-    final ville = (o['localisation']?.toString() ?? '-').trim();
-    final type = (o['type_contrat']?.toString() ?? '-').trim();
-    final candidates = (o['nombre_candidatures'] ?? o['candidatures_count'] ?? 0).toString();
-    final date = _fmtDate(o['date_publication']?.toString() ?? o['created_at']?.toString());
-    return DataRow(
-      cells: [
-        DataCell(
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                company.isEmpty ? 'Entreprise inconnue' : company,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-            ],
-          ),
+  Future<void> _exportCsv() async {
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connectez-vous pour exporter.')),
+      );
+      return;
+    }
+    const fileName = 'offres_emploiconnect.csv';
+    setState(() => _exportingCsv = true);
+    try {
+      await DownloadService.downloadCsvFromApi(
+        apiPathAndQuery: '/admin/offres/export/csv',
+        token: token,
+        fileName: fileName,
+        context: context,
+      );
+      if (!mounted) return;
+      DownloadService.showWebDownloadSnackBar(context, fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
         ),
-        DataCell(Text(secteur.isEmpty ? '-' : secteur)),
-        DataCell(Text(ville.isEmpty ? '-' : ville)),
-        DataCell(Text(type.isEmpty ? '-' : type)),
-        DataCell(_StatusBadge(label: status)),
-        DataCell(Text(candidates)),
-        DataCell(Text(date)),
-        DataCell(
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (v == 'validate') await _setStatus(o, 'Publiée');
-              if (v == 'edit' && mounted) {
-                final id = o['id']?.toString();
-                if (id == null || id.isEmpty) return;
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => OffreFormScreen(offreId: id)),
-                );
-                if (mounted) {
-                  await _load();
-                }
-              }
-              if (v == 'feature') await _setStatus(o, 'En vedette');
-              if (v == 'archive') await _setStatus(o, 'Expirée');
-              if (v == 'delete') await _deleteOffer(o);
-            },
-            itemBuilder: (context) => [
-              if (status == 'En attente')
-                const PopupMenuItem<String>(
-                  value: 'validate',
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.check_circle_outline, color: Color(0xFF10B981)),
-                    title: Text('Valider'),
-                  ),
-                ),
-              const PopupMenuItem<String>(
-                value: 'edit',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.edit_outlined),
-                  title: Text('Modifier'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'feature',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.star_outline, color: Color(0xFFF59E0B)),
-                  title: Text('Mettre en vedette'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'archive',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.lock_outline),
-                  title: Text('Archiver'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'delete',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-                  title: Text('Supprimer'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      );
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+}
+
+class _OffresListHeaderRow extends StatelessWidget {
+  const _OffresListHeaderRow();
+
+  TextStyle _h() => GoogleFonts.inter(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF64748B),
+        letterSpacing: 0.4,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(flex: 4, child: Text('OFFRE', style: _h())),
+          Expanded(flex: 2, child: Text('SECTEUR', style: _h())),
+          Expanded(flex: 2, child: Text('VILLE', style: _h())),
+          Expanded(flex: 2, child: Text('TYPE', style: _h())),
+          Expanded(flex: 2, child: Text('STATUT', style: _h())),
+          Expanded(flex: 1, child: Text('CAND.', style: _h())),
+          Expanded(flex: 2, child: Text('DATE', style: _h())),
+          SizedBox(width: 56, child: Center(child: Text('ACT.', style: _h()))),
+        ],
+      ),
     );
   }
+}
+
+class _OffreListRow extends StatelessWidget {
+  const _OffreListRow({
+    required this.offre,
+    required this.striped,
+    required this.entrepriseNom,
+    required this.onAfterAction,
+  });
+
+  final Map<String, dynamic> offre;
+  final bool striped;
+  final String entrepriseNom;
+  final Future<void> Function() onAfterAction;
 
   String _fmtDate(String? iso) {
     if (iso == null || iso.isEmpty) return '-';
@@ -534,33 +570,86 @@ class _AdminJobsScreenState extends State<AdminJobsScreen> {
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
   }
 
-  Future<void> _exportCsv() async {
-    final rows = _filtered;
-    if (rows.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune offre à exporter.')),
-      );
-      return;
-    }
-    final buffer =
-        StringBuffer('titre,entreprise,secteur,ville,type_contrat,statut,candidatures,date_publication\n');
-    for (final o in rows) {
-      final title = (o['titre']?.toString() ?? '').replaceAll(',', ' ');
-      final company =
-          (o['nom_entreprise']?.toString() ?? o['entreprise_nom']?.toString() ?? '').replaceAll(',', ' ');
-      final secteur = (o['domaine']?.toString() ?? '').replaceAll(',', ' ');
-      final ville = (o['localisation']?.toString() ?? '').replaceAll(',', ' ');
-      final type = (o['type_contrat']?.toString() ?? '').replaceAll(',', ' ');
-      final statut = _statusOf(o).replaceAll(',', ' ');
-      final candidatures = (o['nombre_candidatures'] ?? o['candidatures_count'] ?? 0).toString();
-      final date = (o['date_publication']?.toString() ?? o['created_at']?.toString() ?? '').replaceAll(',', ' ');
-      buffer.writeln('$title,$company,$secteur,$ville,$type,$statut,$candidatures,$date');
-    }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('CSV offres copié dans le presse-papiers.')),
+  @override
+  Widget build(BuildContext context) {
+    final title = offre['titre']?.toString() ?? '-';
+    final company = entrepriseNom.trim();
+    final secteur = (offre['domaine']?.toString() ?? '-').trim();
+    final ville = (offre['localisation']?.toString() ?? '-').trim();
+    final type = (offre['type_contrat']?.toString() ?? '-').trim();
+    final candidates =
+        (offre['nb_candidatures'] ?? offre['nombre_candidatures'] ?? offre['candidatures_count'] ?? 0)
+            .toString();
+    final date = _fmtDate(offre['date_publication']?.toString() ?? offre['date_creation']?.toString());
+    final bodyStyle = GoogleFonts.inter(fontSize: 12, color: const Color(0xFF374151));
+    final muted = GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B));
+
+    return ColoredBox(
+      color: striped ? const Color(0xFFFAFAFA) : Colors.white,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+              Expanded(
+                flex: 4,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      company.isEmpty ? 'Entreprise inconnue' : company,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: muted,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(secteur.isEmpty ? '-' : secteur, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(ville.isEmpty ? '-' : ville, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(type.isEmpty ? '-' : type, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle),
+              ),
+              Expanded(
+                flex: 2,
+                child: StatusBadge(label: (offre['statut'] ?? '').toString()),
+              ),
+              Expanded(flex: 1, child: Text(candidates, style: bodyStyle)),
+              Expanded(flex: 2, child: Text(date, style: bodyStyle)),
+              SizedBox(
+                width: 56,
+                child: Center(
+                  child: OffreActionsMenu(
+                    offre: offre,
+                    onRefresh: onAfterAction,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
     );
   }
 }
@@ -592,32 +681,3 @@ class _JobsFilter extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg = const Color(0xFFF1F5F9);
-    Color fg = const Color(0xFF475569);
-    if (label == 'Publiée') {
-      bg = const Color(0xFFD1FAE5);
-      fg = const Color(0xFF065F46);
-    } else if (label == 'En attente') {
-      bg = const Color(0xFFFEF3C7);
-      fg = const Color(0xFF92400E);
-    } else if (label == 'Refusée') {
-      bg = const Color(0xFFFEE2E2);
-      fg = const Color(0xFF991B1B);
-    } else if (label == 'En vedette') {
-      bg = const Color(0xFFFEF3C7);
-      fg = const Color(0xFF92400E);
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(label, style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600)),
-    );
-  }
-}

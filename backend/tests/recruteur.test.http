@@ -1,0 +1,279 @@
+### PRD_RECRUTEUR_FIX — tests via REST Client / fichier .http
+### Variables : entreprise@test.com / 12345678 + JWT (npm run fill:recruteur:http si expiré).
+### Détail / PATCH : remplir @candidatureId (GET liste → copier data.candidatures[0].id, ou npm run fill:recruteur:http).
+### Si @candidatureId = 00000000-... : le backend renvoie 400 — ignorez ces requêtes ou créez une candidature côté candidat.
+
+### Variables
+@base = http://localhost:3000/api
+@emailRecruteur = entreprise@test.com
+@passwordRecruteur = 12345678
+@tokenRecruteur = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjMjYwMDhjNS1iMTIxLTQ2MWItYmJlNC01Mzk1MDVhZDZhYjMiLCJlbWFpbCI6ImVudHJlcHJpc2VAdGVzdC5jb20iLCJyb2xlIjoiZW50cmVwcmlzZSIsImlhdCI6MTc3NTAwMDA1NCwiZXhwIjoxNzc1NjA0ODU0fQ.4RUK97zO_nGzT7F5uZM33KrxW3h0R4HkYRDwvQTFjF0
+@offreId = 61a589dd-2673-4bd1-b64e-f3e6b7c6dbab
+@candidatureId = 00000000-0000-0000-0000-000000000000
+@notifId = e8a3dfc2-ca38-4559-bc0f-9e2f884b1de5
+@destinataireId = ec9d782d-1b24-4622-ad4d-bccb2de27ba5
+@talentUserId = ec9d782d-1b24-4622-ad4d-bccb2de27ba5
+
+### ── AUTH (obligatoire avant les autres) ───────────────────
+
+# @name loginRecruteur
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{emailRecruteur}}",
+  "mot_de_passe": "{{passwordRecruteur}}"
+}
+
+###
+
+### ── DASHBOARD (stats réelles, PRD fix) ─────────────────────
+
+GET {{base}}/recruteur/dashboard
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+### ── OFFRES ─────────────────────────────────────────────────
+# Mes offres
+GET {{base}}/recruteur/offres?page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Créer une offre
+POST {{base}}/recruteur/offres
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "titre": "Développeur Flutter Senior",
+  "description": "Nous recherchons un développeur Flutter expérimenté pour renforcer notre équipe mobile.",
+  "exigences": "3 ans d'expérience minimum avec Flutter et Dart",
+  "competences_requises": ["Flutter", "Dart", "Firebase"],
+  "localisation": "Conakry",
+  "type_contrat": "CDI",
+  "niveau_experience_requis": "3_5_ans",
+  "domaine": "Technologie",
+  "publier_maintenant": true
+}
+
+###
+
+# Modifier une offre
+PATCH {{base}}/recruteur/offres/{{offreId}}
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "titre": "Développeur Flutter Senior - Mis à jour",
+  "description": "Description mise à jour pour test API recruteur."
+}
+
+###
+
+# Dupliquer une offre
+POST {{base}}/recruteur/offres/{{offreId}}/dupliquer
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Clôturer une offre
+PATCH {{base}}/recruteur/offres/{{offreId}}/cloturer
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Supprimer une offre
+DELETE {{base}}/recruteur/offres/{{offreId}}
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+### ── CANDIDATURES ───────────────────────────────────────────
+# Liste (copier le 1er id dans @candidatureId pour les requêtes ci-dessous)
+GET {{base}}/recruteur/candidatures?vue=liste&page=1&limite=50
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# PRD fix : toutes les candidatures SANS offre_id (ne doit pas planter)
+GET {{base}}/recruteur/candidatures?page=1&limite=50
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Vue kanban
+GET {{base}}/recruteur/candidatures?vue=kanban
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Filtrer par offre
+GET {{base}}/recruteur/candidatures?offre_id={{offreId}}
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Détail candidature (@candidatureId)
+GET {{base}}/recruteur/candidatures/{{candidatureId}}
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Action: mettre en examen
+PATCH {{base}}/recruteur/candidatures/{{candidatureId}}
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "action": "mettre_en_examen"
+}
+
+###
+
+# Action: planifier entretien
+PATCH {{base}}/recruteur/candidatures/{{candidatureId}}
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "action": "planifier_entretien",
+  "date_entretien": "2026-04-10T14:00:00Z",
+  "lien_visio": "https://meet.google.com/abc-def-ghi"
+}
+
+###
+
+# Action: accepter
+PATCH {{base}}/recruteur/candidatures/{{candidatureId}}
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "action": "accepter"
+}
+
+###
+
+# Action: refuser
+PATCH {{base}}/recruteur/candidatures/{{candidatureId}}
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "action": "refuser",
+  "raison_refus": "Profil non aligné avec le poste"
+}
+
+###
+
+# Export CSV candidatures
+GET {{base}}/recruteur/candidatures/export/csv
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+### ── PROFIL ENTREPRISE ──────────────────────────────────────
+GET {{base}}/recruteur/profil
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+PATCH {{base}}/recruteur/profil
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "nom_entreprise": "Orange Guinée",
+  "description": "Leader des télécommunications en Guinée",
+  "secteur_activite": "Télécommunications",
+  "taille_entreprise": "200-500",
+  "nom": "Responsable RH Orange",
+  "telephone": "+224 620 00 00 00"
+}
+
+###
+
+### ── MESSAGERIE ─────────────────────────────────────────────
+# Conversations
+GET {{base}}/recruteur/messages
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Messages avec un destinataire
+GET {{base}}/recruteur/messages/{{destinataireId}}
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Envoyer un message
+POST {{base}}/recruteur/messages
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "destinataire_id": "{{destinataireId}}",
+  "contenu": "Bonjour, votre profil nous intéresse pour un poste Flutter.",
+  "offre_id": "{{offreId}}"
+}
+
+###
+
+### ── NOTIFICATIONS ──────────────────────────────────────────
+GET {{base}}/recruteur/notifications?page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+PATCH {{base}}/recruteur/notifications/{{notifId}}/lire
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+PATCH {{base}}/recruteur/notifications/tout-lire/action
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+### ── TALENTS IA ─────────────────────────────────────────────
+# Recherche générale
+GET {{base}}/recruteur/talents?recherche=flutter&page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Recherche avec score matching sur offre
+GET {{base}}/recruteur/talents?offre_id={{offreId}}&page=1&limite=20
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+# Contacter un talent
+POST {{base}}/recruteur/talents/contacter
+Authorization: Bearer {{tokenRecruteur}}
+Content-Type: application/json
+
+{
+  "talent_utilisateur_id": "{{talentUserId}}",
+  "message": "Bonjour, votre profil correspond bien à notre offre Flutter Senior.",
+  "offre_id": "{{offreId}}"
+}
+
+###
+
+### ── STATS ──────────────────────────────────────────────────
+GET {{base}}/recruteur/stats?periode=7d
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+GET {{base}}/recruteur/stats?periode=30d
+Authorization: Bearer {{tokenRecruteur}}
+
+###
+
+GET {{base}}/recruteur/stats?periode=3m
+Authorization: Bearer {{tokenRecruteur}}
+

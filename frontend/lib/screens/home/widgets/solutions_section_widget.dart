@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import '../../../core/theme/theme_extension.dart';
 
 class SolutionsSectionWidget extends StatelessWidget {
   const SolutionsSectionWidget({super.key});
@@ -10,6 +11,7 @@ class SolutionsSectionWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     final isMobile = w < 900;
+    final scheme = Theme.of(context).colorScheme;
 
     int cols = 3;
     if (w < 700) {
@@ -59,7 +61,7 @@ class SolutionsSectionWidget extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: const Color(0xFFF1F5F9),
+      color: scheme.surface,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
         child: Column(
@@ -71,7 +73,7 @@ class SolutionsSectionWidget extends StatelessWidget {
               style: GoogleFonts.poppins(
                 fontSize: isMobile ? 26 : 34,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF0F172A),
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 10),
@@ -80,7 +82,7 @@ class SolutionsSectionWidget extends StatelessWidget {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 16,
-                color: const Color(0xFF64748B),
+                color: scheme.onSurfaceVariant,
                 height: 1.6,
               ),
             ),
@@ -179,6 +181,8 @@ class _SolutionCardState extends State<_SolutionCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -186,9 +190,9 @@ class _SolutionCardState extends State<_SolutionCard> {
         duration: const Duration(milliseconds: 200),
         transform: Matrix4.translationValues(0, _hover ? -6 : 0, 0),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: ext.cardBorder),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: _hover ? 0.09 : 0.05),
@@ -218,7 +222,7 @@ class _SolutionCardState extends State<_SolutionCard> {
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
+                  color: scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
@@ -227,7 +231,7 @@ class _SolutionCardState extends State<_SolutionCard> {
                   widget.data.description,
                   style: GoogleFonts.inter(
                     fontSize: 13.5,
-                    color: const Color(0xFF64748B),
+                    color: scheme.onSurfaceVariant,
                     height: 1.55,
                   ),
                 ),

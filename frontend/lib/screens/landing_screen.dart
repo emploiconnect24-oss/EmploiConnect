@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'home/widgets/top_entreprises_marquee_section_widget.dart';
+import '../shared/widgets/logo_widget.dart';
 import '../widgets/responsive_container.dart';
 import '../widgets/carousel_banner.dart';
 import '../widgets/hover_scale.dart';
@@ -21,34 +23,31 @@ class LandingScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border(
-                  bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+                  bottom: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
                 ),
               ),
               child: ResponsiveContainer(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 38,
+                        const LogoWidget(
                           height: 38,
-                          decoration: BoxDecoration(
-                            color: scheme.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.work_outline, color: Colors.white),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'EmploiConnect',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                          fallbackTextColor: Color(0xFF0F172A),
+                          fallbackAccentColor: Color(0xFF1A56DB),
                         ),
                       ],
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: () => Navigator.of(context).pushNamed('/login'),
+                      onPressed: () =>
+                          Navigator.of(context).pushNamed('/login'),
                       child: const Text('Connexion'),
                     ),
                     const SizedBox(width: 8),
@@ -57,7 +56,8 @@ class LandingScreen extends StatelessWidget {
                         backgroundColor: orange,
                         foregroundColor: Colors.white,
                       ),
-                      onPressed: () => Navigator.of(context).pushNamed('/register'),
+                      onPressed: () =>
+                          Navigator.of(context).pushNamed('/register'),
                       child: const Text('Inscription'),
                     ),
                   ],
@@ -76,7 +76,7 @@ class LandingScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(12),
                       child: CarouselBanner(
                         messages: defaultBanners(),
-                        height: 360,
+                        height: 260,
                         fullBleed: true,
                       ),
                     ),
@@ -93,11 +93,15 @@ class LandingScreen extends StatelessWidget {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Plateforme intelligente d’offres et de recherche d’emploi',
-                                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .headlineSmall
+                                            ?.copyWith(
                                               fontWeight: FontWeight.w900,
                                             ),
                                       ),
@@ -116,22 +120,38 @@ class LandingScreen extends StatelessWidget {
                                         runSpacing: 10,
                                         children: [
                                           HoverScale(
-                                            onTap: () => Navigator.of(context).pushNamed('/register'),
+                                            onTap: () => Navigator.of(
+                                              context,
+                                            ).pushNamed('/register'),
                                             child: FilledButton.icon(
                                               style: FilledButton.styleFrom(
                                                 backgroundColor: orange,
                                                 foregroundColor: Colors.white,
-                                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 18,
+                                                      vertical: 14,
+                                                    ),
                                               ),
-                                              onPressed: () => Navigator.of(context).pushNamed('/register'),
-                                              icon: const Icon(Icons.rocket_launch),
-                                              label: const Text('Créer un compte'),
+                                              onPressed: () => Navigator.of(
+                                                context,
+                                              ).pushNamed('/register'),
+                                              icon: const Icon(
+                                                Icons.rocket_launch,
+                                              ),
+                                              label: const Text(
+                                                'Créer un compte',
+                                              ),
                                             ),
                                           ),
                                           HoverScale(
-                                            onTap: () => Navigator.of(context).pushNamed('/login'),
+                                            onTap: () => Navigator.of(
+                                              context,
+                                            ).pushNamed('/login'),
                                             child: OutlinedButton.icon(
-                                              onPressed: () => Navigator.of(context).pushNamed('/login'),
+                                              onPressed: () => Navigator.of(
+                                                context,
+                                              ).pushNamed('/login'),
                                               icon: const Icon(Icons.login),
                                               label: const Text('Se connecter'),
                                             ),
@@ -146,12 +166,19 @@ class LandingScreen extends StatelessWidget {
                                   width: 220,
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: scheme.primary.withValues(alpha: 0.06),
+                                    color: scheme.primary.withValues(
+                                      alpha: 0.06,
+                                    ),
                                     borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: scheme.primary.withValues(alpha: 0.14)),
+                                    border: Border.all(
+                                      color: scheme.primary.withValues(
+                                        alpha: 0.14,
+                                      ),
+                                    ),
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Conseil',
@@ -184,87 +211,91 @@ class LandingScreen extends StatelessWidget {
                     RevealOnScroll(
                       child: ResponsiveContainer(
                         child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Découvrir nos solutions',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Trois espaces, une seule plateforme : chercheur d’emploi, entreprise et administrateur.',
-                            style: TextStyle(color: scheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 12),
-                          LayoutBuilder(
-                            builder: (context, c) {
-                              final isNarrow = c.maxWidth < 820;
-                              final children = [
-                                HoverScale(
-                                  child: _SolutionCard(
-                                  icon: Icons.person_search,
-                                  title: 'Chercheur d’emploi',
-                                  bullets: const [
-                                    'Créer un compte et gérer son profil',
-                                    'Téléverser son CV (PDF/DOCX)',
-                                    'Voir des suggestions d’offres compatibles',
-                                    'Postuler et suivre ses candidatures',
-                                  ],
-                                  accent: scheme.primary,
-                                ),
-                                ),
-                                HoverScale(
-                                  child: _SolutionCard(
-                                  icon: Icons.apartment,
-                                  title: 'Entreprise / Recruteur',
-                                  bullets: const [
-                                    'Publier, modifier et supprimer des offres',
-                                    'Suivre les candidatures reçues',
-                                    'Changer le statut des candidatures',
-                                    'Accéder au lien CV (URL signée)',
-                                  ],
-                                  accent: orange,
-                                ),
-                                ),
-                                HoverScale(
-                                  child: _SolutionCard(
-                                  icon: Icons.admin_panel_settings,
-                                  title: 'Administrateur',
-                                  bullets: const [
-                                    'Valider et activer/désactiver les comptes',
-                                    'Consulter les statistiques globales',
-                                    'Traiter les signalements',
-                                    'Garantir la conformité des contenus',
-                                  ],
-                                  accent: const Color(0xFF0F6D2B),
-                                ),
-                                ),
-                              ];
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Découvrir nos solutions',
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Trois espaces, une seule plateforme : chercheur d’emploi, entreprise et administrateur.',
+                              style: TextStyle(color: scheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 12),
+                            LayoutBuilder(
+                              builder: (context, c) {
+                                final isNarrow = c.maxWidth < 820;
+                                final children = [
+                                  HoverScale(
+                                    child: _SolutionCard(
+                                      icon: Icons.person_search,
+                                      title: 'Chercheur d’emploi',
+                                      bullets: const [
+                                        'Créer un compte et gérer son profil',
+                                        'Téléverser son CV (PDF/DOCX)',
+                                        'Voir des suggestions d’offres compatibles',
+                                        'Postuler et suivre ses candidatures',
+                                      ],
+                                      accent: scheme.primary,
+                                    ),
+                                  ),
+                                  HoverScale(
+                                    child: _SolutionCard(
+                                      icon: Icons.apartment,
+                                      title: 'Entreprise / Recruteur',
+                                      bullets: const [
+                                        'Publier, modifier et supprimer des offres',
+                                        'Suivre les candidatures reçues',
+                                        'Changer le statut des candidatures',
+                                        'Accéder au lien CV (URL signée)',
+                                      ],
+                                      accent: orange,
+                                    ),
+                                  ),
+                                  HoverScale(
+                                    child: _SolutionCard(
+                                      icon: Icons.admin_panel_settings,
+                                      title: 'Administrateur',
+                                      bullets: const [
+                                        'Valider et activer/désactiver les comptes',
+                                        'Consulter les statistiques globales',
+                                        'Traiter les signalements',
+                                        'Garantir la conformité des contenus',
+                                      ],
+                                      accent: const Color(0xFF0F6D2B),
+                                    ),
+                                  ),
+                                ];
 
-                              if (isNarrow) {
-                                return Column(
+                                if (isNarrow) {
+                                  return Column(
+                                    children: [
+                                      for (final w in children) ...[
+                                        w,
+                                        const SizedBox(height: 10),
+                                      ],
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    for (final w in children) ...[
-                                      w,
-                                      const SizedBox(height: 10),
-                                    ]
+                                    for (
+                                      int i = 0;
+                                      i < children.length;
+                                      i++
+                                    ) ...[
+                                      Expanded(child: children[i]),
+                                      if (i != children.length - 1)
+                                        const SizedBox(width: 12),
+                                    ],
                                   ],
                                 );
-                              }
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  for (int i = 0; i < children.length; i++) ...[
-                                    Expanded(child: children[i]),
-                                    if (i != children.length - 1) const SizedBox(width: 12),
-                                  ],
-                                ],
-                              );
-                            },
-                          ),
-                        ],
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -293,11 +324,15 @@ class LandingScreen extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Passe à l’action',
-                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge
+                                              ?.copyWith(
                                                 fontWeight: FontWeight.w900,
                                               ),
                                         ),
@@ -305,21 +340,31 @@ class LandingScreen extends StatelessWidget {
                                         Text(
                                           'Crée ton compte et commence dès maintenant : '
                                           'publie une offre, téléverse un CV, reçois des suggestions et suis tes candidatures.',
-                                          style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+                                          style: TextStyle(
+                                            color: scheme.onSurfaceVariant,
+                                            height: 1.4,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   HoverScale(
-                                    onTap: () => Navigator.of(context).pushNamed('/register'),
+                                    onTap: () => Navigator.of(
+                                      context,
+                                    ).pushNamed('/register'),
                                     child: FilledButton(
                                       style: FilledButton.styleFrom(
                                         backgroundColor: orange,
                                         foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 14,
+                                        ),
                                       ),
-                                      onPressed: () => Navigator.of(context).pushNamed('/register'),
+                                      onPressed: () => Navigator.of(
+                                        context,
+                                      ).pushNamed('/register'),
                                       child: const Text('Commencer'),
                                     ),
                                   ),
@@ -333,12 +378,19 @@ class LandingScreen extends StatelessWidget {
 
                     const SizedBox(height: 22),
 
+                    const TopEntreprisesMarqueeSectionWidget(),
+
+                    const SizedBox(height: 22),
+
                     // Footer
                     Container(
                       width: double.infinity,
                       color: const Color(0xFF0B1220),
                       child: ResponsiveContainer(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 18,
+                        ),
                         child: Column(
                           children: [
                             LayoutBuilder(
@@ -348,12 +400,16 @@ class LandingScreen extends StatelessWidget {
                                   _FooterCol(
                                     title: 'EmploiConnect',
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'EmploiConnect est une plateforme intelligente de mise en relation '
                                           'entre chercheurs d’emploi et entreprises en Guinée.',
-                                          style: TextStyle(color: Color(0xFFCBD5E1), height: 1.4),
+                                          style: TextStyle(
+                                            color: Color(0xFFCBD5E1),
+                                            height: 1.4,
+                                          ),
                                         ),
                                         const SizedBox(height: 12),
                                         Row(
@@ -374,18 +430,27 @@ class LandingScreen extends StatelessWidget {
                                   _FooterCol(
                                     title: 'Liens utiles',
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         _FooterLink(
                                           label: 'Connexion',
-                                          onTap: () => Navigator.of(context).pushNamed('/login'),
+                                          onTap: () => Navigator.of(
+                                            context,
+                                          ).pushNamed('/login'),
                                         ),
                                         _FooterLink(
                                           label: 'Inscription',
-                                          onTap: () => Navigator.of(context).pushNamed('/register'),
+                                          onTap: () => Navigator.of(
+                                            context,
+                                          ).pushNamed('/register'),
                                         ),
-                                        const _FooterLink(label: 'Offres (après connexion)'),
-                                        const _FooterLink(label: 'Suggestions (après CV)'),
+                                        const _FooterLink(
+                                          label: 'Offres (après connexion)',
+                                        ),
+                                        const _FooterLink(
+                                          label: 'Suggestions (après CV)',
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -394,14 +459,18 @@ class LandingScreen extends StatelessWidget {
                                     child: Text(
                                       'Plateforme développée dans le cadre d’un projet académique (2025–2026).\n'
                                       'Objectif : digitaliser et optimiser le recrutement.',
-                                      style: TextStyle(color: Color(0xFFCBD5E1), height: 1.4),
+                                      style: TextStyle(
+                                        color: Color(0xFFCBD5E1),
+                                        height: 1.4,
+                                      ),
                                     ),
                                   ),
                                 ];
 
                                 if (narrow) {
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       cols[0],
                                       const SizedBox(height: 14),
@@ -486,9 +555,9 @@ class _SolutionCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
             for (final b in bullets)
@@ -566,7 +635,9 @@ class _FooterLink extends StatelessWidget {
         label,
         style: TextStyle(
           color: const Color(0xFFCBD5E1),
-          decoration: onTap != null ? TextDecoration.underline : TextDecoration.none,
+          decoration: onTap != null
+              ? TextDecoration.underline
+              : TextDecoration.none,
         ),
       ),
     );
@@ -594,4 +665,3 @@ class _SocialIcon extends StatelessWidget {
     );
   }
 }
-

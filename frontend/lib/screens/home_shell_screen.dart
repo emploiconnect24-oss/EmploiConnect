@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../shared/widgets/logo_widget.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
-import 'chercheur/chercheur_shell_screen.dart';
+import 'candidat/candidat_shell_screen.dart';
 import 'recruteur/recruteur_shell_screen.dart';
 import 'admin/admin_shell_screen.dart';
 
 /// Navigation principale selon le rôle (alignée sur l’API backend).
 class HomeShellScreen extends StatefulWidget {
-  const HomeShellScreen({super.key});
+  const HomeShellScreen({super.key, this.initialRoute});
+
+  final String? initialRoute;
 
   @override
   State<HomeShellScreen> createState() => _HomeShellScreenState();
@@ -29,8 +32,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   Widget build(BuildContext context) {
     final role = context.watch<AuthProvider>().role ?? '';
 
-    if (role == 'chercheur') {
-      return const ChercheurShellScreen();
+    if (role == 'candidat' || role == 'chercheur') {
+      return CandidatShellScreen(initialRoute: widget.initialRoute);
     }
 
     if (role == 'entreprise' || role == 'recruteur') {
@@ -43,9 +46,12 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EmploiConnect'),
+        title: const LogoWidget(height: 28),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => _logout(context)),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _logout(context),
+          ),
         ],
       ),
       body: const Center(child: Text('Rôle non reconnu')),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../services/offres_service.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/reveal_on_scroll.dart';
@@ -302,17 +303,89 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
     });
   }
 
-  Widget _buildStepper() {
-    const labels = ['Informations', 'Description', 'Prérequis', 'Publication'];
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: List.generate(
-        labels.length,
-        (i) => ChoiceChip(
-          label: Text('${i + 1}. ${labels[i]}'),
-          selected: _currentStep == i,
-          onSelected: (_) => setState(() => _currentStep = i),
+  Widget _buildGradientHeader() {
+    final isNew = widget.offreId == null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.work_outline_rounded, color: Colors.white, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isNew ? 'Publier une offre d\'emploi' : 'Modifier l\'offre',
+                  style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                Text(
+                  'Remplissez les informations ci-dessous',
+                  style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(100),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.auto_awesome_rounded, size: 12, color: Colors.white),
+                const SizedBox(width: 4),
+                Text('IA activée', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepConnector(bool filled) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Container(
+          width: 20,
+          height: 3,
+          decoration: BoxDecoration(
+            color: filled ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      );
+
+  Widget _buildStepIndicatorRow() {
+    const steps = ['Infos générales', 'Description', 'Compétences', 'Publication'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < steps.length; i++) ...[
+              if (i > 0) _stepConnector(_currentStep > i),
+              _OffreFormStepChip(
+                step: i + 1,
+                label: steps[i],
+                selected: _currentStep == i,
+                done: _currentStep > i,
+                onTap: () => setState(() => _currentStep = i),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -561,17 +634,57 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
     );
   }
 
-  Widget _buildPreviewLine(String label, String value) {
+  Widget _buildPreviewField(String label, String value, {bool longText = false}) {
+    final v = value.trim();
+    final display = v.isEmpty ? '—' : v;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: RichText(
-        text: TextSpan(
-          style: DefaultTextStyle.of(context).style,
-          children: [
-            TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
-            TextSpan(text: value.isEmpty ? '-' : value),
-          ],
-        ),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (longText && display != '—')
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 120),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  display,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+              ),
+            )
+          else
+            Text(
+              display,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: Color(0xFF334155),
+              ),
+              maxLines: longText ? 6 : 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
       ),
     );
   }
@@ -583,16 +696,27 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Aperçu de l’offre', style: TextStyle(fontWeight: FontWeight.w900)),
-            const SizedBox(height: 10),
-            _buildPreviewLine('Titre', _titreCtrl.text.trim()),
-            _buildPreviewLine('Secteur', _sector ?? ''),
-            _buildPreviewLine('Contrat', _contractType ?? ''),
-            _buildPreviewLine('Ville', _lieuCtrl.text.trim()),
-            _buildPreviewLine('Mode', _workMode),
-            _buildPreviewLine('Description', _descriptionCtrl.text.trim()),
-            const Divider(height: 24),
-            const Text('Options de publication', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Text(
+              'Aperçu de l’offre',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Vérification avant publication',
+              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 14),
+            _buildPreviewField('Titre', _titreCtrl.text),
+            _buildPreviewField('Secteur', _sector ?? ''),
+            _buildPreviewField('Contrat', _contractType ?? ''),
+            _buildPreviewField('Ville', _lieuCtrl.text),
+            _buildPreviewField('Mode', _workMode),
+            _buildPreviewField('Description', _descriptionCtrl.text, longText: true),
+            const Divider(height: 28),
+            const Text(
+              'Options de publication',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 8),
             SegmentedButton<String>(
               segments: const [
@@ -739,15 +863,8 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
                       padding: const EdgeInsets.fromLTRB(0, 12, 0, 22),
                       shrinkWrap: true,
                       children: [
-                        Text(
-                          widget.offreId == null ? 'Créer une offre' : 'Mettre à jour l’offre',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text('Formulaire multi-étapes pour publier plus vite et mieux.'),
-                        const SizedBox(height: 12),
-                        _buildStepper(),
-                        const SizedBox(height: 12),
+                        _buildGradientHeader(),
+                        _buildStepIndicatorRow(),
                         RevealOnScroll(child: _buildStepContent()),
                         const SizedBox(height: 12),
                         _buildActions(),
@@ -761,6 +878,75 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
                 ],
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OffreFormStepChip extends StatelessWidget {
+  const _OffreFormStepChip({
+    required this.step,
+    required this.label,
+    required this.selected,
+    required this.done,
+    required this.onTap,
+  });
+
+  final int step;
+  final String label;
+  final bool selected;
+  final bool done;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = const Color(0xFF1A56DB);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? primary.withValues(alpha: 0.12) : (done ? const Color(0xFFF0FDF4) : Colors.white),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? primary : const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected || done ? primary : const Color(0xFFE2E8F0),
+                  shape: BoxShape.circle,
+                ),
+                child: done && !selected
+                    ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                    : Text(
+                        '$step',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: selected || done ? Colors.white : const Color(0xFF64748B),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
           ),
         ),
       ),

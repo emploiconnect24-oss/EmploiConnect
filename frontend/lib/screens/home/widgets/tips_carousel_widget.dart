@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/theme/theme_extension.dart';
 
 class TipsCarouselWidget extends StatefulWidget {
   const TipsCarouselWidget({super.key});
@@ -110,10 +111,11 @@ class _TipsCarouselWidgetState extends State<TipsCarouselWidget> {
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     final isMobile = w < 900;
+    final scheme = Theme.of(context).colorScheme;
 
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: context.themeExt.sectionBg,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
         child: Column(
@@ -125,7 +127,7 @@ class _TipsCarouselWidgetState extends State<TipsCarouselWidget> {
               style: GoogleFonts.poppins(
                 fontSize: isMobile ? 26 : 34,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF0F172A),
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 10),
@@ -134,7 +136,7 @@ class _TipsCarouselWidgetState extends State<TipsCarouselWidget> {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 16,
-                color: const Color(0xFF64748B),
+                color: scheme.onSurfaceVariant,
                 height: 1.6,
               ),
             ),
@@ -211,6 +213,7 @@ class _TipCardState extends State<_TipCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -251,7 +254,7 @@ class _TipCardState extends State<_TipCard> {
                   _Pill(
                     label: widget.data.audience,
                     bg: Colors.white.withValues(alpha: 0.75),
-                    fg: const Color(0xFF0F172A),
+                  fg: scheme.onSurface,
                   ),
                 ],
               ),
@@ -263,7 +266,7 @@ class _TipCardState extends State<_TipCard> {
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
+                  color: scheme.onSurface,
                 ),
               ),
               const Spacer(),

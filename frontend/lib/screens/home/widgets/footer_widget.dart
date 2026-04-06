@@ -1,10 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:convert';
+import '../../../config/api_config.dart';
+import '../../../shared/widgets/logo_widget.dart';
+import '../../../app/public_routes.dart';
 
-class FooterWidget extends StatelessWidget {
+class FooterWidget extends StatefulWidget {
   const FooterWidget({super.key});
+
+  @override
+  State<FooterWidget> createState() => _FooterWidgetState();
+}
+
+class _FooterWidgetState extends State<FooterWidget> {
+  Map<String, String> _footer = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFooter();
+  }
+
+  Future<void> _loadFooter() async {
+    try {
+      final res = await http.get(
+        Uri.parse('$apiBaseUrl$apiPrefix/config/footer'),
+      );
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final data = body['data'];
+        if (!mounted) return;
+        if (data is Map) {
+          setState(() {
+            _footer = data.map(
+              (k, v) => MapEntry(k.toString(), v?.toString() ?? ''),
+            );
+          });
+        }
+      }
+    } catch (_) {
+      // Garde les valeurs par défaut
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,17 +61,23 @@ class FooterWidget extends StatelessWidget {
             width: double.infinity,
             height: 4,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)]),
+              gradient: LinearGradient(
+                colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
+              ),
             ),
           ),
           Padding(
             padding: EdgeInsets.symmetric(vertical: 64, horizontal: hPad),
-            child: isMobile ? const _FooterMobile() : const _FooterDesktop(),
+            child: isMobile
+                ? _FooterMobile(footer: _footer)
+                : _FooterDesktop(footer: _footer),
           ),
           const Divider(color: Color(0x14FFFFFF), height: 1),
           Padding(
             padding: EdgeInsets.symmetric(vertical: 24, horizontal: hPad),
-            child: isMobile ? const _FooterBottomMobile() : const _FooterBottomDesktop(),
+            child: isMobile
+                ? const _FooterBottomMobile()
+                : const _FooterBottomDesktop(),
           ),
         ],
       ),
@@ -40,94 +86,102 @@ class FooterWidget extends StatelessWidget {
 }
 
 class _FooterDesktop extends StatelessWidget {
-  const _FooterDesktop();
+  const _FooterDesktop({required this.footer});
+  final Map<String, String> footer;
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 3, child: _BrandCol()),
+        Expanded(flex: 3, child: _BrandCol(footer: footer)),
         SizedBox(width: 28),
         Expanded(flex: 2, child: _LinksColCandidat()),
         SizedBox(width: 28),
         Expanded(flex: 2, child: _LinksColEntreprise()),
         SizedBox(width: 28),
-        Expanded(flex: 3, child: _ConnectCol()),
+        Expanded(flex: 3, child: _ConnectCol(footer: footer)),
       ],
     );
   }
 }
 
 class _FooterMobile extends StatelessWidget {
-  const _FooterMobile();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _BrandCol(),
-        SizedBox(height: 26),
-        _LinksColCandidat(),
-        SizedBox(height: 26),
-        _LinksColEntreprise(),
-        SizedBox(height: 26),
-        _ConnectCol(),
-      ],
-    );
-  }
-}
-
-class _BrandCol extends StatelessWidget {
-  const _BrandCol();
+  const _FooterMobile({required this.footer});
+  final Map<String, String> footer;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)]),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.work_outline, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'EmploiConnect',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ],
+        _BrandCol(footer: footer),
+        SizedBox(height: 26),
+        _LinksColCandidat(),
+        SizedBox(height: 26),
+        _LinksColEntreprise(),
+        SizedBox(height: 26),
+        _ConnectCol(footer: footer),
+      ],
+    );
+  }
+}
+
+class _BrandCol extends StatelessWidget {
+  const _BrandCol({required this.footer});
+  final Map<String, String> footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const LogoWidget(
+          height: 40,
+          fallbackTextColor: Colors.white,
+          fallbackAccentColor: Color(0xFF60A5FA),
         ),
         const SizedBox(height: 14),
         Text(
-          "La plateforme intelligente de l'emploi en Guinée.",
-          style: GoogleFonts.inter(fontSize: 14, color: const Color(0xCCFFFFFF), height: 1.6),
+          (footer['footer_tagline']?.trim().isNotEmpty ?? false)
+              ? footer['footer_tagline']!
+              : "La plateforme intelligente de l'emploi en Guinée.",
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: const Color(0xCCFFFFFF),
+            height: 1.6,
+          ),
         ),
         const SizedBox(height: 14),
         Text(
           "Mettez en relation les talents et les entreprises avec une expérience moderne, fluide et sécurisée.",
-          style: GoogleFonts.inter(fontSize: 14, color: const Color(0x99FFFFFF), height: 1.6),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: const Color(0x99FFFFFF),
+            height: 1.6,
+          ),
         ),
         const SizedBox(height: 16),
-        const Wrap(
+        Wrap(
           spacing: 10,
           runSpacing: 10,
           children: [
-            _SocialBtn(icon: FontAwesomeIcons.linkedinIn),
-            _SocialBtn(icon: FontAwesomeIcons.facebookF),
-            _SocialBtn(icon: FontAwesomeIcons.xTwitter),
-            _SocialBtn(icon: FontAwesomeIcons.instagram),
+            _SocialBtn(
+              icon: FontAwesomeIcons.linkedinIn,
+              url: footer['footer_linkedin'],
+            ),
+            _SocialBtn(
+              icon: FontAwesomeIcons.facebookF,
+              url: footer['footer_facebook'],
+            ),
+            _SocialBtn(
+              icon: FontAwesomeIcons.xTwitter,
+              url: footer['footer_twitter'],
+            ),
+            _SocialBtn(
+              icon: FontAwesomeIcons.instagram,
+              url: footer['footer_instagram'],
+            ),
           ],
         ),
       ],
@@ -143,12 +197,25 @@ class _LinksColCandidat extends StatelessWidget {
     return _LinksCol(
       title: 'Pour les Candidats',
       accent: const Color(0xFF3B82F6),
-      links: const [
-        'Rechercher des offres',
-        'Créer un compte',
-        'Se connecter',
-        'Conseils carrière',
-        'Mon espace',
+      entries: [
+        (
+          label: 'Rechercher des offres',
+          onTap: () =>
+              Navigator.of(context).pushNamed(PublicRoutes.listPath),
+        ),
+        (
+          label: 'Créer un compte',
+          onTap: () => Navigator.of(context).pushNamed('/register'),
+        ),
+        (
+          label: 'Se connecter',
+          onTap: () => Navigator.of(context).pushNamed('/login'),
+        ),
+        (label: 'Conseils carrière', onTap: null),
+        (
+          label: 'Mon espace',
+          onTap: () => Navigator.of(context).pushNamed('/login'),
+        ),
       ],
     );
   }
@@ -162,27 +229,41 @@ class _LinksColEntreprise extends StatelessWidget {
     return _LinksCol(
       title: 'Pour les Entreprises',
       accent: const Color(0xFF10B981),
-      links: const [
-        'Publier une offre',
-        'Espace Recruteur',
-        'Nos solutions',
-        'Comment ça marche',
-        'Contactez-nous',
+      entries: [
+        (
+          label: 'Publier une offre',
+          onTap: () => Navigator.of(context).pushNamed('/register'),
+        ),
+        (
+          label: 'Espace Recruteur',
+          onTap: () => Navigator.of(context).pushNamed('/login'),
+        ),
+        (
+          label: 'Nos solutions',
+          onTap: () => Navigator.of(context).pushNamed('/landing'),
+        ),
+        (
+          label: 'Comment ça marche',
+          onTap: () => Navigator.of(context).pushNamed('/landing'),
+        ),
+        (label: 'Contactez-nous', onTap: null),
       ],
     );
   }
 }
 
+typedef _FooterLinkEntry = ({String label, VoidCallback? onTap});
+
 class _LinksCol extends StatelessWidget {
   const _LinksCol({
     required this.title,
     required this.accent,
-    required this.links,
+    required this.entries,
   });
 
   final String title;
   final Color accent;
-  final List<String> links;
+  final List<_FooterLinkEntry> entries;
 
   @override
   Widget build(BuildContext context) {
@@ -191,17 +272,24 @@ class _LinksCol extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(height: 8),
         Container(
           width: 30,
           height: 3,
-          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(100)),
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(100),
+          ),
         ),
         const SizedBox(height: 12),
-        for (final l in links) ...[
-          _FooterLink(label: l),
+        for (final e in entries) ...[
+          _FooterLink(label: e.label, onTap: e.onTap),
           const SizedBox(height: 8),
         ],
       ],
@@ -210,7 +298,8 @@ class _LinksCol extends StatelessWidget {
 }
 
 class _ConnectCol extends StatefulWidget {
-  const _ConnectCol();
+  const _ConnectCol({required this.footer});
+  final Map<String, String> footer;
 
   @override
   State<_ConnectCol> createState() => _ConnectColState();
@@ -232,12 +321,20 @@ class _ConnectColState extends State<_ConnectCol> {
       children: [
         Text(
           'Restez Connecté',
-          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
           'Recevez nos nouveautés et les tendances du marché de l’emploi.',
-          style: GoogleFonts.inter(fontSize: 14, color: const Color(0x99FFFFFF), height: 1.6),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: const Color(0x99FFFFFF),
+            height: 1.6,
+          ),
         ),
         const SizedBox(height: 12),
         Row(
@@ -255,7 +352,10 @@ class _ConnectColState extends State<_ConnectCol> {
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
@@ -266,7 +366,9 @@ class _ConnectColState extends State<_ConnectCol> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1A56DB),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   elevation: 0,
                 ),
                 onPressed: () {},
@@ -276,11 +378,26 @@ class _ConnectColState extends State<_ConnectCol> {
           ],
         ),
         const SizedBox(height: 14),
-        const _ContactLine(icon: Icons.mail_outline, text: 'contact@emploiconnect.gn'),
+        _ContactLine(
+          icon: Icons.mail_outline,
+          text: widget.footer['footer_email']?.trim().isNotEmpty == true
+              ? widget.footer['footer_email']!
+              : 'contact@emploiconnect.gn',
+        ),
         const SizedBox(height: 8),
-        const _ContactLine(icon: Icons.call_outlined, text: '+224 620 00 00 00'),
+        _ContactLine(
+          icon: Icons.call_outlined,
+          text: widget.footer['footer_telephone']?.trim().isNotEmpty == true
+              ? widget.footer['footer_telephone']!
+              : '+224 620 00 00 00',
+        ),
         const SizedBox(height: 8),
-        const _ContactLine(icon: Icons.place_outlined, text: 'Conakry, République de Guinée'),
+        _ContactLine(
+          icon: Icons.place_outlined,
+          text: widget.footer['footer_adresse']?.trim().isNotEmpty == true
+              ? widget.footer['footer_adresse']!
+              : 'Conakry, République de Guinée',
+        ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -292,7 +409,11 @@ class _ConnectColState extends State<_ConnectCol> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF93C5FD)),
+              const Icon(
+                Icons.shield_outlined,
+                size: 16,
+                color: Color(0xFF93C5FD),
+              ),
               const SizedBox(width: 8),
               Text(
                 'Données sécurisées',
@@ -325,7 +446,10 @@ class _ContactLine extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.inter(fontSize: 13.5, color: const Color(0x99FFFFFF)),
+            style: GoogleFonts.inter(
+              fontSize: 13.5,
+              color: const Color(0x99FFFFFF),
+            ),
           ),
         ),
       ],
@@ -334,9 +458,10 @@ class _ContactLine extends StatelessWidget {
 }
 
 class _SocialBtn extends StatefulWidget {
-  const _SocialBtn({required this.icon});
+  const _SocialBtn({required this.icon, this.url});
 
   final IconData icon;
+  final String? url;
 
   @override
   State<_SocialBtn> createState() => _SocialBtnState();
@@ -355,7 +480,14 @@ class _SocialBtnState extends State<_SocialBtn> {
         duration: const Duration(milliseconds: 150),
         child: InkWell(
           borderRadius: BorderRadius.circular(100),
-          onTap: () {},
+          onTap: () async {
+            final raw = widget.url?.trim() ?? '';
+            if (raw.isEmpty) return;
+            final uri = Uri.tryParse(raw);
+            if (uri != null && await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: 42,
@@ -373,9 +505,10 @@ class _SocialBtnState extends State<_SocialBtn> {
 }
 
 class _FooterLink extends StatefulWidget {
-  const _FooterLink({required this.label});
+  const _FooterLink({required this.label, this.onTap});
 
   final String label;
+  final VoidCallback? onTap;
 
   @override
   State<_FooterLink> createState() => _FooterLinkState();
@@ -391,7 +524,10 @@ class _FooterLinkState extends State<_FooterLink> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: () async {
-          // Lien placeholder sans URL métier pour l'instant.
+          if (widget.onTap != null) {
+            widget.onTap!();
+            return;
+          }
           final uri = Uri.parse('https://emploiconnect.gn');
           if (await canLaunchUrl(uri)) {
             await launchUrl(uri);
@@ -399,13 +535,19 @@ class _FooterLinkState extends State<_FooterLink> {
         },
         child: Row(
           children: [
-            Icon(Icons.chevron_right, size: 16, color: _hover ? const Color(0xFF3B82F6) : const Color(0xAAFFFFFF)),
+            Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: _hover ? const Color(0xFF3B82F6) : const Color(0xAAFFFFFF),
+            ),
             const SizedBox(width: 6),
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: _hover ? const Color(0xFF3B82F6) : const Color(0xAAFFFFFF),
+                color: _hover
+                    ? const Color(0xFF3B82F6)
+                    : const Color(0xAAFFFFFF),
               ),
               child: Text(widget.label),
             ),
@@ -429,12 +571,18 @@ class _FooterBottomDesktop extends StatelessWidget {
           children: [
             Text(
               '© 2026 EmploiConnect. Tous droits réservés.',
-              style: GoogleFonts.inter(fontSize: 13, color: const Color(0x99FFFFFF)),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0x99FFFFFF),
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               'Projet académique — Licence Professionnelle Génie Logiciel',
-              style: GoogleFonts.inter(fontSize: 12.5, color: const Color(0x77FFFFFF)),
+              style: GoogleFonts.inter(
+                fontSize: 12.5,
+                color: const Color(0x77FFFFFF),
+              ),
             ),
           ],
         ),
@@ -462,12 +610,18 @@ class _FooterBottomMobile extends StatelessWidget {
       children: [
         Text(
           '© 2026 EmploiConnect. Tous droits réservés.',
-          style: GoogleFonts.inter(fontSize: 13, color: const Color(0x99FFFFFF)),
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            color: const Color(0x99FFFFFF),
+          ),
         ),
         const SizedBox(height: 4),
         Text(
           'Projet académique — Licence Professionnelle Génie Logiciel',
-          style: GoogleFonts.inter(fontSize: 12.5, color: const Color(0x77FFFFFF)),
+          style: GoogleFonts.inter(
+            fontSize: 12.5,
+            color: const Color(0x77FFFFFF),
+          ),
         ),
         const SizedBox(height: 10),
         const Wrap(
@@ -507,4 +661,3 @@ class _Dot extends StatelessWidget {
     return const Text('·', style: TextStyle(color: Color(0x66FFFFFF)));
   }
 }
-

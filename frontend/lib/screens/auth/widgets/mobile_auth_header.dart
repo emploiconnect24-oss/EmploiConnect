@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../shared/widgets/logo_widget.dart';
 
 class MobileAuthHeader extends StatelessWidget {
   final String title;
@@ -57,24 +58,10 @@ class MobileAuthHeader extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 32,
+                    const LogoWidget(
                       height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                      ),
-                      child: const Icon(Icons.work_outline, color: Colors.white, size: 18),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'EmploiConnect',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
+                      fallbackTextColor: Colors.white,
+                      fallbackAccentColor: Color(0xFFBAE6FD),
                     ),
                   ],
                 ),
@@ -103,4 +90,3 @@ class MobileAuthHeader extends StatelessWidget {
     );
   }
 }
-

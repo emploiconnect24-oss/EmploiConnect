@@ -35,6 +35,20 @@ class AuthService {
     }
   }
 
+  /// Met à jour les champs utilisateur stockés localement (ex. après changement d’e-mail en profil admin).
+  Future<void> patchStoredUser(Map<String, dynamic> updates) async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_keyUser);
+    if (raw == null) return;
+    try {
+      final cur = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      updates.forEach((k, v) {
+        if (v != null) cur[k] = v;
+      });
+      await prefs.setString(_keyUser, jsonEncode(cur));
+    } catch (_) {}
+  }
+
   Future<void> logout() async {
     final prefs = await _prefs;
     await prefs.remove(_keyToken);
@@ -94,5 +108,27 @@ class AuthService {
     }
     final msg = ApiService.errorMessage(res) ?? 'Email ou mot de passe incorrect';
     return (false, msg);
+  }
+
+  /// Demande de lien de réinitialisation (réponse générique côté API).
+  Future<(bool ok, String? message)> forgotPassword(String email) async {
+    final res = await ApiService().post(
+      '/auth/forgot-password',
+      body: {'email': email.trim().toLowerCase()},
+    );
+    if (res.statusCode == 200) return (true, null);
+    return (false, ApiService.errorMessage(res));
+  }
+
+  Future<(bool ok, String? message)> resetPassword({
+    required String token,
+    required String motDePasse,
+  }) async {
+    final res = await ApiService().post(
+      '/auth/reset-password',
+      body: {'token': token, 'mot_de_passe': motDePasse},
+    );
+    if (res.statusCode == 200) return (true, null);
+    return (false, ApiService.errorMessage(res));
   }
 }

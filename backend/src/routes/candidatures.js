@@ -12,6 +12,14 @@ import { ROLES } from '../config/constants.js';
 import { STATUT_CANDIDATURE } from '../config/constants.js';
 import { computeMatchingScoreAsync } from '../services/matchingScore.js';
 import { logError } from '../utils/logger.js';
+import {
+  sendNewCandidatureEmailToRecruiter,
+  sendCandidatureConfirmationToCandidate,
+} from '../services/mail.service.js';
+import {
+  notifyChercheurCandidatureStatutChanged,
+  notifyRecruteurCandidatureAnnuleeParCandidat,
+} from '../services/candidatureSignalementNotify.service.js';
 
 const router = Router();
 
@@ -39,14 +47,15 @@ router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
     // Vérifier que l'offre existe et est active
     const { data: offre, error: errOffre } = await supabase
       .from('offres_emploi')
-      .select('id, statut, exigences, competences_requises')
+      .select('id, titre, statut, exigences, competences_requises')
       .eq('id', offre_id)
       .single();
 
     if (errOffre || !offre) {
       return res.status(404).json({ message: 'Offre non trouvée' });
     }
-    if (offre.statut !== 'active') {
+    const stOffre = String(offre.statut || '').toLowerCase();
+    if (!['active', 'publiee'].includes(stOffre)) {
       return res.status(400).json({ message: 'Cette offre n\'accepte plus de candidatures' });
     }
 
@@ -102,6 +111,43 @@ router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
       return res.status(500).json({ message: 'Erreur lors de la candidature' });
     }
 
+    try {
+      const { data: offreRow } = await supabase
+        .from('offres_emploi')
+        .select('titre, entreprise_id')
+        .eq('id', offre_id)
+        .single();
+      if (offreRow?.entreprise_id) {
+        const { data: entRow } = await supabase
+          .from('entreprises')
+          .select('utilisateur_id')
+          .eq('id', offreRow.entreprise_id)
+          .single();
+        if (entRow?.utilisateur_id) {
+          const { data: owner } = await supabase
+            .from('utilisateurs')
+            .select('email, notif_nouvelles_candidatures')
+            .eq('id', entRow.utilisateur_id)
+            .single();
+          if (owner?.notif_nouvelles_candidatures !== false) {
+            void sendNewCandidatureEmailToRecruiter({
+              recruiterEmail: owner?.email,
+              offreTitre: offreRow.titre,
+              candidatNom: req.user.nom,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[POST /candidatures] email recruteur non envoyé:', e.message);
+    }
+
+    void sendCandidatureConfirmationToCandidate({
+      candidateEmail: req.user.email,
+      candidateNom: req.user.nom,
+      offreTitre: offre?.titre,
+    });
+
     res.status(201).json(data);
   } catch (err) {
     logError('POST /candidatures - erreur inattendue', err);
@@ -133,10 +179,15 @@ router.get('/', async (req, res) => {
           statut,
           score_compatibilite,
           lettre_motivation,
+          raison_refus,
           offres_emploi(titre, localisation, type_contrat, entreprises(nom_entreprise))
         `)
         .eq('chercheur_id', req.chercheurId)
         .order('date_candidature', { ascending: false });
+
+      if (offreId) {
+        query = query.eq('offre_id', offreId);
+      }
 
       const { data, error } = await query;
       if (error) {
@@ -257,7 +308,7 @@ router.patch('/:id', async (req, res) => {
 
     const { data: existing, error: errE } = await supabase
       .from('candidatures')
-      .select('id, offre_id, chercheur_id')
+      .select('id, offre_id, chercheur_id, statut')
       .eq('id', id)
       .single();
 
@@ -282,6 +333,12 @@ router.patch('/:id', async (req, res) => {
       if (error) {
         logError('PATCH /candidatures (annulation candidat) - erreur update', error);
         return res.status(500).json({ message: 'Erreur lors de la mise à jour' });
+      }
+      if (existing.statut !== STATUT_CANDIDATURE.ANNULEE) {
+        void notifyRecruteurCandidatureAnnuleeParCandidat({
+          offreId: existing.offre_id,
+          candidatNom: req.user.nom,
+        });
       }
       return res.json(data);
     }
@@ -309,6 +366,24 @@ router.patch('/:id', async (req, res) => {
     if (error) {
       logError('PATCH /candidatures (entreprise/admin) - erreur update', error);
       return res.status(500).json({ message: 'Erreur lors de la mise à jour' });
+    }
+
+    if (data.statut !== existing.statut) {
+      const { data: offreInfo } = await supabase
+        .from('offres_emploi')
+        .select('titre, entreprises ( nom_entreprise )')
+        .eq('id', existing.offre_id)
+        .maybeSingle();
+      const entE = offreInfo?.entreprises;
+      const entR = Array.isArray(entE) ? entE[0] : entE;
+      void notifyChercheurCandidatureStatutChanged(existing.chercheur_id, {
+        offreTitre: offreInfo?.titre,
+        statut: data.statut,
+        raisonRefus: data.raison_refus ?? null,
+        dateEntretien: data.date_entretien ?? null,
+        candidatureId: id,
+        entrepriseNom: entR?.nom_entreprise ?? null,
+      });
     }
 
     res.json(data);

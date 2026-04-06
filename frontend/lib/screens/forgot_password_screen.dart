@@ -6,6 +6,7 @@ import '../core/constants/app_text_styles.dart';
 import 'auth/widgets/mobile_auth_header.dart';
 import '../widgets/responsive_container.dart';
 import '../widgets/hover_scale.dart';
+import '../services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -29,19 +30,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _loading = true);
 
-    // Backend actuel : pas encore d'endpoint reset password.
-    // On garde une UX propre : message clair.
-    await Future<void>.delayed(const Duration(milliseconds: 450));
+    final (ok, msg) = await AuthService().forgotPassword(_emailCtrl.text.trim());
 
     if (!mounted) return;
     setState(() => _loading = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text(
-          'Fonction "mot de passe oublié" à brancher côté backend (envoi email).',
+          ok
+              ? 'Si un compte existe avec cet email, vous recevrez un lien pour réinitialiser votre mot de passe.'
+              : (msg ?? 'Impossible d’envoyer la demande pour le moment.'),
         ),
       ),
     );
+    if (ok) {
+      Navigator.of(context).pushReplacementNamed('/login');
+    }
   }
 
   Widget _leftPanel(BuildContext context) {
@@ -78,8 +82,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Entrez votre email et nous vous enverrons des instructions.\n\n'
-              'Note : la fonctionnalité d’envoi email sera activée prochainement.',
+              'Entrez votre email : nous vous enverrons un lien sécurisé (valable 1 h) pour choisir un nouveau mot de passe.',
               style: AppTextStyles.authPanelBody,
             ),
           ],
@@ -122,7 +125,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Email requis';
-                    final ok = RegExp(r'^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$').hasMatch(v.trim());
+                    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v.trim());
                     if (!ok) return 'Format email invalide';
                     return null;
                   },

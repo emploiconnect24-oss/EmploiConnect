@@ -9,6 +9,11 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import routes from './routes/index.js';
 import { logError, logInfo } from './utils/logger.js';
+import { checkBlockedIP } from './middleware/security.middleware.js';
+import { checkMaintenance } from './middleware/maintenance.middleware.js';
+import { supabase } from './config/supabase.js';
+import { getRapidApiKeys } from './config/rapidApi.js';
+import { startScheduledJobs } from './services/scheduledJobs.service.js';
 
 const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:8080';
@@ -45,6 +50,11 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
+// Si vous utilisez un proxy (Cloudflare/Nginx), activer TRUST_PROXY=1 pour de vraies IPs.
+if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', true);
+}
+
 // Sécurité : en-têtes HTTP de base
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -57,9 +67,13 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Sécurité : bloquer les IPs configurées (si la liste est vide, ne fait rien)
+app.use('/api', checkBlockedIP);
+
 // Limitation de débit globale (rate limiting)
 const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000); // 15 minutes
-const maxRequests = Number(process.env.RATE_LIMIT_MAX || 300); // 300 requêtes / fenêtre / IP
+// Dev / SPA : augmenter via RATE_LIMIT_MAX si la messagerie ou le polling déclenche 429.
+const maxRequests = Number(process.env.RATE_LIMIT_MAX || 2000);
 const limiter = rateLimit({
   windowMs,
   max: maxRequests,
@@ -71,6 +85,9 @@ app.use('/api', limiter);
 
 // Parsing JSON limité pour éviter les payloads géants
 app.use(express.json({ limit: '1mb' }));
+
+// Maintenance globale (sauf routes admin/auth/health)
+app.use(checkMaintenance);
 
 app.use('/api', routes);
 
@@ -87,19 +104,59 @@ app.use((err, req, res, next) => {
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ message: 'Fichier trop volumineux (max 5 Mo)' });
   }
+  if (err.message && String(err.message).includes('Format non supporté')) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
   logError(`Erreur non gérée sur ${req.method} ${req.originalUrl}`, err);
   res.status(500).json({ message: 'Erreur serveur' });
 });
 
 app.listen(PORT, () => {
+  void startScheduledJobs();
   logInfo(`EmploiConnect API écoute sur http://localhost:${PORT}`);
   logInfo('Routes principales disponibles :');
   logInfo('  - Health:        GET /api/health');
-  logInfo('  - Auth:          POST /api/auth/register, POST /api/auth/login');
+  logInfo('  - Auth:          POST /api/auth/register, POST /api/auth/login, POST /api/auth/forgot-password, POST /api/auth/reset-password');
   logInfo('  - Profil:        GET/PATCH /api/users/me (Bearer)');
-  logInfo('  - Offres:        GET/POST /api/offres, GET/PATCH/DELETE /api/offres/:id');
+  logInfo('  - Offres:        GET/POST /api/offres (?entreprise_id, q, …), GET/PATCH/DELETE /api/offres/:id');
+  logInfo('  - Vitrine:       GET /api/entreprises/top-public');
   logInfo('  - Candidatures:  GET/POST /api/candidatures, GET/PATCH /api/candidatures/:id');
   logInfo('  - CV:            POST /api/cv/upload, GET /api/cv/me, GET /api/cv/download-url');
   logInfo('  - Signalements:  POST /api/signalements');
-  logInfo('  - Admin:         GET/PATCH /api/admin/utilisateurs, GET /api/admin/statistiques, GET/PATCH /api/admin/signalements');
+  logInfo('  - Admin:         /api/admin/* (dashboard, statistiques, activite, utilisateurs, offres, entreprises, candidatures, signalements, notifications, parametres) — JWT + rôle admin + table administrateurs');
+  console.log('[IA] APIs configurées :');
+  console.log('  ✅ Text Similarity  :', process.env.RAPIDAPI_SIMILARITY_HOST || 'NON CONFIGURÉ');
+  console.log('  ⚠️  Resume Parser   :', process.env.RAPIDAPI_RESUME_PARSER_HOST || 'À CONFIGURER sur rapidapi.com');
+  console.log('  ⚠️  Topic Tagging   :', process.env.RAPIDAPI_TOPIC_TAGGING_HOST || 'À CONFIGURER sur rapidapi.com');
 });
+
+async function checkBuckets() {
+  const buckets = ['logos', 'bannieres', 'cv-files', 'avatars'];
+  for (const bucket of buckets) {
+    const { data, error } = await supabase.storage.getBucket(bucket);
+    if (error) {
+      console.warn(`⚠️  Bucket "${bucket}" manquant ou inaccessible: ${error.message}`);
+    } else {
+      console.log(`✅ Bucket "${bucket}" OK (public: ${data.public})`);
+    }
+  }
+}
+
+checkBuckets();
+
+async function checkIAApis() {
+  const keys = await getRapidApiKeys();
+  console.log('\n[IA] Statut des APIs :');
+  console.log('  Clé RapidAPI :', keys.apiKey ? '✅ Configurée' : '❌ Manquante → Admin > Paramètres > IA');
+  console.log('  Text Similarity :', keys.similarityHost ? `✅ ${keys.similarityHost}` : '❌ Manquant');
+  console.log(
+    '  Resume Parser :',
+    keys.parserHost ? `✅ ${keys.parserHost}` : '⚠️  À configurer → rapidapi.com → "Resume Parser 3"',
+  );
+  console.log(
+    '  Topic Tagging :',
+    keys.taggingHost ? `✅ ${keys.taggingHost}` : '⚠️  À configurer → rapidapi.com → "Twinword Topic Tagging"',
+  );
+  console.log('');
+}
+checkIAApis();

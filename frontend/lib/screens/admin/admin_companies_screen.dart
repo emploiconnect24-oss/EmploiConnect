@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/admin_provider.dart';
 import '../../services/admin_service.dart';
+import '../../services/download_service.dart';
 import '../../widgets/responsive_container.dart';
+import 'widgets/admin_page_shimmer.dart';
+import 'widgets/entreprise_actions_menu.dart';
 
 class AdminCompaniesScreen extends StatefulWidget {
   const AdminCompaniesScreen({super.key});
@@ -21,11 +26,17 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
   String _cityFilter = 'toutes';
   int _currentPage = 1;
   static const int _perPage = 20;
+  bool _exportingCsv = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  void _syncAdminBadges() {
+    if (!mounted) return;
+    context.read<AdminProvider>().loadDashboard();
   }
 
   Future<void> _load() async {
@@ -34,9 +45,11 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
       _error = null;
     });
     try {
-      final res = await _admin.getUtilisateurs(role: 'entreprise', limit: 200);
+      final res = await _admin.getEntreprises(page: 1, limite: 200);
+      final data = res['data'] as Map<String, dynamic>?;
+      final raw = data?['entreprises'] as List<dynamic>? ?? const [];
       setState(() {
-        _companies = res.utilisateurs;
+        _companies = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         _loading = false;
       });
     } catch (e) {
@@ -47,9 +60,19 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
     }
   }
 
+  Map<String, dynamic>? _userOf(Map<String, dynamic> c) {
+    final u = c['utilisateurs'];
+    if (u is Map) return Map<String, dynamic>.from(u);
+    if (u is List && u.isNotEmpty && u.first is Map) {
+      return Map<String, dynamic>.from(u.first as Map);
+    }
+    return null;
+  }
+
   String _status(Map<String, dynamic> c) {
-    final valid = c['est_valide'] == true;
-    final active = c['est_actif'] == true;
+    final user = _userOf(c);
+    final valid = user?['est_valide'] == true;
+    final active = user?['est_actif'] == true;
     if (!active) return 'Suspendu';
     if (!valid) return 'En attente';
     return 'Actif';
@@ -59,7 +82,7 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
     final q = _query.trim().toLowerCase();
     return _companies.where((c) {
       final name = (c['nom_entreprise']?.toString() ?? c['nom']?.toString() ?? '').toLowerCase();
-      final email = (c['email']?.toString() ?? '').toLowerCase();
+      final email = (_userOf(c)?['email']?.toString() ?? c['email']?.toString() ?? '').toLowerCase();
       final city = (c['ville']?.toString() ?? c['adresse_siege']?.toString() ?? '').trim();
       final s = _status(c);
 
@@ -94,96 +117,31 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
     return list;
   }
 
-  Future<bool> _confirm({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    required Color confirmColor,
-  }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: confirmColor, foregroundColor: Colors.white),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
-  }
-
-  Future<void> _validateCompany(String id) async {
-    final ok = await _confirm(
-      title: 'Valider cette entreprise ?',
-      message: 'Le compte sera activé pour publier des offres.',
-      confirmLabel: 'Valider',
-      confirmColor: const Color(0xFF10B981),
-    );
-    if (!ok) return;
-    try {
-      await _admin.patchUtilisateur(id, estValide: true, estActif: true);
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entreprise validée')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }
-  }
-
-  Future<void> _suspendCompany(String id) async {
-    final ok = await _confirm(
-      title: 'Suspendre cette entreprise ?',
-      message: 'Le compte ne pourra plus accéder à la plateforme.',
-      confirmLabel: 'Suspendre',
-      confirmColor: const Color(0xFFF59E0B),
-    );
-    if (!ok) return;
-    try {
-      await _admin.patchUtilisateur(id, estActif: false);
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entreprise suspendue')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }
-  }
-
-  Future<void> _deleteCompany(String id) async {
-    final ok = await _confirm(
-      title: 'Supprimer cette entreprise ?',
-      message: 'Action irreversible (à brancher API suppression).',
-      confirmLabel: 'Supprimer',
-      confirmColor: const Color(0xFFEF4444),
-    );
-    if (!ok || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Suppression entreprise à connecter côté API admin.')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_loading) {
+      return ResponsiveContainer(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: const AdminListScreenShimmer(showHeaderAction: false),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            FilledButton(onPressed: _load, child: const Text('Réessayer')),
+          ],
+        ),
+      );
+    }
 
     final list = _paged;
     final totalFiltered = _filtered.length;
@@ -193,6 +151,7 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
     return ResponsiveContainer(
       child: RefreshIndicator(
         onRefresh: _load,
+        color: const Color(0xFF1A56DB),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
@@ -269,9 +228,15 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
                       }),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _exportCsv,
-                      icon: const Icon(Icons.download_outlined, size: 16),
-                      label: const Text('Exporter'),
+                      onPressed: _exportingCsv ? null : _exportCsv,
+                      icon: _exportingCsv
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.download_outlined, size: 16),
+                      label: Text(_exportingCsv ? 'Export…' : 'Exporter'),
                     ),
                   ],
                 ),
@@ -316,14 +281,18 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
                       const Divider(height: 1, color: Color(0xFFE2E8F0)),
                       Padding(
                         padding: const EdgeInsets.all(14),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 12,
+                          runSpacing: 8,
                           children: [
                             Text(
                               'Affichage $from-$to sur $totalFiltered entreprises',
                               style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                             ),
                             Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   onPressed: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
@@ -351,13 +320,12 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
   }
 
   DataRow _buildRow(Map<String, dynamic> c) {
-    final id = c['id']?.toString() ?? '';
     final name = (c['nom_entreprise']?.toString() ?? c['nom']?.toString() ?? '-').trim();
     final secteur = (c['secteur_activite']?.toString() ?? c['domaine']?.toString() ?? '-').trim();
     final city = (c['ville']?.toString() ?? c['adresse_siege']?.toString() ?? '-').trim();
-    final offers = (c['offres_actives'] ?? c['nombre_offres'] ?? 0).toString();
+    final offers = (c['nb_offres_actives'] ?? c['offres_actives'] ?? c['nombre_offres'] ?? 0).toString();
     final status = _status(c);
-    final created = _formatDate(c['created_at']?.toString());
+    final created = _formatDate(c['date_creation']?.toString() ?? _userOf(c)?['date_creation']?.toString());
 
     return DataRow(
       cells: [
@@ -371,71 +339,46 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
             ),
           ),
         ),
-        DataCell(Text(name.isEmpty ? '-' : name)),
-        DataCell(Text(secteur.isEmpty ? '-' : secteur)),
-        DataCell(Text(city.isEmpty ? '-' : city)),
+        DataCell(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              name.isEmpty ? '-' : name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        DataCell(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              secteur.isEmpty ? '-' : secteur,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        DataCell(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 100),
+            child: Text(
+              city.isEmpty ? '-' : city,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
         DataCell(Text(offers)),
         DataCell(_CompanyStatusBadge(status: status)),
         DataCell(Text(created)),
         DataCell(
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'view_profile' && mounted) {
-                _showCompanyDetails(c);
-              }
-              if (value == 'view_jobs' && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Filtre offres par entreprise à brancher.')),
-                );
-              }
-              if (value == 'validate') await _validateCompany(id);
-              if (value == 'suspend') await _suspendCompany(id);
-              if (value == 'delete') await _deleteCompany(id);
+          EntrepriseActionsMenu(
+            entreprise: c,
+            onRefresh: () async {
+              await _load();
+              _syncAdminBadges();
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: 'view_profile',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.visibility_outlined),
-                  title: Text('Voir le profil'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'view_jobs',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.work_outline),
-                  title: Text('Voir les offres'),
-                ),
-              ),
-              if (status == 'En attente')
-                const PopupMenuItem<String>(
-                  value: 'validate',
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.check_circle_outline, color: Color(0xFF10B981)),
-                    title: Text('Valider'),
-                  ),
-                ),
-              if (status == 'Actif')
-                const PopupMenuItem<String>(
-                  value: 'suspend',
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.block_outlined, color: Color(0xFFF59E0B)),
-                    title: Text('Suspendre'),
-                  ),
-                ),
-              const PopupMenuItem<String>(
-                value: 'delete',
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-                  title: Text('Supprimer'),
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -458,56 +401,42 @@ class _AdminCompaniesScreenState extends State<AdminCompaniesScreen> {
       );
       return;
     }
+    const fileName = 'entreprises_emploiconnect.csv';
     final buffer = StringBuffer('nom_entreprise,email,secteur,ville,offres_actives,statut,date_creation\n');
     for (final c in rows) {
       final name = (c['nom_entreprise']?.toString() ?? c['nom']?.toString() ?? '').replaceAll(',', ' ');
-      final email = (c['email']?.toString() ?? '').replaceAll(',', ' ');
+      final email = (_userOf(c)?['email']?.toString() ?? c['email']?.toString() ?? '').replaceAll(',', ' ');
       final secteur = (c['secteur_activite']?.toString() ?? c['domaine']?.toString() ?? '').replaceAll(',', ' ');
       final city = (c['ville']?.toString() ?? c['adresse_siege']?.toString() ?? '').replaceAll(',', ' ');
-      final offers = (c['offres_actives'] ?? c['nombre_offres'] ?? 0).toString();
+      final offers = (c['nb_offres_actives'] ?? c['offres_actives'] ?? c['nombre_offres'] ?? 0).toString();
       final status = _status(c).replaceAll(',', ' ');
-      final date = (c['created_at']?.toString() ?? '').replaceAll(',', ' ');
+      final date = (c['date_creation']?.toString() ?? _userOf(c)?['date_creation']?.toString() ?? '').replaceAll(',', ' ');
       buffer.writeln('$name,$email,$secteur,$city,$offers,$status,$date');
     }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('CSV entreprises copié dans le presse-papiers.')),
-    );
+    setState(() => _exportingCsv = true);
+    try {
+      await DownloadService.downloadCsvFromString(
+        csvContent: buffer.toString(),
+        fileName: fileName,
+        context: context,
+      );
+      if (!mounted) return;
+      DownloadService.showWebDownloadSnackBar(context, fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
   }
 
-  Future<void> _showCompanyDetails(Map<String, dynamic> c) async {
-    final name = (c['nom_entreprise']?.toString() ?? c['nom']?.toString() ?? '-').trim();
-    final email = (c['email']?.toString() ?? '-').trim();
-    final secteur = (c['secteur_activite']?.toString() ?? c['domaine']?.toString() ?? '-').trim();
-    final site = (c['site_web']?.toString() ?? '-').trim();
-    final address = (c['adresse_siege']?.toString() ?? c['ville']?.toString() ?? '-').trim();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(name.isEmpty ? 'Entreprise' : name),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Email: $email'),
-            const SizedBox(height: 6),
-            Text('Secteur: $secteur'),
-            const SizedBox(height: 6),
-            Text('Site web: $site'),
-            const SizedBox(height: 6),
-            Text('Adresse: $address'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _CompaniesFilter extends StatelessWidget {

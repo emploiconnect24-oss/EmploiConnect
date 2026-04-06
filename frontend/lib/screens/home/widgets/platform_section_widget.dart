@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/theme/theme_extension.dart';
+import '../../../app/public_routes.dart';
 
 class PlatformSectionWidget extends StatelessWidget {
   const PlatformSectionWidget({super.key});
@@ -8,6 +10,7 @@ class PlatformSectionWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 900;
+    final scheme = Theme.of(context).colorScheme;
 
     final candidateCard = _PlatformCard(
       icon: Icons.person_search_outlined,
@@ -17,8 +20,9 @@ class PlatformSectionWidget extends StatelessWidget {
           "Accédez aux offres d'emploi, améliorez votre CV et postulez rapidement aux opportunités qui vous correspondent.",
       primaryLabel: 'Créer mon compte',
       secondaryLabel: 'Explorer les offres',
-      onPrimaryTap: () {},
-      onSecondaryTap: () {},
+      onPrimaryTap: () => Navigator.of(context).pushNamed('/register'),
+      onSecondaryTap: () =>
+          Navigator.of(context).pushNamed(PublicRoutes.listPath),
     );
 
     final recruiterCard = _PlatformCard(
@@ -29,13 +33,13 @@ class PlatformSectionWidget extends StatelessWidget {
           'Publiez vos offres, recevez des candidatures qualifiées et recrutez plus vite grâce au matching intelligent.',
       primaryLabel: 'Publier une offre',
       secondaryLabel: 'Découvrir les solutions',
-      onPrimaryTap: () {},
-      onSecondaryTap: () {},
+      onPrimaryTap: () => Navigator.of(context).pushNamed('/register'),
+      onSecondaryTap: () => Navigator.of(context).pushNamed('/landing'),
       aiBadge: true,
     );
 
     return Container(
-      color: const Color(0xFFF8FAFC),
+      color: context.themeExt.sectionBg,
       width: double.infinity,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
@@ -47,7 +51,7 @@ class PlatformSectionWidget extends StatelessWidget {
               style: GoogleFonts.poppins(
                 fontSize: isMobile ? 26 : 34,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF0F172A),
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 10),
@@ -56,7 +60,7 @@ class PlatformSectionWidget extends StatelessWidget {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 16,
-                color: const Color(0xFF64748B),
+                color: scheme.onSurfaceVariant,
                 height: 1.6,
               ),
             ),
@@ -136,6 +140,8 @@ class _PlatformCardState extends State<_PlatformCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -143,9 +149,9 @@ class _PlatformCardState extends State<_PlatformCard> {
         duration: const Duration(milliseconds: 220),
         transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: ext.cardBorder),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: _hovered ? 0.08 : 0.04),
@@ -176,7 +182,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFF0F172A),
+                      color: scheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -184,7 +190,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                     widget.description,
                     style: GoogleFonts.inter(
                       fontSize: 14,
-                      color: const Color(0xFF64748B),
+                      color: scheme.onSurfaceVariant,
                       height: 1.6,
                     ),
                   ),

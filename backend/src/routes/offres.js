@@ -10,6 +10,10 @@ import { attachProfileIds } from '../helpers/userProfile.js';
 import { ROLES } from '../config/constants.js';
 import { STATUT_OFFRE } from '../config/constants.js';
 import { logError } from '../utils/logger.js';
+import { notifNouvelleOffre } from '../services/auto_notification.service.js';
+import { calculerMatchingScore, extraireMotsCles } from '../services/ia.service.js';
+import { getRapidApiKeys } from '../config/rapidApi.js';
+import { loadProfilMatchingPourChercheur } from '../services/matchingProfil.service.js';
 
 const router = Router();
 
@@ -20,7 +24,10 @@ const router = Router();
  */
 router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
   try {
-    const { statut, domaine, localisation, type_contrat, mes } = req.query;
+    const {
+      statut, domaine, localisation, type_contrat, mes, recherche, q, entreprise_id,
+    } = req.query;
+    const searchText = String(recherche || q || '').trim();
 
     let query = supabase
       .from('offres_emploi')
@@ -42,7 +49,7 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
         date_publication,
         date_limite,
         date_creation,
-        entreprises(nom_entreprise, secteur_activite)
+        entreprises(nom_entreprise, secteur_activite, logo_url)
       `, { count: 'exact' })
       .order('date_publication', { ascending: false });
 
@@ -54,13 +61,22 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
     } else {
       // Par défaut : uniquement les offres actives (sauf pour l'admin qui peut tout voir)
       const isAdmin = req.user?.role === ROLES.ADMIN;
-      if (!statut && !isAdmin) query = query.eq('statut', STATUT_OFFRE.ACTIVE);
+      if (!statut && !isAdmin) query = query.in('statut', [STATUT_OFFRE.ACTIVE, 'publiee']);
     }
 
     if (statut) query = query.eq('statut', statut);
     if (domaine) query = query.ilike('domaine', `%${domaine}%`);
     if (localisation) query = query.ilike('localisation', `%${localisation}%`);
     if (type_contrat) query = query.eq('type_contrat', type_contrat);
+    const eid = String(entreprise_id || '').trim();
+    if (eid) query = query.eq('entreprise_id', eid);
+    if (searchText) {
+      const safe = searchText.replace(/[%_,()]/g, ' ').trim().slice(0, 120);
+      if (safe.length) {
+        const pattern = `%${safe}%`;
+        query = query.or(`titre.ilike.${pattern},description.ilike.${pattern},exigences.ilike.${pattern}`);
+      }
+    }
 
     const { data, error, count } = await query.range(
       parseInt(req.query.offset, 10) || 0,
@@ -72,7 +88,50 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
       return res.status(500).json({ message: 'Erreur lors de la récupération des offres' });
     }
 
-    res.json({ offres: data, total: count ?? data.length });
+    let scoresMap = {};
+    if (req.user?.role === ROLES.CHERCHEUR && req.chercheurId && Array.isArray(data) && data.length) {
+      const offreIds = data.map((o) => o.id).filter(Boolean);
+      try {
+        const { data: cached } = await supabase
+          .from('offres_scores_cache')
+          .select('offre_id, score')
+          .eq('chercheur_id', req.chercheurId)
+          .in('offre_id', offreIds);
+        for (const row of cached || []) scoresMap[row.offre_id] = row.score;
+
+        const missingIds = offreIds.filter((id) => scoresMap[id] === undefined);
+        if (missingIds.length) {
+          setImmediate(async () => {
+            try {
+              const wrap = await loadProfilMatchingPourChercheur(req.chercheurId);
+              if (!wrap) return;
+              const { profil } = wrap;
+              const toScore = data.filter((o) => missingIds.includes(o.id)).slice(0, 12);
+              for (const offre of toScore) {
+                const score = await calculerMatchingScore(profil, offre);
+                await supabase.from('offres_scores_cache').upsert({
+                  chercheur_id: req.chercheurId,
+                  offre_id: offre.id,
+                  score: Number.isFinite(score) ? Math.round(score) : 0,
+                  calcule_le: new Date().toISOString(),
+                }, { onConflict: 'chercheur_id,offre_id' });
+              }
+            } catch (e) {
+              console.warn('[offres scores cache bg]', e?.message || e);
+            }
+          });
+        }
+      } catch (scoreErr) {
+        console.warn('[offres scores cache]', scoreErr?.message || scoreErr);
+      }
+    }
+
+    const offresAvecScore = (data || []).map((o) => ({
+      ...o,
+      score_compatibilite: scoresMap[o.id] ?? o.score_compatibilite ?? null,
+    }));
+
+    res.json({ offres: offresAvecScore, total: count ?? offresAvecScore.length });
   } catch (err) {
     logError('GET /offres - erreur inattendue', err);
     res.status(500).json({ message: 'Erreur serveur' });
@@ -89,13 +148,16 @@ router.get('/suggestions', authenticate, attachProfileIds, async (req, res) => {
       return res.status(403).json({ message: 'Réservé aux chercheurs d\'emploi' });
     }
 
-    const { data: cvRow } = await supabase
-      .from('cv')
-      .select('competences_extrait, texte_complet')
-      .eq('chercheur_id', req.chercheurId)
-      .single();
+    const limite = Math.min(parseInt(req.query.limite || req.query.limit, 10) || 10, 50);
+    const keys = await getRapidApiKeys();
+    const seuil = Number.isFinite(keys.seuilMatching) ? keys.seuilMatching : 40;
 
-    const limit = Math.min(parseInt(req.query.limit, 10) || 15, 50);
+    const { data: chercheur } = await supabase
+      .from('chercheurs_emploi')
+      .select('id')
+      .eq('id', req.chercheurId)
+      .maybeSingle();
+
     const { data: offres, error } = await supabase
       .from('offres_emploi')
       .select(`
@@ -109,30 +171,84 @@ router.get('/suggestions', authenticate, attachProfileIds, async (req, res) => {
         localisation,
         type_contrat,
         domaine,
+        niveau_experience_requis,
         date_publication,
-        entreprises(nom_entreprise, secteur_activite)
+        entreprises(nom_entreprise, secteur_activite, logo_url)
       `)
-      .eq('statut', STATUT_OFFRE.ACTIVE)
+      .in('statut', [STATUT_OFFRE.ACTIVE, 'publiee'])
       .order('date_publication', { ascending: false })
-      .limit(limit * 2);
+      .limit(50);
 
     if (error) {
       logError('GET /offres/suggestions - erreur requête', error);
       return res.status(500).json({ message: 'Erreur lors de la récupération des suggestions' });
     }
 
-    const { computeMatchingScoreAsync } = await import('../services/matchingScore.js');
-    const cv = cvRow ? { competences_extrait: cvRow.competences_extrait, texte_complet: cvRow.texte_complet } : {};
+    if (!chercheur) {
+      return res.json({
+        success: true,
+        data: (offres || []).slice(0, limite).map((o) => ({
+          ...o,
+          score_compatibilite: null,
+          ia_active: false,
+        })),
+      });
+    }
+
+    const wrap = await loadProfilMatchingPourChercheur(req.chercheurId);
+    const profil = wrap?.profil;
+    if (!profil) {
+      return res.json({
+        success: true,
+        data: (offres || []).slice(0, limite).map((o) => ({
+          ...o,
+          score_compatibilite: null,
+          ia_active: false,
+        })),
+      });
+    }
+
     const scored = await Promise.all(
       (offres || []).map(async (o) => ({
         ...o,
-        score_compatibilite: await computeMatchingScoreAsync(cv, { exigences: o.exigences, competences_requises: o.competences_requises }),
+        score_compatibilite: await calculerMatchingScore(profil, o),
+        ia_active: true,
       }))
     );
-    scored.sort((a, b) => (b.score_compatibilite ?? 0) - (a.score_compatibilite ?? 0));
-    const suggestions = scored.slice(0, limit);
 
-    res.json({ suggestions });
+    const cacheRows = scored
+      .filter((o) => o.id)
+      .map((o) => ({
+        chercheur_id: req.chercheurId,
+        offre_id: o.id,
+        score: Number.isFinite(o.score_compatibilite) ? Math.round(o.score_compatibilite) : 0,
+        calcule_le: new Date().toISOString(),
+      }));
+    if (cacheRows.length) {
+      await supabase.from('offres_scores_cache').upsert(cacheRows, { onConflict: 'chercheur_id,offre_id' });
+    }
+
+    const suggestions = scored
+      .filter((o) => (o.score_compatibilite ?? 0) >= seuil)
+      .sort((a, b) => (b.score_compatibilite ?? 0) - (a.score_compatibilite ?? 0));
+
+    if (suggestions.length < 3) {
+      const comp = scored
+        .filter((o) => (o.score_compatibilite ?? 0) < seuil)
+        .sort((a, b) => (b.score_compatibilite ?? 0) - (a.score_compatibilite ?? 0))
+        .slice(0, 5);
+      suggestions.push(...comp);
+    }
+
+    return res.json({
+      success: true,
+      data: suggestions.slice(0, limite),
+      meta: {
+        seuil_utilise: seuil,
+        total_analyse: scored.length,
+        total_suggestions: Math.min(suggestions.length, limite),
+      },
+    });
   } catch (err) {
     logError('GET /offres/suggestions - erreur inattendue', err);
     res.status(500).json({ message: 'Erreur serveur' });
@@ -151,7 +267,11 @@ router.get('/:id', optionalAuth, attachProfileIds, async (req, res) => {
       .from('offres_emploi')
       .select(`
         *,
-        entreprises(id, nom_entreprise, secteur_activite, description, adresse_siege)
+        entreprises(
+          id, nom_entreprise, secteur_activite, description, adresse_siege,
+          logo_url, banniere_url, site_web, slogan, mission,
+          email_public, telephone_public, linkedin, facebook
+        )
       `)
       .eq('id', id)
       .single();
@@ -161,13 +281,52 @@ router.get('/:id', optionalAuth, attachProfileIds, async (req, res) => {
     }
 
     // Si pas active, seuls l'entreprise propriétaire ou l'admin peuvent voir
-    if (offre.statut !== STATUT_OFFRE.ACTIVE) {
+    if (offre.statut !== STATUT_OFFRE.ACTIVE && offre.statut !== 'publiee') {
       const isOwner = req.entrepriseId && offre.entreprise_id === req.entrepriseId;
       const isAdmin = req.user?.role === ROLES.ADMIN;
       if (!isOwner && !isAdmin) {
         return res.status(404).json({ message: 'Offre non trouvée' });
       }
     }
+
+    setImmediate(async () => {
+      try {
+        const userId = req.user?.id || null;
+        const fwd = req.headers['x-forwarded-for'];
+        const rawIp = (typeof fwd === 'string' ? fwd.split(',')[0] : null)
+          || req.socket?.remoteAddress
+          || req.ip
+          || 'unknown';
+        const ipAddress = String(rawIp).trim() || 'unknown';
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        let q = supabase
+          .from('offres_vues')
+          .select('id')
+          .eq('offre_id', id)
+          .gte('date_vue', since)
+          .limit(1);
+        if (userId) q = q.eq('user_id', userId);
+        else q = q.eq('ip_address', ipAddress);
+        const { data: seen } = await q;
+        if (!seen || !seen.length) {
+          await supabase.from('offres_vues').insert({
+            offre_id: id,
+            user_id: userId,
+            ip_address: ipAddress,
+            date_vue: new Date().toISOString(),
+          });
+          const { error: rpcErr } = await supabase.rpc('increment_vues', { offre_uuid: id });
+          if (rpcErr) {
+            await supabase.rpc('increment_offre_vues', { offre_id_input: id }).catch(async () => {
+              const current = Number(offre.nb_vues || 0) + 1;
+              await supabase.from('offres_emploi').update({ nb_vues: current }).eq('id', id);
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[vues] Erreur non bloquante:', e?.message || e);
+      }
+    });
 
     res.json(offre);
   } catch (err) {
@@ -188,6 +347,28 @@ router.post('/',
       const entrepriseId = req.entrepriseId;
       if (!entrepriseId) {
         return res.status(400).json({ message: 'Profil entreprise introuvable' });
+      }
+
+      // Limite d'offres actives (plan gratuit) — paramètre max_offres_gratuit
+      const { data: paramLimite } = await supabase
+        .from('parametres_plateforme')
+        .select('valeur')
+        .eq('cle', 'max_offres_gratuit')
+        .maybeSingle();
+
+      const limite = parseInt(paramLimite?.valeur || '5', 10);
+
+      const { count: nbActives } = await supabase
+        .from('offres_emploi')
+        .select('id', { count: 'exact', head: true })
+        .eq('entreprise_id', entrepriseId)
+        .in('statut', [STATUT_OFFRE.ACTIVE, 'publiee']);
+
+      if ((nbActives ?? 0) >= limite) {
+        return res.status(403).json({
+          success: false,
+          message: `Limite atteinte. Votre plan gratuit permet ${limite} offres actives simultanément.`,
+        });
       }
 
       const {
@@ -244,6 +425,19 @@ router.post('/',
         date_limite: date_limite || null,
       };
 
+      // Appliquer automatiquement date_limite si offre publiée (statut active) et pas de date_limite fournie
+      if (payload.statut === STATUT_OFFRE.ACTIVE && !payload.date_limite) {
+        const { data: p } = await supabase
+          .from('parametres_plateforme')
+          .select('valeur')
+          .eq('cle', 'duree_validite_offre_jours')
+          .maybeSingle();
+        const nbJours = parseInt(p?.valeur || '30', 10);
+        const dt = new Date();
+        dt.setDate(dt.getDate() + nbJours);
+        payload.date_limite = dt.toISOString().split('T')[0];
+      }
+
       const { data, error } = await supabase
         .from('offres_emploi')
         .insert(payload)
@@ -254,6 +448,38 @@ router.post('/',
         logError('POST /offres - erreur insertion', error);
         return res.status(500).json({ message: 'Erreur lors de la création de l\'offre' });
       }
+
+      const { data: entRow } = await supabase
+        .from('entreprises')
+        .select('nom_entreprise')
+        .eq('id', entrepriseId)
+        .single();
+      void notifNouvelleOffre(data, entRow?.nom_entreprise);
+
+      setImmediate(async () => {
+        try {
+          const texteOffre = [data.titre, data.description, data.exigences]
+            .filter(Boolean)
+            .join(' ');
+          if (texteOffre.length < 20) return;
+
+          const motsCles = await extraireMotsCles(texteOffre);
+          if (!Array.isArray(motsCles) || motsCles.length === 0) return;
+
+          const competencesExistantes = Array.isArray(data.competences_requises)
+            ? data.competences_requises
+            : Object.values(data.competences_requises || {});
+          const competencesEnrichies = [...new Set([...competencesExistantes, ...motsCles])].slice(0, 20);
+
+          await supabase
+            .from('offres_emploi')
+            .update({ competences_requises: competencesEnrichies })
+            .eq('id', data.id);
+          console.log('[IA/offre] Mots-clés ajoutés à l\'offre:', motsCles.join(', '));
+        } catch (e) {
+          console.warn('[IA/offre] Enrichissement échoué (non bloquant):', e.message);
+        }
+      });
 
       res.status(201).json(data);
     } catch (err) {

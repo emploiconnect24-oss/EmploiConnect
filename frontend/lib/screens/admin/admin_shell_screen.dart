@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/admin_provider.dart';
 import '../login_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_jobs_screen.dart';
 import 'admin_companies_screen.dart';
 import 'admin_signalements_screen.dart';
+import 'admin_temoignages_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_settings_screen.dart';
 import 'admin_applications_screen.dart';
 import 'admin_statistics_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_profil_screen.dart';
+import 'pages/admin_recherche_globale_page.dart';
 import 'widgets/admin_sidebar.dart';
 import 'widgets/admin_topbar.dart';
 
@@ -23,15 +27,20 @@ class AdminShellScreen extends StatefulWidget {
 }
 
 class _AdminShellScreenState extends State<AdminShellScreen> {
+  AdminProvider? _adminProviderRef;
+
   static const String _routeDashboard = '/admin';
   static const String _routeUsers = '/admin/utilisateurs';
   static const String _routeOffers = '/admin/offres';
   static const String _routeCompanies = '/admin/entreprises';
   static const String _routeApplications = '/admin/candidatures';
   static const String _routeModeration = '/admin/moderation';
+  static const String _routeTemoignages = '/admin/temoignages';
   static const String _routeStats = '/admin/statistiques';
   static const String _routeNotifications = '/admin/notifications';
   static const String _routeSettings = '/admin/parametres';
+  static const String _routeProfil = '/admin/profil';
+  static const String _routeRecherche = '/admin/recherche';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _sidebarCollapsed = false;
@@ -53,10 +62,30 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     _routeCompanies: 'Gestion des entreprises',
     _routeApplications: 'Gestion des candidatures',
     _routeModeration: 'Modération & signalements',
+    _routeTemoignages: 'Témoignages recrutement',
     _routeStats: 'Statistiques & analytiques',
     _routeNotifications: 'Notifications',
     _routeSettings: 'Paramètres plateforme',
+    _routeRecherche: 'Recherche globale',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final admin = context.read<AdminProvider>();
+      _adminProviderRef = admin;
+      admin.loadDashboard();
+      admin.startAutoRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _adminProviderRef?.stopAutoRefresh();
+    super.dispose();
+  }
 
   Widget get _activePage {
     switch (_currentRoute) {
@@ -66,6 +95,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         return const AdminUsersScreen();
       case _routeModeration:
         return const AdminSignalementsScreen();
+      case _routeTemoignages:
+        return const AdminTemoignagesScreen();
       case _routeSettings:
         return const AdminSettingsScreen();
       case _routeOffers:
@@ -78,6 +109,10 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         return const AdminStatisticsScreen();
       case _routeNotifications:
         return const AdminNotificationsScreen();
+      case _routeProfil:
+        return const AdminProfilScreen();
+      case _routeRecherche:
+        return const AdminRechercheGlobalePage();
       default:
         return const AdminDashboardScreen();
     }
@@ -86,8 +121,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final isMobile = width < 768;
-    final isTablet = width >= 768 && width < 1024;
+    final isMobile = width < 900;
+    final isTablet = width >= 900 && width < 1200;
     final useCollapsedSidebar = isTablet || _sidebarCollapsed;
 
     return Scaffold(
@@ -135,6 +170,9 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                   },
                   isMobile: isMobile,
                   onLogout: _logout,
+                  onOpenProfile: () => setState(() => _currentRoute = _routeProfil),
+                  onOpenNotifications: () => setState(() => _currentRoute = _routeNotifications),
+                  onOpenFullSearch: () => setState(() => _currentRoute = _routeRecherche),
                 ),
                 Expanded(
                   child: AnimatedSwitcher(

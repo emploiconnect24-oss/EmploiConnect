@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/admin_provider.dart';
 import '../../services/admin_service.dart';
 import '../../widgets/responsive_container.dart';
+import 'admin_candidature_detail_screen.dart';
+import 'admin_offre_detail_screen.dart';
+import 'pages/user_detail_page.dart';
+import 'widgets/admin_page_shimmer.dart';
 
 class AdminSignalementsScreen extends StatefulWidget {
   const AdminSignalementsScreen({super.key});
@@ -22,6 +29,52 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
     _load();
   }
 
+  void _syncAdminBadges() {
+    if (!mounted) return;
+    context.read<AdminProvider>().loadDashboard();
+  }
+
+  bool _canVoirRessource(Map<String, dynamic> s) {
+    final id = (s['objet_id']?.toString() ?? '').trim();
+    if (id.isEmpty) return false;
+    final t = (s['type_objet']?.toString() ?? '').toLowerCase().trim();
+    return t == 'offre' || t == 'profil' || t == 'utilisateur' || t == 'candidature';
+  }
+
+  void _ouvrirRessourceSignalee(Map<String, dynamic> s) {
+    if (!mounted) return;
+    final objetId = (s['objet_id']?.toString() ?? '').trim();
+    if (objetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Identifiant de la ressource manquant.')),
+      );
+      return;
+    }
+    final t = (s['type_objet']?.toString() ?? '').toLowerCase().trim();
+    switch (t) {
+      case 'offre':
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => AdminOffreDetailScreen(offreId: objetId)),
+        );
+        return;
+      case 'profil':
+      case 'utilisateur':
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => UserDetailPage(userId: objetId)),
+        );
+        return;
+      case 'candidature':
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => AdminCandidatureDetailScreen(candidatureId: objetId)),
+        );
+        return;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Type de ressource non pris en charge : ${t.isEmpty ? '?' : t}')),
+        );
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -41,10 +94,76 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
     }
   }
 
-  Future<void> _traiter(String id, String statut, String successMessage) async {
+  Future<void> _cloturerSignalement(
+    String id,
+    String statut, {
+    required String dialogTitle,
+    required String successMessage,
+  }) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(dialogTitle),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    statut == 'traite'
+                        ? 'Le dossier sera marqué comme traité. Vous pouvez expliquer la suite donnée aux parties (recommandé).'
+                        : 'Le signalement sera classé sans suite. Vous pouvez préciser le motif pour le signalant et la personne concernée (recommandé).',
+                    style: const TextStyle(fontSize: 13, height: 1.35),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: noteCtrl,
+                    maxLines: 5,
+                    maxLength: 4000,
+                    decoration: const InputDecoration(
+                      labelText: 'Message de la modération',
+                      hintText:
+                          'Ex. : Après vérification, l’offre a été retirée. / Votre signalement ne constitue pas une infraction aux règles…',
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Valider et notifier'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final note = ok == true ? noteCtrl.text.trim() : '';
+    noteCtrl.dispose();
+
+    if (ok != true || !mounted) return;
+
     try {
-      await _admin.traiterSignalement(id, statut);
+      await _admin.traiterSignalement(
+        id,
+        statut,
+        noteAdmin: note.isEmpty ? null : note,
+      );
       await _load();
+      _syncAdminBadges();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(successMessage)),
@@ -61,8 +180,29 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_loading) {
+      return ResponsiveContainer(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: const AdminModerationShimmer(),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            FilledButton(onPressed: _load, child: const Text('Réessayer')),
+          ],
+        ),
+      );
+    }
 
     final filtered = _filtered;
     final urgentCount = filtered.where((e) => _priorityOf(e) == _ReportPriority.urgent).length;
@@ -72,6 +212,7 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
     return ResponsiveContainer(
       child: RefreshIndicator(
         onRefresh: _load,
+        color: const Color(0xFF1A56DB),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
@@ -171,18 +312,63 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
   }
 
   String _typeLabel(Map<String, dynamic> s) {
-    final raw = (s['type_objet']?.toString() ?? '').toLowerCase();
-    if (raw.contains('offre')) return 'Offre frauduleuse';
-    if (raw.contains('contenu')) return 'Contenu inapproprié';
-    if (raw.contains('compte')) return 'Compte suspect';
-    if (raw.contains('spam')) return 'Spam';
+    final objet = (s['type_objet']?.toString() ?? '').toLowerCase().trim();
+    if (objet == 'offre') return 'Offre';
+    if (objet == 'profil' || objet == 'utilisateur') return 'Profil';
+    if (objet == 'candidature') return 'Candidature';
+    final raison = (s['raison']?.toString() ?? '').toLowerCase();
+    if (raison.contains('offre')) return 'Offre (motif texte)';
+    if (raison.contains('contenu')) return 'Contenu inapproprié';
+    if (raison.contains('compte')) return 'Compte suspect';
+    if (raison.contains('spam')) return 'Spam';
     return 'Autre';
+  }
+
+  String? _objetContextLine(Map<String, dynamic> s) {
+    final d = s['objet_details'];
+    if (d is! Map) return null;
+    final type = (s['type_objet']?.toString() ?? '').toLowerCase().trim();
+    if (type == 'offre') {
+      final titre = (d['titre'] ?? '').toString().trim();
+      dynamic ent = d['entreprises'];
+      if (ent is List && ent.isNotEmpty) ent = ent.first;
+      final nom = ent is Map ? (ent['nom_entreprise'] ?? '').toString().trim() : '';
+      final parts = <String>[if (titre.isNotEmpty) titre, if (nom.isNotEmpty) nom];
+      return parts.isEmpty ? null : parts.join(' · ');
+    }
+    if (type == 'profil' || type == 'utilisateur') {
+      final nom = (d['nom'] ?? '').toString().trim();
+      final email = (d['email'] ?? '').toString().trim();
+      final parts = <String>[if (nom.isNotEmpty) nom, if (email.isNotEmpty) email];
+      return parts.isEmpty ? null : parts.join(' · ');
+    }
+    if (type == 'candidature') {
+      dynamic off = d['offres_emploi'];
+      if (off is List && off.isNotEmpty) off = off.first;
+      final titre = off is Map ? (off['titre'] ?? '').toString().trim() : '';
+      dynamic ch = d['chercheurs_emploi'];
+      if (ch is List && ch.isNotEmpty) ch = ch.first;
+      String cand = '';
+      if (ch is Map) {
+        dynamic u = ch['utilisateurs'];
+        if (u is List && u.isNotEmpty) u = u.first;
+        if (u is Map) cand = (u['nom'] ?? '').toString().trim();
+      }
+      final statut = (d['statut'] ?? '').toString().trim();
+      final parts = <String>[
+        if (titre.isNotEmpty) titre,
+        if (cand.isNotEmpty) 'Candidat : $cand',
+        if (statut.isNotEmpty) statut,
+      ];
+      return parts.isEmpty ? null : parts.join(' · ');
+    }
+    return null;
   }
 
   _ReportPriority _priorityOf(Map<String, dynamic> s) {
     final statut = (s['statut']?.toString() ?? '').toLowerCase();
     final count = int.tryParse((s['nombre_signalements'] ?? s['report_count'] ?? 1).toString()) ?? 1;
-    if (statut == 'traite' || statut == 'resolu') return _ReportPriority.low;
+    if (statut == 'traite' || statut == 'rejete') return _ReportPriority.low;
     if (count >= 3) return _ReportPriority.urgent;
     return _ReportPriority.medium;
   }
@@ -191,9 +377,13 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
     final id = s['id']?.toString() ?? '';
     final priority = _priorityOf(s);
     final type = _typeLabel(s);
+    final statutRaw = (s['statut']?.toString() ?? '').toLowerCase();
+    final estCloture = statutRaw == 'traite' || statutRaw == 'rejete';
+    final noteModeration = (s['note_admin']?.toString() ?? '').trim();
     final reason = (s['raison']?.toString() ?? 'Aucun détail fourni').trim();
     final count = (s['nombre_signalements'] ?? s['report_count'] ?? 1).toString();
     final timeAgo = (s['il_y_a']?.toString() ?? s['created_at']?.toString() ?? 'Récemment').trim();
+    final objetCtx = _objetContextLine(s);
 
     final leftColor = switch (priority) {
       _ReportPriority.urgent => const Color(0xFFEF4444),
@@ -259,35 +449,96 @@ class _AdminSignalementsScreenState extends State<AdminSignalementsScreen> {
                 style: const TextStyle(fontSize: 13, color: Color(0xFF334155), fontStyle: FontStyle.italic),
               ),
             ),
+            if (objetCtx != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                objetCtx,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+              ),
+            ],
+            if (noteModeration.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Message modération (parties notifiées)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1D4ED8),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      noteModeration,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF1E3A5F), height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                OutlinedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Voir la ressource signalée (connexion détail à faire).')),
-                    );
-                  },
-                  icon: const Icon(Icons.visibility_outlined, size: 16),
-                  label: const Text('Voir'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _traiter(id, 'rejete', 'Signalement rejeté / contenu supprimé'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444),
-                    foregroundColor: Colors.white,
+                if (_canVoirRessource(s))
+                  OutlinedButton.icon(
+                    onPressed: () => _ouvrirRessourceSignalee(s),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('Voir'),
                   ),
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('Supprimer'),
-                ),
-                TextButton(
-                  onPressed: () => _traiter(id, 'traite', 'Signalement marqué comme traité'),
-                  child: const Text('Ignorer'),
-                ),
+                if (!estCloture) ...[
+                  FilledButton.icon(
+                    onPressed: () => _cloturerSignalement(
+                      id,
+                      'traite',
+                      dialogTitle: 'Marquer comme traité',
+                      successMessage: 'Dossier traité — notifications envoyées.',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Traiter le dossier'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _cloturerSignalement(
+                      id,
+                      'rejete',
+                      dialogTitle: 'Classer sans suite',
+                      successMessage: 'Signalement classé sans suite — notifications envoyées.',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF64748B),
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.remove_circle_outline, size: 18),
+                    label: const Text('Classer sans suite'),
+                  ),
+                ],
               ],
             ),
+            if (estCloture)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  statutRaw == 'traite' ? 'Statut : traité' : 'Statut : classé sans suite',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                ),
+              ),
           ],
         ),
       ),

@@ -8,10 +8,11 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:frontend/main.dart';
+import 'package:frontend/core/theme/theme_provider.dart';
 
 void main() {
   testWidgets('EmploiConnect app loads', (WidgetTester tester) async {
-    await tester.pumpWidget(const EmploiConnectApp());
+    await tester.pumpWidget(EmploiConnectApp(themeProvider: ThemeProvider()));
     expect(find.byType(EmploiConnectApp), findsOneWidget);
   });
 }

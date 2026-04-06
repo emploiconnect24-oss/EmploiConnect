@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/admin_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/admin_service.dart';
+import '../../services/download_service.dart';
 import '../../services/candidatures_service.dart';
 import '../../widgets/responsive_container.dart';
+import 'widgets/admin_page_shimmer.dart';
 
 class AdminApplicationsScreen extends StatefulWidget {
   const AdminApplicationsScreen({super.key});
@@ -11,6 +17,7 @@ class AdminApplicationsScreen extends StatefulWidget {
 }
 
 class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
+  final _admin = AdminService();
   final _service = CandidaturesService();
   bool _loading = true;
   String? _error;
@@ -21,11 +28,17 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
   String _companyFilter = 'toutes';
   int _currentPage = 1;
   static const int _perPage = 20;
+  bool _exportingCsv = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  void _syncAdminBadges() {
+    if (!mounted) return;
+    context.read<AdminProvider>().loadDashboard();
   }
 
   Future<void> _load() async {
@@ -34,9 +47,11 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
       _error = null;
     });
     try {
-      final list = await _service.getCandidatures();
+      final res = await _admin.getCandidaturesAdmin(page: 1, limite: 500);
+      final data = res['data'] as Map<String, dynamic>?;
+      final raw = data?['candidatures'] as List<dynamic>? ?? const [];
       setState(() {
-        _all = list;
+        _all = raw.map((e) => _normalizeCandidature(Map<String, dynamic>.from(e as Map))).toList();
         _loading = false;
       });
     } catch (e) {
@@ -47,13 +62,45 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
     }
   }
 
+  Map<String, dynamic> _normalizeCandidature(Map<String, dynamic> raw) {
+    String nomCand = '';
+    final ch = raw['chercheurs_emploi'];
+    if (ch is Map) {
+      final u = ch['utilisateurs'];
+      if (u is Map) nomCand = u['nom']?.toString() ?? '';
+    }
+    String titreOffre = '';
+    String nomEnt = '';
+    final off = raw['offres_emploi'];
+    if (off is Map) {
+      titreOffre = off['titre']?.toString() ?? '';
+      final e = off['entreprises'];
+      if (e is Map) nomEnt = e['nom_entreprise']?.toString() ?? '';
+    }
+    return {
+      ...raw,
+      'nom_candidat': nomCand,
+      'titre_offre': titreOffre,
+      'nom_entreprise': nomEnt,
+    };
+  }
+
   String _uiStatus(Map<String, dynamic> c) {
     final raw = (c['statut']?.toString() ?? '').toLowerCase();
-    if (raw.contains('entretien')) return 'Entretien';
-    if (raw.contains('accepte')) return 'Acceptée';
-    if (raw.contains('refus')) return 'Refusée';
-    if (raw.contains('cours')) return 'En cours';
-    return 'Reçue';
+    switch (raw) {
+      case 'en_attente':
+        return 'Reçue';
+      case 'en_cours':
+        return 'En cours';
+      case 'acceptee':
+        return 'Acceptée';
+      case 'refusee':
+        return 'Refusée';
+      case 'annulee':
+        return 'Annulée';
+      default:
+        return 'Reçue';
+    }
   }
 
   List<Map<String, dynamic>> get _filtered {
@@ -94,17 +141,54 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
     return list;
   }
 
+  Future<void> _exportCsv() async {
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connectez-vous pour exporter.')),
+      );
+      return;
+    }
+    const fileName = 'candidatures_emploiconnect.csv';
+    setState(() => _exportingCsv = true);
+    try {
+      await DownloadService.downloadCsvFromApi(
+        apiPathAndQuery: '/admin/candidatures/export',
+        token: token,
+        fileName: fileName,
+        context: context,
+      );
+      if (!mounted) return;
+      DownloadService.showWebDownloadSnackBar(context, fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+
   Future<void> _setStatus(String id, String uiStatus) async {
     final apiStatus = switch (uiStatus) {
       'En cours' => 'en_cours',
-      'Entretien' => 'entretien',
       'Acceptée' => 'acceptee',
       'Refusée' => 'refusee',
-      _ => 'reçue',
+      'Reçue' => 'en_attente',
+      'Annulée' => 'annulee',
+      _ => 'en_attente',
     };
     try {
       await _service.updateStatut(id, apiStatus);
       await _load();
+      _syncAdminBadges();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Statut mis à jour: $uiStatus')),
@@ -119,8 +203,29 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
+    if (_loading) {
+      return ResponsiveContainer(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: const AdminListScreenShimmer(showHeaderAction: false),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            FilledButton(onPressed: _load, child: const Text('Réessayer')),
+          ],
+        ),
+      );
+    }
 
     final list = _paged;
     final totalFiltered = _filtered.length;
@@ -130,27 +235,46 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
     return ResponsiveContainer(
       child: RefreshIndicator(
         onRefresh: _load,
+        color: const Color(0xFF1A56DB),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Column(
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Gestion des Candidatures',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gestion des Candidatures',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Vue globale des candidatures de la plateforme',
+                          style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Vue globale des candidatures de la plateforme',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                  OutlinedButton.icon(
+                    onPressed: _exportingCsv ? null : _exportCsv,
+                    icon: _exportingCsv
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_outlined, size: 18),
+                    label: Text(_exportingCsv ? 'Export…' : 'Export CSV'),
                   ),
                 ],
               ),
@@ -186,9 +310,9 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
                         'tous': 'Tous',
                         'Reçue': 'Reçue',
                         'En cours': 'En cours',
-                        'Entretien': 'Entretien',
                         'Acceptée': 'Acceptée',
                         'Refusée': 'Refusée',
+                        'Annulée': 'Annulée',
                       },
                       onChanged: (v) => setState(() {
                         _statusFilter = v;
@@ -306,16 +430,16 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
             onSelected: (v) async {
               if (v == 'received') await _setStatus(id, 'Reçue');
               if (v == 'in_progress') await _setStatus(id, 'En cours');
-              if (v == 'interview') await _setStatus(id, 'Entretien');
               if (v == 'accepted') await _setStatus(id, 'Acceptée');
               if (v == 'rejected') await _setStatus(id, 'Refusée');
+              if (v == 'cancel') await _setStatus(id, 'Annulée');
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'received', child: Text('Marquer Reçue')),
               PopupMenuItem(value: 'in_progress', child: Text('Marquer En cours')),
-              PopupMenuItem(value: 'interview', child: Text('Marquer Entretien')),
               PopupMenuItem(value: 'accepted', child: Text('Marquer Acceptée')),
               PopupMenuItem(value: 'rejected', child: Text('Marquer Refusée')),
+              PopupMenuItem(value: 'cancel', child: Text('Marquer Annulée')),
             ],
           ),
         ),
@@ -328,32 +452,6 @@ class _AdminApplicationsScreenState extends State<AdminApplicationsScreen> {
     final dt = DateTime.tryParse(iso);
     if (dt == null) return '-';
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
-  }
-
-  Future<void> _exportCsv() async {
-    final rows = _filtered;
-    if (rows.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune candidature à exporter.')),
-      );
-      return;
-    }
-    final buffer = StringBuffer('candidat,poste,entreprise,date,statut\n');
-    for (final c in rows) {
-      final candidate = (c['nom_candidat']?.toString() ?? c['candidat_nom']?.toString() ?? '').replaceAll(',', ' ');
-      final job = (c['titre_offre']?.toString() ?? c['offre_titre']?.toString() ?? '').replaceAll(',', ' ');
-      final company =
-          (c['nom_entreprise']?.toString() ?? c['entreprise_nom']?.toString() ?? '').replaceAll(',', ' ');
-      final date = (c['created_at']?.toString() ?? c['date_candidature']?.toString() ?? '').replaceAll(',', ' ');
-      final status = _uiStatus(c).replaceAll(',', ' ');
-      buffer.writeln('$candidate,$job,$company,$date,$status');
-    }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('CSV candidatures copié dans le presse-papiers.')),
-    );
   }
 }
 
@@ -395,15 +493,15 @@ class _ApplicationStatusBadge extends StatelessWidget {
     if (status == 'En cours') {
       bg = const Color(0xFFFEF3C7);
       fg = const Color(0xFF92400E);
-    } else if (status == 'Entretien') {
-      bg = const Color(0xFFF5F3FF);
-      fg = const Color(0xFF5B21B6);
     } else if (status == 'Acceptée') {
       bg = const Color(0xFFD1FAE5);
       fg = const Color(0xFF065F46);
     } else if (status == 'Refusée') {
       bg = const Color(0xFFFEE2E2);
       fg = const Color(0xFF991B1B);
+    } else if (status == 'Annulée') {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF475569);
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS chercheurs_emploi (
     genre VARCHAR(20),
     competences JSONB, -- Stockage des compétences extraites par IA
     niveau_etude VARCHAR(100),
+    titre_poste VARCHAR(200),
+    about TEXT,
     disponibilite VARCHAR(50),
     date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP

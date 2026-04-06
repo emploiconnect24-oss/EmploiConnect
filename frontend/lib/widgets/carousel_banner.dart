@@ -50,6 +50,16 @@ class _CarouselBannerState extends State<CarouselBanner> {
     final messages = widget.messages;
     if (messages.isEmpty) return const SizedBox.shrink();
 
+    final bh = widget.height;
+    final compact = bh != null && bh <= 300;
+    final pad = compact ? 12.0 : 22.0;
+    final boxSide = compact ? 76.0 : 160.0;
+    final iconSz = compact ? 34.0 : 72.0;
+    final titleFs = compact ? 17.0 : 26.0;
+    final twFs = compact ? 12.5 : 16.0;
+    final subFs = compact ? 11.0 : 14.0;
+    final brBox = compact ? 14.0 : 24.0;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.fullBleed ? 22 : 18),
       child: SizedBox(
@@ -76,7 +86,7 @@ class _CarouselBannerState extends State<CarouselBanner> {
                   // Images réelles : pour l’instant on garde un gradient.
                   // Quand vous aurez des assets, on pourra activer l’image par bannière.
                   child: Padding(
-                    padding: const EdgeInsets.all(22),
+                    padding: EdgeInsets.all(pad),
                     child: Row(
                       children: [
                         Expanded(
@@ -86,52 +96,52 @@ class _CarouselBannerState extends State<CarouselBanner> {
                             children: [
                               Text(
                                 m.title,
-                                style: const TextStyle(
-                                  fontSize: 26,
+                                style: TextStyle(
+                                  fontSize: titleFs,
                                   fontWeight: FontWeight.w800,
                                   color: Colors.white,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 10),
+                              SizedBox(height: compact ? 6 : 10),
                               TypewriterText(
                                 texts: m.typewriter,
                                 textStyle: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: twFs,
                                   height: 1.35,
                                   color: Colors.white.withValues(alpha: 0.92),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 14),
+                              SizedBox(height: compact ? 6 : 14),
                               Text(
                                 m.subtitle,
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: subFs,
                                   height: 1.3,
                                   color: Colors.white.withValues(alpha: 0.88),
                                 ),
-                                maxLines: 3,
+                                maxLines: compact ? 2 : 3,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: compact ? 8 : 12),
                         Container(
-                          width: 160,
-                          height: 160,
+                          width: boxSide,
+                          height: boxSide,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(brBox),
                             border: Border.all(
                               color: Colors.white.withValues(alpha: 0.25),
                             ),
                           ),
                           child: Icon(
                             m.icon,
-                            size: 72,
+                            size: iconSz,
                             color: Colors.white.withValues(alpha: 0.95),
                           ),
                         ),

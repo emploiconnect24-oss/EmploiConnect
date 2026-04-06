@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import '../../core/theme/theme_extension.dart';
 import '../../widgets/responsive_container.dart';
 
 class RecruteurDashboardScreen extends StatelessWidget {
@@ -7,6 +8,8 @@ class RecruteurDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     final today = DateTime.now();
     final dateText =
         '${today.day.toString().padLeft(2, '0')}/${today.month.toString().padLeft(2, '0')}/${today.year}';
@@ -27,28 +30,28 @@ class RecruteurDashboardScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Bonjour, Mon entreprise',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: scheme.onSurface),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       'Vous avez 5 nouvelles candidatures aujourd\'hui.',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
                     ),
                   ],
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: scheme.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: ext.cardBorder),
                   ),
-                  child: Text(dateText, style: const TextStyle(color: Color(0xFF64748B))),
+                  child: Text(dateText, style: TextStyle(color: scheme.onSurfaceVariant)),
                 ),
               ],
             ),
@@ -173,12 +176,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,7 +197,7 @@ class _SectionCard extends StatelessWidget {
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                     if (subtitle != null) ...[
                       const SizedBox(height: 2),
-                      Text(subtitle!, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                      Text(subtitle!, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
                     ],
                   ],
                 ),
@@ -228,12 +233,14 @@ class _RecruteurStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: Row(
         children: [
@@ -249,7 +256,7 @@ class _RecruteurStatCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(data.label, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                Text(data.label, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
                 const SizedBox(height: 2),
                 Text(data.value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                 Text(data.trend, style: TextStyle(fontSize: 12, color: data.color)),
@@ -270,13 +277,14 @@ class _RecentCandidateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ext = context.themeExt;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: ext.sectionBg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: Row(
         children: [
@@ -325,13 +333,15 @@ class _ViewsChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return Container(
       height: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,12 +351,12 @@ class _ViewsChartCard extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: ext.sectionBg,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: ext.cardBorder),
               ),
               alignment: Alignment.center,
-              child: const Text('Graphique vues (Section 15)', style: TextStyle(color: Color(0xFF64748B))),
+              child: Text('Graphique vues (Section 15)', style: TextStyle(color: scheme.onSurfaceVariant)),
             ),
           ),
         ],
@@ -360,13 +370,15 @@ class _ActiveOffersCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     return Container(
       height: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,12 +405,14 @@ class _TalentMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ext = context.themeExt;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: ext.sectionBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: ext.cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,7 +429,7 @@ class _TalentMiniCard extends StatelessWidget {
             onPressed: () {},
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF1A56DB),
-              foregroundColor: Colors.white,
+              foregroundColor: scheme.onPrimary,
               minimumSize: const Size(double.infinity, 36),
             ),
             child: const Text('Contacter'),

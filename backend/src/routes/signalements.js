@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticate } from '../middleware/auth.js';
 import { logError } from '../utils/logger.js';
+import { notifNouveauSignalement } from '../services/auto_notification.service.js';
 
 const router = Router();
 const TYPES_OBJET = ['offre', 'profil', 'candidature'];
@@ -55,6 +56,8 @@ router.post('/', async (req, res) => {
       logError('POST /signalements - erreur insertion', error);
       return res.status(500).json({ message: 'Erreur lors du signalement' });
     }
+
+    void notifNouveauSignalement(data);
 
     res.status(201).json(data);
   } catch (err) {

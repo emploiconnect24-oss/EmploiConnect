@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../../providers/recruteur_provider.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 
 class RecruteurTopBar extends StatelessWidget {
   const RecruteurTopBar({
@@ -7,27 +11,41 @@ class RecruteurTopBar extends StatelessWidget {
     required this.onMenuPressed,
     required this.onQuickOffer,
     required this.onNotifications,
+    this.onOpenProfil,
   });
 
   final String currentRoute;
   final VoidCallback? onMenuPressed;
   final VoidCallback onQuickOffer;
   final VoidCallback onNotifications;
+  final VoidCallback? onOpenProfil;
 
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 1024;
+    final scheme = Theme.of(context).colorScheme;
+    final nbNotifs = context.watch<RecruteurProvider>().nbNotificationsNonLues;
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            scheme.surface,
+            Color.lerp(scheme.surface, scheme.primaryContainer, 0.12) ?? scheme.surface,
+          ],
+        ),
+        border: Border(bottom: BorderSide(color: scheme.outline)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x06000000), blurRadius: 8, offset: Offset(0, 2)),
+        ],
       ),
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.menu_rounded, color: Color(0xFF64748B)),
+            icon: Icon(Icons.menu_rounded, color: scheme.onSurfaceVariant),
             onPressed: isMobile ? onMenuPressed : null,
           ),
           const SizedBox(width: 8),
@@ -38,9 +56,11 @@ class RecruteurTopBar extends StatelessWidget {
             Expanded(
               child: Text(
                 _titleForMobile(currentRoute),
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: scheme.onSurface),
               ),
             ),
+          const ThemeToggleButton(),
+          const SizedBox(width: 8),
           if (!isMobile)
             ElevatedButton.icon(
               icon: const Icon(Icons.add, size: 16),
@@ -61,25 +81,50 @@ class RecruteurTopBar extends StatelessWidget {
                 icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)),
                 onPressed: onNotifications,
               ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+              if (nbNotifs > 0)
+                Positioned(
+                  top: 6,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: const BoxDecoration(color: Color(0xFFEF4444), borderRadius: BorderRadius.all(Radius.circular(20))),
+                    child: Text(
+                      nbNotifs > 99 ? '99+' : '$nbNotifs',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(width: 6),
-          const CircleAvatar(
-            radius: 16,
-            backgroundColor: Color(0xFFEFF6FF),
-            child: Text(
-              'E',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1A56DB)),
-            ),
+          Consumer<RecruteurProvider>(
+            builder: (context, p, _) {
+              final logo = p.profil?['logo_url']?.toString();
+              final nom = (p.profil?['nom_entreprise'] ?? 'E').toString();
+              final initial = nom.trim().isEmpty ? 'E' : nom.trim()[0].toUpperCase();
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onOpenProfil,
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.35), width: 2),
+                    ),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      backgroundImage: logo != null && logo.isNotEmpty ? NetworkImage(logo) : null,
+                      child: logo == null || logo.isEmpty
+                          ? Text(initial, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF1A56DB)))
+                          : null,
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),

@@ -6,6 +6,7 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_text_styles.dart';
 import '../providers/auth_provider.dart';
 import 'auth/widgets/mobile_auth_header.dart';
+import '../shared/widgets/logo_widget.dart';
 import '../widgets/responsive_container.dart';
 import '../widgets/hover_scale.dart';
 
@@ -110,21 +111,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
-              ),
-              child: const Icon(Icons.person_add_alt_1, color: Colors.white),
+            const LogoWidget(
+              height: 40,
+              fallbackTextColor: Colors.white,
+              fallbackAccentColor: Color(0xFFBAE6FD),
             ),
             const SizedBox(height: 14),
-            Text(
-              'Créer un compte',
-              style: AppTextStyles.authPanelTitle,
-            ),
+            Text('Créer un compte', style: AppTextStyles.authPanelTitle),
             const SizedBox(height: 10),
             Text(
               'Rejoignez EmploiConnect : publiez des offres, postulez, téléversez un CV et recevez des suggestions IA.',
@@ -160,10 +153,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               FadeInDown(
                 duration: AppAnimations.medium,
                 delay: const Duration(milliseconds: 200),
-                child: Text(
-                  'Inscription',
-                  style: AppTextStyles.authTitle,
-                ),
+                child: Text('Inscription', style: AppTextStyles.authTitle),
               ),
               const SizedBox(height: 6),
               Text(
@@ -197,7 +187,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     labelText: 'Nom complet',
                     prefixIcon: Icon(Icons.person_outline),
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Nom requis' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Nom requis' : null,
                 ),
               ),
               const SizedBox(height: 12),
@@ -215,7 +206,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Email requis';
                     final email = v.trim();
-                    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+                    final ok = RegExp(
+                      r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                    ).hasMatch(email);
                     if (!ok) return 'Format email invalide';
                     return null;
                   },
@@ -233,12 +226,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     suffixIcon: IconButton(
                       tooltip: _obscure ? 'Afficher' : 'Masquer',
                       onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      icon: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                     ),
                   ),
                   obscureText: _obscure,
                   validator: (v) {
-                    if (v == null || v.length < 8) return 'Au moins 8 caractères';
+                    if (v == null || v.length < 8)
+                      return 'Au moins 8 caractères';
                     return null;
                   },
                 ),
@@ -254,14 +252,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       tooltip: _obscureConfirm ? 'Afficher' : 'Masquer',
-                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                      icon: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                     ),
                   ),
                   obscureText: _obscureConfirm,
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Confirmez le mot de passe';
-                    if (v != _passwordController.text) return 'Les mots de passe ne correspondent pas';
+                    if (v == null || v.isEmpty)
+                      return 'Confirmez le mot de passe';
+                    if (v != _passwordController.text)
+                      return 'Les mots de passe ne correspondent pas';
                     return null;
                   },
                 ),
@@ -278,11 +283,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: Icon(Icons.badge_outlined),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'chercheur', child: Text('Chercheur d’emploi')),
-                    DropdownMenuItem(value: 'entreprise', child: Text('Entreprise / Recruteur')),
-                    DropdownMenuItem(value: 'admin', child: Text('Administrateur')),
+                    DropdownMenuItem(
+                      value: 'chercheur',
+                      child: Text('Chercheur d’emploi'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'entreprise',
+                      child: Text('Entreprise / Recruteur'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin',
+                      child: Text('Administrateur'),
+                    ),
                   ],
-                  onChanged: _loading ? null : (v) => setState(() => _role = v ?? 'chercheur'),
+                  onChanged: _loading
+                      ? null
+                      : (v) => setState(() => _role = v ?? 'chercheur'),
                 ),
               ),
               const SizedBox(height: 14),
@@ -302,7 +318,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ? const SizedBox(
                             height: 22,
                             width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('Créer mon compte'),
                   ),
@@ -332,7 +351,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 10),
                     TextButton(
-                      onPressed: () => Navigator.of(context).pushReplacementNamed('/login'),
+                      onPressed: () =>
+                          Navigator.of(context).pushReplacementNamed('/login'),
                       child: const Text('Déjà un compte ? Se connecter'),
                     ),
                   ],
@@ -357,7 +377,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             colors: [
               scheme.primary.withValues(alpha: 0.06),
               AppColors.primary.withValues(alpha: 0.05),
-              Colors.white,
+              scheme.surface,
             ],
           ),
         ),
@@ -393,7 +413,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             duration: AppAnimations.slow,
                             child: const MobileAuthHeader(
                               title: 'Inscription',
-                              subtitle: 'Creez votre compte en quelques secondes',
+                              subtitle:
+                                  'Creez votre compte en quelques secondes',
                             ),
                           ),
                           const SizedBox(height: 10),

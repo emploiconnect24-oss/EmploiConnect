@@ -1,64 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
+import '../../../core/theme/theme_extension.dart';
 
+import '../../../../services/offres_service.dart';
+import '../../../app/public_routes.dart';
 import '../../../../shared/widgets/job_card_widget.dart';
 import '../../../../shared/widgets/section_header.dart';
 
-class RecentJobsSectionWidget extends StatelessWidget {
+Map<String, dynamic> _mapOffreToJobCard(Map<String, dynamic> o) {
+  dynamic ent = o['entreprises'];
+  String company = '';
+  if (ent is Map) {
+    company = ent['nom_entreprise']?.toString() ?? '';
+  } else if (ent is List && ent.isNotEmpty && ent.first is Map) {
+    company = (ent.first as Map)['nom_entreprise']?.toString() ?? '';
+  }
+  final desc = o['description']?.toString() ?? '';
+  final summary = desc.length > 180 ? '${desc.substring(0, 180)}…' : desc;
+  final pub = o['date_publication'] ?? o['date_creation'];
+  DateTime? date;
+  if (pub is String) date = DateTime.tryParse(pub);
+
+  return {
+    'title': o['titre']?.toString() ?? 'Offre',
+    'company': company.isEmpty ? 'Entreprise' : company,
+    'location': o['localisation']?.toString() ?? '',
+    'contract': o['type_contrat']?.toString() ?? '',
+    'summary': summary,
+    'date': date ?? DateTime.now(),
+    'offre_id': o['id']?.toString(),
+  };
+}
+
+class RecentJobsSectionWidget extends StatefulWidget {
   const RecentJobsSectionWidget({super.key});
 
-  Future<List<Map<String, dynamic>>> _loadMockJobs() async {
-    await Future.delayed(const Duration(milliseconds: 900));
-    return [
-      {
-        'title': 'Développeur Flutter',
-        'company': 'Orange Guinée',
-        'location': 'Conakry',
-        'contract': 'CDI',
-        'summary': "Concevoir des interfaces modernes, intégrer des API REST et maintenir l'application mobile.",
-        'date': DateTime.now().subtract(const Duration(days: 2)),
-      },
-      {
-        'title': 'Comptable Senior',
-        'company': 'Ecobank Guinée',
-        'location': 'Conakry',
-        'contract': 'CDI',
-        'summary': 'Superviser la comptabilité générale, garantir la conformité et produire les reportings mensuels.',
-        'date': DateTime.now().subtract(const Duration(days: 3)),
-      },
-      {
-        'title': 'Chef de projet',
-        'company': 'Plan International',
-        'location': 'Kindia',
-        'contract': 'CDD',
-        'summary': 'Coordonner les projets terrain, gérer les parties prenantes et piloter les indicateurs d’impact.',
-        'date': DateTime.now().subtract(const Duration(days: 4)),
-      },
-      {
-        'title': 'Data Analyst',
-        'company': 'MTN Guinée',
-        'location': 'Conakry',
-        'contract': 'Stage',
-        'summary': 'Analyser les données commerciales, produire des dashboards et recommander des optimisations.',
-        'date': DateTime.now().subtract(const Duration(days: 1)),
-      },
-      {
-        'title': 'Ingénieur réseau',
-        'company': 'Sotelgui',
-        'location': 'Conakry',
-        'contract': 'CDI',
-        'summary': 'Assurer la disponibilité réseau, diagnostiquer les incidents et renforcer la sécurité des infrastructures.',
-        'date': DateTime.now().subtract(const Duration(days: 5)),
-      },
-      {
-        'title': 'RH Manager',
-        'company': 'Groupe Hadja Binta',
-        'location': 'Labé',
-        'contract': 'CDI',
-        'summary': 'Piloter le recrutement, la gestion des talents et les plans de formation.',
-        'date': DateTime.now().subtract(const Duration(days: 6)),
-      },
-    ];
+  @override
+  State<RecentJobsSectionWidget> createState() => _RecentJobsSectionWidgetState();
+}
+
+class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  /// Au plus 6 offres (3 colonnes × 2 lignes) ; l’affichage réel est `colonnes × 2` selon la largeur.
+  static const int _kMaxOffresAccueil = 6;
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    try {
+      final r = await OffresService().getOffresPublic(offset: 0, limit: _kMaxOffresAccueil);
+      final list = r.offres.map(_mapOffreToJobCard).toList();
+      list.sort((a, b) {
+        final da = a['date'] is DateTime ? a['date'] as DateTime : DateTime.fromMillisecondsSinceEpoch(0);
+        final db = b['date'] is DateTime ? b['date'] as DateTime : DateTime.fromMillisecondsSinceEpoch(0);
+        return db.compareTo(da);
+      });
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -75,21 +80,22 @@ class RecentJobsSectionWidget extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: context.themeExt.sectionBg,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
         child: Column(
           children: [
             const SectionHeader(
               title: "Dernières Offres d'Emploi",
-              subtitle: 'Opportunités récentes publiées par des entreprises en Guinée.',
+              subtitle:
+                  'Aperçu des offres les plus récentes (deux lignes sur l’accueil). Consultez la liste complète via le bouton ci-dessous.',
             ),
             const SizedBox(height: 24),
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: _loadMockJobs(),
+              future: _future,
               builder: (context, snap) {
                 if (snap.connectionState != ConnectionState.done) {
-                  return _ShimmerGrid(columns: cols);
+                  return _ShimmerGrid(columns: cols, itemCount: cols * 2);
                 }
                 final jobs = snap.data ?? const <Map<String, dynamic>>[];
                 if (jobs.isEmpty) {
@@ -98,12 +104,16 @@ class RecentJobsSectionWidget extends StatelessWidget {
                     child: Text('Aucune offre disponible pour le moment.'),
                   );
                 }
-                return _JobsGrid(columns: cols, jobs: jobs);
+                final maxItems = cols * 2;
+                final visible = jobs.length <= maxItems ? jobs : jobs.sublist(0, maxItems);
+                return _JobsGrid(columns: cols, jobs: visible);
               },
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.of(context).pushNamed(PublicRoutes.listPath);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A56DB),
                 foregroundColor: Colors.white,
@@ -141,7 +151,14 @@ class _JobsGrid extends StatelessWidget {
               SizedBox(
                 width: itemW,
                 height: 252,
-                child: JobCardWidget(job: j, onTap: () {}),
+                child: JobCardWidget(
+                  job: j,
+                  onTap: () {
+                    final id = j['offre_id']?.toString();
+                    if (id == null || id.isEmpty) return;
+                    Navigator.of(context).pushNamed(PublicRoutes.offre(id));
+                  },
+                ),
               ),
           ],
         );
@@ -151,9 +168,10 @@ class _JobsGrid extends StatelessWidget {
 }
 
 class _ShimmerGrid extends StatelessWidget {
-  const _ShimmerGrid({required this.columns});
+  const _ShimmerGrid({required this.columns, required this.itemCount});
 
   final int columns;
+  final int itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -165,18 +183,18 @@ class _ShimmerGrid extends StatelessWidget {
           spacing: spacing,
           runSpacing: spacing,
           children: List.generate(
-            3,
+            itemCount.clamp(1, 64),
             (index) => SizedBox(
               width: itemW,
               height: 252,
               child: Shimmer.fromColors(
-                baseColor: const Color(0xFFE5E7EB),
-                highlightColor: const Color(0xFFF3F4F6),
+                baseColor: context.themeExt.shimmerBase,
+                highlightColor: context.themeExt.shimmerHighlight,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: context.themeExt.cardBorder),
                   ),
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -218,4 +236,3 @@ class _ShimmerGrid extends StatelessWidget {
     );
   }
 }
-

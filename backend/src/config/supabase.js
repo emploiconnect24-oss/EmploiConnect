@@ -20,3 +20,12 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 export const BUCKET_CV = process.env.SUPABASE_STORAGE_BUCKET || 'cv-files';
+
+/**
+ * Photos de profil / avatars (admin, etc.) : doit autoriser image/jpeg, image/png, image/webp.
+ * Si non défini, on retombe sur BUCKET_CV — qui est souvent limité aux PDF → erreur « mime type not supported ».
+ */
+export const BUCKET_ADMIN_AVATARS =
+  process.env.SUPABASE_STORAGE_BUCKET_AVATARS?.trim() ||
+  process.env.SUPABASE_STORAGE_BUCKET_PHOTOS?.trim() ||
+  'avatars';

@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../services/users_service.dart';
+import '../../shared/widgets/theme_selector_tile.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/reveal_on_scroll.dart';
 
 class EntrepriseSettingsScreen extends StatefulWidget {
-  const EntrepriseSettingsScreen({super.key});
+  const EntrepriseSettingsScreen({super.key, this.onOpenEntrepriseProfile});
+
+  /// Navigation vers l’écran « Profil entreprise » (ex. shell recruteur).
+  final VoidCallback? onOpenEntrepriseProfile;
 
   @override
   State<EntrepriseSettingsScreen> createState() => _EntrepriseSettingsScreenState();
@@ -47,7 +52,6 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
-  Map<String, dynamic>? _profil;
 
   @override
   void initState() {
@@ -77,8 +81,8 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
     });
     try {
       final r = await _service.getMe();
+      final user = r.user;
       final profil = r.profil ?? <String, dynamic>{};
-      _profil = profil;
       _nomEntrepriseCtrl.text = profil['nom_entreprise']?.toString() ?? '';
       _descriptionCtrl.text = profil['description']?.toString() ?? '';
       _secteurCtrl.text = profil['secteur_activite']?.toString() ?? '';
@@ -86,6 +90,16 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
       _siteCtrl.text = profil['site_web']?.toString() ?? '';
       _adresseSiegeCtrl.text = profil['adresse_siege']?.toString() ?? '';
       _logoUrlCtrl.text = profil['logo_url']?.toString() ?? '';
+      _language = user['langue_interface']?.toString() ?? 'Français';
+      _timezone = user['fuseau_horaire']?.toString() ?? 'Africa/Conakry';
+      _notifNewApplications = user['notif_nouvelles_candidatures'] as bool? ?? true;
+      _notifMessages = user['notif_messages_recus'] as bool? ?? true;
+      _notifOfferExpiry = user['notif_offres_expiration'] as bool? ?? true;
+      _notifWeeklySummary = user['notif_resume_hebdo'] as bool? ?? false;
+      _notifPush = user['notif_push'] as bool? ?? true;
+      _privacyProfileVisible = user['privacy_profile_visible'] as bool? ?? true;
+      _privacyShowSalaryByDefault = user['privacy_show_salary_default'] as bool? ?? true;
+      _privacyAllowDirectContact = user['privacy_allow_direct_contact'] as bool? ?? true;
       setState(() => _loading = false);
     } catch (e) {
       setState(() {
@@ -168,15 +182,26 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          delete
-              ? 'Suppression à brancher avec l’API.'
-              : 'Désactivation temporaire à brancher avec l’API.',
-        ),
-      ),
-    );
+    setState(() => _saving = true);
+    try {
+      if (delete) {
+        await _service.deleteMe();
+      } else {
+        await _service.deactivateMe();
+      }
+      if (!mounted) return;
+      await context.read<AuthProvider>().logout();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(delete ? 'Compte supprimé' : 'Compte désactivé')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _saveEntreprise() async {
@@ -252,7 +277,6 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
     }
 
     final scheme = Theme.of(context).colorScheme;
-    final profilId = _profil?['id']?.toString();
 
     return ResponsiveContainer(
       child: RefreshIndicator(
@@ -281,15 +305,101 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                     children: [
                       const Text('Compte', style: TextStyle(fontWeight: FontWeight.w900)),
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _InfoChip(icon: Icons.mail, label: email),
-                          _InfoChip(icon: Icons.badge, label: 'Rôle : $role'),
-                          if (profilId != null) _InfoChip(icon: Icons.fingerprint, label: 'Entreprise ID : $profilId'),
-                        ],
+                      _ReadOnlyField(
+                        icon: Icons.email_outlined,
+                        label: 'Adresse email',
+                        value: email,
+                        note: 'Non modifiable',
                       ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.business_center_outlined, color: Color(0xFF94A3B8), size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Rôle',
+                                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+                                  ),
+                                  Text(
+                                    role.toLowerCase().contains('recruteur') ? 'Recruteur / Entreprise' : role,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(100),
+                              ),
+                              child: Text(
+                                'Vérifié ✓',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF1A56DB),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (widget.onOpenEntrepriseProfile != null) ...[
+                        const SizedBox(height: 12),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: widget.onOpenEntrepriseProfile,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    const Color(0xFF1A56DB).withValues(alpha: 0.06),
+                                    const Color(0xFF0EA5E9).withValues(alpha: 0.03),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.22)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.business_rounded, color: Color(0xFF1A56DB), size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Gérer le profil de votre entreprise',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF1A56DB),
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF1A56DB)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       Text(
                         'Astuce : configurez vos notifications et votre confidentialité pour mieux piloter vos recrutements.',
@@ -300,6 +410,8 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            const ThemeSelectorTile(),
             const SizedBox(height: 12),
             // SECTION 1 : Infos compte
             RevealOnScroll(
@@ -728,28 +840,57 @@ class _EntrepriseSettingsScreenState extends State<EntrepriseSettingsScreen> {
   }
 }
 
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
+class _ReadOnlyField extends StatelessWidget {
+  const _ReadOnlyField({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.note,
+  });
 
   final IconData icon;
   final String label;
+  final String value;
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Text(label),
+          Icon(icon, color: const Color(0xFF94A3B8), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8))),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (note != null)
+            Text(
+              note!,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: const Color(0xFF94A3B8),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
         ],
       ),
     );

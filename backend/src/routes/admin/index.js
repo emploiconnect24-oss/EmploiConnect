@@ -81,9 +81,32 @@ router.patch(
 
 router.get('/temoignages', temoignages.getTemoignages);
 router.patch(
+  '/temoignages/:id/valider',
+  auditLog('MODERATION_TEMOIGNAGE', 'temoignage'),
+  (req, _res, next) => {
+    req.body = { ...(req.body || {}), action: 'approuver' };
+    next();
+  },
+  temoignages.patchTemoignage,
+);
+router.patch(
+  '/temoignages/:id/refuser',
+  auditLog('MODERATION_TEMOIGNAGE', 'temoignage'),
+  (req, _res, next) => {
+    req.body = { ...(req.body || {}), action: 'refuser' };
+    next();
+  },
+  temoignages.patchTemoignage,
+);
+router.patch(
   '/temoignages/:id',
   auditLog('MODERATION_TEMOIGNAGE', 'temoignage'),
   temoignages.patchTemoignage,
+);
+router.delete(
+  '/temoignages/:id',
+  auditLog('SUPPRESSION_TEMOIGNAGE', 'temoignage'),
+  temoignages.deleteTemoignage,
 );
 
 router.post(
@@ -100,7 +123,9 @@ router.post(
   parametres.uploadLogo,
 );
 router.post('/parametres/tester-ia', parametres.testerConnexionIA);
+router.post('/parametres/test-ia-apropos', parametres.testIaApropos);
 router.post('/parametres/tester-smtp', parametres.testerSMTP);
+router.post('/tester-email', parametres.testerSMTP);
 router.post(
   '/parametres/vider-cache',
   auditLog('VIDER_CACHE_PARAMETRES', 'parametres'),

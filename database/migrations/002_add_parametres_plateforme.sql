@@ -35,7 +35,7 @@ VALUES
    'Plateforme intelligente d''offres et de recherche d''emploi en Guinée',
    'string', 'Description courte', 'general'),
   ('email_contact',
-   'contact@emploiconnect.gn', 'string',
+   'contact@example.com', 'string',
    'Email de contact public', 'general'),
   ('telephone_contact',
    '+224 620 00 00 00', 'string',

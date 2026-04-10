@@ -65,7 +65,7 @@ export async function sendPlatformEmail({ to, subject, text, html }) {
 
   try {
     await transporter.sendMail({
-      from: `"${cfg.fromName.replace(/"/g, '')}" <${cfg.user}>`,
+      from: `"${cfg.fromName.replace(/"/g, '')}" <${cfg.from || cfg.user}>`,
       to: String(to).trim(),
       subject: String(subject).slice(0, 200),
       text: text || undefined,

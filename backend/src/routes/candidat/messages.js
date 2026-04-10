@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate, requireRole } from '../../middleware/auth.js';
 import { attachProfileIds } from '../../helpers/userProfile.js';
 import { supabase } from '../../config/supabase.js';
@@ -8,6 +9,59 @@ import { sendNewMessageEmail } from '../../services/mail.service.js';
 
 const router = Router();
 router.use(authenticate, requireRole(ROLES.CHERCHEUR), attachProfileIds);
+
+const uploadPj = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+function inferMimeFromFilename(name = '') {
+  const lower = String(name).toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  return null;
+}
+
+function inferMimeFromMagic(buffer) {
+  if (!buffer || buffer.length < 4) return null;
+  const b = buffer;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return 'application/pdf';
+  if (
+    b[0] === 0x52
+    && b[1] === 0x49
+    && b[2] === 0x46
+    && b[3] === 0x46
+    && b.length > 11
+    && b[8] === 0x57
+    && b[9] === 0x45
+    && b[10] === 0x42
+    && b[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+function resolveUploadMime(file) {
+  const raw = String(file?.mimetype || '').trim().toLowerCase();
+  if (raw && raw !== 'application/octet-stream') return raw;
+  return (
+    inferMimeFromMagic(file?.buffer)
+    || inferMimeFromFilename(file?.originalname)
+    || 'application/octet-stream'
+  );
+}
 
 function conversationId(a, b) {
   return crypto.createHash('md5').update([a, b].sort().join('-')).digest('hex');
@@ -42,12 +96,67 @@ async function allowedDestinatairesForChercheur(chercheurId) {
   );
 }
 
+async function handleUploadMessageFile(req, res) {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
+    }
+    const rawName = String(req.file.originalname || 'piece-jointe').replace(/[^\w.\-()+ ]/g, '_').slice(0, 200);
+    const contentType = resolveUploadMime(req.file);
+    const ext = (rawName.split('.').pop() || 'bin').toLowerCase();
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+    const bucket = isImage ? (process.env.SUPABASE_STORAGE_BUCKET_AVATARS || 'avatars') : 'messagerie-files';
+    const path = `msg-pj/${req.user.id}/${Date.now()}-${rawName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from(bucket)
+      .upload(path, req.file.buffer, {
+        contentType,
+        upsert: false,
+      });
+    if (uploadErr) throw uploadErr;
+
+    let finalUrl = '';
+    if (isImage) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      finalUrl = data?.publicUrl || '';
+    } else {
+      const { data: signed, error: signedErr } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 60 * 60 * 24);
+      if (!signedErr && signed?.signedUrl) {
+        finalUrl = signed.signedUrl;
+      }
+    }
+    if (!finalUrl) {
+      throw new Error('Impossible de générer une URL de téléchargement pour la pièce jointe.');
+    }
+    return res.json({
+      success: true,
+      data: {
+        url: finalUrl,
+        nom: rawName,
+        bucket,
+        path,
+        fichier_url: finalUrl,
+        fichier_nom: rawName,
+        fichier_taille: req.file.size,
+        fichier_type: contentType,
+        type_message: isImage ? 'image' : 'fichier',
+      },
+    });
+  } catch (err) {
+    console.error('[candidat/messages upload]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Erreur upload' });
+  }
+}
+
 router.get('/', async (req, res) => {
   try {
     const userId = req.user.id;
     const { data: rows, error } = await supabase
       .from('messages')
-      .select('id, conversation_id, expediteur_id, destinataire_id, contenu, est_lu, date_envoi, offre_id')
+      .select('id, conversation_id, expediteur_id, destinataire_id, contenu, est_lu, date_envoi, offre_id, est_supprime_exp, est_supprime_dest, piece_jointe_nom, piece_jointe_url, fichier_nom')
       .or(`expediteur_id.eq.${userId},destinataire_id.eq.${userId}`)
       .order('date_envoi', { ascending: false });
 
@@ -63,23 +172,35 @@ router.get('/', async (req, res) => {
       throw error;
     }
 
+    const visibleRows = (rows || []).filter((m) => {
+      if (m.expediteur_id === userId && m.est_supprime_exp === true) return false;
+      if (m.destinataire_id === userId && m.est_supprime_dest === true) return false;
+      return true;
+    });
+
     const seenCid = new Set();
     const summaries = [];
     const unreadByCid = {};
 
-    for (const m of rows || []) {
+    for (const m of visibleRows) {
       if (m.destinataire_id === userId && m.est_lu === false) {
         unreadByCid[m.conversation_id] = (unreadByCid[m.conversation_id] || 0) + 1;
       }
     }
-    for (const m of rows || []) {
+    for (const m of visibleRows) {
       if (seenCid.has(m.conversation_id)) continue;
       seenCid.add(m.conversation_id);
       const peerId = m.expediteur_id === userId ? m.destinataire_id : m.expediteur_id;
+      const hasAttachment = !!(m.piece_jointe_url);
+      const preview = String(m.contenu || '').trim().length > 0
+        ? m.contenu
+        : (hasAttachment
+            ? `📎 ${m.piece_jointe_nom || m.fichier_nom || 'Pièce jointe'}`
+            : '');
       summaries.push({
         conversation_id: m.conversation_id,
         peer_id: peerId,
-        dernier_message: m.contenu,
+        dernier_message: preview,
         date_dernier: m.date_envoi,
         offre_id: m.offre_id,
         nb_non_lus: unreadByCid[m.conversation_id] || 0,
@@ -132,6 +253,47 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.post('/attachment', uploadPj.single('file'), handleUploadMessageFile);
+
+router.delete('/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    if (!messageId) {
+      return res.status(400).json({ success: false, message: 'messageId requis' });
+    }
+    const userId = req.user.id;
+    const { data: row, error: selErr } = await supabase
+      .from('messages')
+      .select('id, expediteur_id, destinataire_id')
+      .eq('id', messageId)
+      .maybeSingle();
+    if (selErr) throw selErr;
+    if (!row) {
+      return res.status(404).json({ success: false, message: 'Message introuvable' });
+    }
+    const participant = row.expediteur_id === userId || row.destinataire_id === userId;
+    if (!participant) {
+      return res.status(403).json({ success: false, message: 'Action non autorisée' });
+    }
+    const field = row.expediteur_id === userId ? 'est_supprime_exp' : 'est_supprime_dest';
+    const { error: softErr } = await supabase
+      .from('messages')
+      .update({ [field]: true })
+      .eq('id', messageId);
+    if (softErr) {
+      const { error: delErr } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId);
+      if (delErr) throw delErr;
+    }
+    return res.json({ success: true, message: 'Message supprimé' });
+  } catch (err) {
+    console.error('[candidat/messages DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 router.get('/:destinataireId', async (req, res) => {
   try {
     const { destinataireId } = req.params;
@@ -139,7 +301,7 @@ router.get('/:destinataireId', async (req, res) => {
     const cid = conversationId(req.user.id, destinataireId);
     let query = supabase
       .from('messages')
-      .select('id, contenu, date_envoi, est_lu, expediteur_id, destinataire_id, offre:offre_id (id, titre), offre_id')
+      .select('*')
       .eq('conversation_id', cid)
       .order('date_envoi', { ascending: true });
     if (since) query = query.gt('date_envoi', since);
@@ -169,10 +331,32 @@ router.get('/:destinataireId', async (req, res) => {
       .eq('id', destinataireId)
       .maybeSingle();
 
-    const messages = (data || []).map((m) => ({
-      ...m,
-      is_mine: m.expediteur_id === req.user.id,
-    }));
+    const messages = (data || [])
+      .filter((m) => {
+        if (m.expediteur_id === req.user.id && m.est_supprime_exp === true) return false;
+        if (m.destinataire_id === req.user.id && m.est_supprime_dest === true) return false;
+        return true;
+      })
+      .map((m) => {
+        const fileUrl = m.fichier_url || m.piece_jointe_url || null;
+        const fileNom = m.fichier_nom || m.piece_jointe_nom || null;
+        let type = m.type_message || 'texte';
+        if (type === 'texte' && fileUrl) {
+          const lower = String(fileNom || fileUrl).toLowerCase();
+          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some((ext) => lower.endsWith(ext));
+          type = isImage ? 'image' : 'fichier';
+        }
+        return {
+          ...m,
+          type_message: type,
+          fichier_url: fileUrl,
+          fichier_nom: fileNom,
+          piece_jointe_url: fileUrl,
+          piece_jointe_nom: fileNom,
+          is_mine: m.expediteur_id === req.user.id,
+        };
+      });
+
     return res.json({
       success: true,
       data: {
@@ -190,9 +374,18 @@ router.get('/:destinataireId', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { destinataire_id: destinataireId, contenu, offre_id: offreId } = req.body || {};
-    if (!destinataireId || !contenu) {
-      return res.status(400).json({ success: false, message: 'destinataire_id et contenu requis' });
+    const {
+      destinataire_id: destinataireId,
+      contenu,
+      offre_id: offreId,
+      piece_jointe_url: pieceUrl,
+      piece_jointe_nom: pieceNom,
+    } = req.body || {};
+    const rawContenu = contenu != null ? String(contenu).trim() : '';
+    const pjUrl = pieceUrl != null ? String(pieceUrl).trim() || null : null;
+    const pjNom = pieceNom != null ? String(pieceNom).trim() || null : null;
+    if (!destinataireId || (!rawContenu && !pjUrl)) {
+      return res.status(400).json({ success: false, message: 'destinataire_id et (contenu ou pièce jointe) requis' });
     }
 
     const allowedSet = await allowedDestinatairesForChercheur(req.chercheurId);
@@ -204,7 +397,6 @@ router.post('/', async (req, res) => {
       .eq('conversation_id', cid)
       .limit(1);
 
-    // Si pas de conversation existante, on exige une relation métier (candidature -> entreprise)
     if ((!alreadyConv || !alreadyConv.length) && !allowedSet.has(destinataireId)) {
       return res.status(403).json({
         success: false,
@@ -212,15 +404,22 @@ router.post('/', async (req, res) => {
       });
     }
 
+    const row = {
+      conversation_id: cid,
+      expediteur_id: req.user.id,
+      destinataire_id: destinataireId,
+      contenu: rawContenu,
+      offre_id: offreId || null,
+    };
+    if (pjUrl) row.piece_jointe_url = pjUrl;
+    if (pjNom) row.piece_jointe_nom = pjNom;
+    if (pjUrl) row.fichier_url = pjUrl;
+    if (pjNom) row.fichier_nom = pjNom;
+    if (pjUrl) row.type_message = 'fichier';
+
     const { data, error } = await supabase
       .from('messages')
-      .insert({
-        conversation_id: cid,
-        expediteur_id: req.user.id,
-        destinataire_id: destinataireId,
-        contenu: String(contenu).trim(),
-        offre_id: offreId || null,
-      })
+      .insert(row)
       .select()
       .single();
     if (error) {
@@ -234,12 +433,14 @@ router.post('/', async (req, res) => {
       throw error;
     }
 
+    const notifExcerpt = (rawContenu || pjNom || '📎 Fichier').slice(0, 140);
+
     try {
       await supabase.from('notifications').insert({
         destinataire_id: destinataireId,
         type_destinataire: 'individuel',
         titre: `💬 Message de ${req.user.nom || 'un candidat'}`,
-        message: String(contenu).trim().slice(0, 140),
+        message: notifExcerpt,
         type: 'message',
         lien: '/dashboard-recruteur/messages',
         est_lue: false,
@@ -250,9 +451,9 @@ router.post('/', async (req, res) => {
 
     void sendNewMessageEmail(destinataireId, {
       senderLabel: `Message de ${req.user.nom || 'un candidat'}`,
-      excerpt: String(contenu).trim(),
+      excerpt: notifExcerpt,
       lienLibelle:
-          'Ouvrez la messagerie dans votre espace recruteur sur la plateforme pour répondre.',
+        'Ouvrez la messagerie dans votre espace recruteur sur la plateforme pour répondre.',
     });
 
     return res.status(201).json({ success: true, data: { ...data, is_mine: true } });
@@ -263,4 +464,3 @@ router.post('/', async (req, res) => {
 });
 
 export default router;
-

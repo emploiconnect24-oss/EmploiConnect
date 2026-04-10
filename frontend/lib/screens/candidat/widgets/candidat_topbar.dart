@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/candidat_provider.dart';
 import '../../../shared/widgets/logo_widget.dart';
 import '../../../shared/widgets/theme_toggle_button.dart';
 
@@ -41,6 +43,7 @@ class CandidatTopBar extends StatelessWidget {
     '/dashboard/alertes': 'Alertes emploi',
     '/dashboard/notifications': 'Notifications',
     '/dashboard/parametres': 'Paramètres',
+    '/dashboard/cv/creer': 'Créer mon CV',
   };
 
   @override
@@ -142,6 +145,46 @@ class CandidatTopBar extends StatelessWidget {
           if (!isMobile) ...[
             _QuickSearchBar(onSubmit: onJobSearchSubmit),
             const SizedBox(width: 12),
+            Consumer<CandidatProvider>(
+              builder: (ctx, cand, _) {
+                final p = cand.profileCompletionPercent;
+                if (p >= 80) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onProfile,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Ink(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.bolt_rounded, color: Colors.white, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Profil $p%',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
             TextButton.icon(
               onPressed: onQuickApply,
               icon: const Icon(Icons.bolt_rounded, size: 16),
@@ -196,21 +239,30 @@ class CandidatTopBar extends StatelessWidget {
           ),
           GestureDetector(
             onTap: onProfile,
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: Color(0xFF1A56DB),
-              backgroundImage: photoUrl.isNotEmpty
-                  ? NetworkImage(photoUrl)
-                  : null,
-              child: photoUrl.isNotEmpty
-                  ? null
-                  : Text(
-                      (name.isNotEmpty ? name.trim()[0] : 'C').toUpperCase(),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFF1A56DB).withValues(alpha: 0.35),
+                  width: 2,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFF1A56DB).withValues(alpha: 0.12),
+                backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                child: photoUrl.isNotEmpty
+                    ? null
+                    : Text(
+                        (name.isNotEmpty ? name.trim()[0] : 'C').toUpperCase(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A56DB),
+                        ),
                       ),
-                    ),
+              ),
             ),
           ),
         ],

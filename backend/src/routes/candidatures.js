@@ -28,7 +28,7 @@ router.use(attachProfileIds);
 
 /**
  * POST /candidatures - Postuler à une offre (chercheur uniquement)
- * Body: { offre_id, lettre_motivation?, cv_id? }
+ * Body: { offre_id, lettre_motivation (obligatoire, 100–4000 car.), cv_id? }
  * score_compatibilite peut rester null (sera rempli par le module IA plus tard)
  */
 router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
@@ -59,6 +59,17 @@ router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
       return res.status(400).json({ message: 'Cette offre n\'accepte plus de candidatures' });
     }
 
+    const lmRaw = lettre_motivation != null ? String(lettre_motivation) : '';
+    const lm = lmRaw.trim();
+    if (lm.length < 100) {
+      return res.status(400).json({
+        message: 'La lettre de motivation est obligatoire (minimum 100 caractères).',
+      });
+    }
+    if (lm.length > 4000) {
+      return res.status(400).json({ message: 'La lettre de motivation ne doit pas dépasser 4000 caractères' });
+    }
+
     let cvId = cv_id || null;
     let scoreCompatibilite = null;
 
@@ -76,15 +87,11 @@ router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
       );
     }
 
-    if (lettre_motivation && String(lettre_motivation).length > 4000) {
-      return res.status(400).json({ message: 'La lettre de motivation ne doit pas dépasser 4000 caractères' });
-    }
-
     const payload = {
       chercheur_id: chercheurId,
       offre_id,
       cv_id: cvId,
-      lettre_motivation: lettre_motivation?.trim() || null,
+      lettre_motivation: lm,
       statut: STATUT_CANDIDATURE.EN_ATTENTE,
       score_compatibilite: scoreCompatibilite,
     };

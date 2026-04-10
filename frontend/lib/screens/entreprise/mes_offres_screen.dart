@@ -333,7 +333,7 @@ class _MesOffresScreenState extends State<MesOffresScreen> with SingleTickerProv
                           SizedBox(
                             width: 180,
                             child: DropdownButtonFormField<String>(
-                              value: _contractFilter,
+                              initialValue: _contractFilter,
                               decoration: const InputDecoration(labelText: 'Contrat', isDense: true),
                               items: const [
                                 DropdownMenuItem(value: 'tous', child: Text('Tous')),
@@ -350,7 +350,7 @@ class _MesOffresScreenState extends State<MesOffresScreen> with SingleTickerProv
                           SizedBox(
                             width: 180,
                             child: DropdownButtonFormField<String>(
-                              value: _cityFilter,
+                              initialValue: _cityFilter,
                               decoration: const InputDecoration(labelText: 'Ville', isDense: true),
                               items: [
                                 const DropdownMenuItem(value: 'toutes', child: Text('Toutes')),
@@ -509,25 +509,36 @@ class _OffreCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(14),
-          border: Border(
-            left: BorderSide(color: accentLeft, width: 5),
-            top: BorderSide(color: borderColor),
-            right: BorderSide(color: borderColor),
-            bottom: BorderSide(color: borderColor),
-          ),
+          border: Border.all(color: borderColor),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: accentLeft.withValues(alpha: 0.14),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
-        child: Column(
+        child: Stack(
           children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 5,
+                decoration: BoxDecoration(
+                  color: accentLeft,
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(14)),
+                ),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(left: 5),
               child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -551,9 +562,11 @@ class _OffreCard extends StatelessWidget {
                               titre.isEmpty ? 'Offre' : titre,
                               style: GoogleFonts.poppins(
                                 fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 color: const Color(0xFF0F172A),
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 6),
                             Wrap(
@@ -727,47 +740,53 @@ class _OffreCard extends StatelessWidget {
                       ),
                     ),
                   ],
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
-                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-              ),
-              child: Row(
-                children: [
-                  InkWell(
-                    onTap: () => _openCandidatures(context, id, titre),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.people_outline_rounded, size: 15, color: Color(0xFF1A56DB)),
-                          const SizedBox(width: 5),
-                          Text('Voir candidatures', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: const Color(0xFF1A56DB))),
-                        ],
-                      ),
-                    ),
+                  ],
+                ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
+                    border: Border.fromBorderSide(BorderSide(color: Color(0xFFE2E8F0))),
                   ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () => _showModifierDialog(context),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF64748B)),
-                          const SizedBox(width: 5),
-                          Text('Modifier', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: const Color(0xFF64748B))),
-                        ],
+                  child: Row(
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: () => _openCandidatures(context, id, titre),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFDBEAFE),
+                          foregroundColor: const Color(0xFF1A56DB),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.people_outline_rounded, size: 16),
+                        label: Text(
+                          'Voir candidatures',
+                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _showModifierDialog(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: Text(
+                          'Modifier',
+                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'ID: ${id.isEmpty ? '—' : id.substring(0, id.length < 8 ? id.length : 8)}',
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+                      ),
+                    ],
                   ),
+                ),
                 ],
               ),
             ),

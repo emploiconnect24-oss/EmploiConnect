@@ -99,6 +99,9 @@ class RecruteurService {
   Future<Map<String, dynamic>> getMessages(String token, String destinataireId) async =>
       _handle(await http.get(Uri.parse('$_base/messages/$destinataireId'), headers: _headers(token)));
 
+  Future<Map<String, dynamic>> deleteMessage(String token, String messageId) async =>
+      _handle(await http.delete(Uri.parse('$_base/messages/$messageId'), headers: _headers(token)));
+
   Future<Map<String, dynamic>> envoyerMessage(
     String token,
     String destinataireId,

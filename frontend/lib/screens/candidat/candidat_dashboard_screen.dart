@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/theme_extension.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/candidat_provider.dart';
 import '../../widgets/responsive_container.dart';
-import 'candidat_offer_detail_screen.dart';
+import 'widgets/dashboard_completion_polish.dart';
+import 'widgets/dashboard_suivi_candidatures.dart';
+import 'widgets/offre_recommande_card.dart';
 
 class CandidatDashboardScreen extends StatefulWidget {
   const CandidatDashboardScreen({
@@ -33,16 +36,6 @@ class _CandidatDashboardScreenState extends State<CandidatDashboardScreen> {
     final n = (nom ?? '').trim();
     if (n.isEmpty) return 'Candidat';
     return n.split(RegExp(r'\s+')).first;
-  }
-
-  static String _shortDate(String? iso) {
-    if (iso == null || iso.isEmpty) return '';
-    try {
-      final d = DateTime.parse(iso);
-      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-    } catch (_) {
-      return '';
-    }
   }
 
   static List<Map<String, dynamic>> _asMapList(dynamic raw) {
@@ -79,6 +72,14 @@ class _CandidatDashboardScreenState extends State<CandidatDashboardScreen> {
         ? (cStats.kpis['vues_profil'] as num).toInt()
         : 0;
     final profileCompletion = cStats.profileCompletionPercent;
+    final completionBloc = overview['completion_profil'];
+    final manquants = completionBloc is Map
+        ? (completionBloc['manquants'] as List<dynamic>? ?? const [])
+        : const <dynamic>[];
+    final statsBloc = overview['stats'];
+    final statsMap = statsBloc is Map<String, dynamic>
+        ? statsBloc
+        : <String, dynamic>{};
 
     final hour = DateTime.now().hour;
     final greeting = hour < 12
@@ -169,9 +170,10 @@ class _CandidatDashboardScreenState extends State<CandidatDashboardScreen> {
                 child: child,
               ),
             ),
-            child: _completionAlert(
-              profileCompletion,
-              onGoProfil: widget.onGoProfil,
+            child: DashboardCompletionPolish(
+              pourcentage: profileCompletion,
+              manquants: manquants,
+              onTap: widget.onGoProfil,
             ),
           ),
           const SizedBox(height: 16),
@@ -182,102 +184,38 @@ class _CandidatDashboardScreenState extends State<CandidatDashboardScreen> {
             vuesProfil: vuesProfil,
           ),
           const SizedBox(height: 18),
-          _sectionCard(
-            title: 'Offres recommandées pour vous',
-            actionLabel: 'Voir tout',
-            onAction: widget.onGoRecommandations,
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final col = c.maxWidth >= 980 ? 2 : 1;
-                if (recommended.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Aucune offre publiée pour le moment.',
-                    ),
-                  );
-                }
-                return GridView.builder(
-                  itemCount: recommended.length,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: col,
-                    childAspectRatio: 3.2,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemBuilder: (_, i) {
-                    final o = recommended[i];
-                    final offreId = (o['id'] ?? '').toString();
-                    final ent = o['entreprises'];
-                    final company = ent is Map
-                        ? (ent['nom_entreprise'] ?? 'Entreprise').toString()
-                        : (o['entreprise_nom'] ??
-                                o['entreprise']?['nom_entreprise'] ??
-                                'Entreprise')
-                            .toString();
-                    final rawScore = o['_score'] ?? o['score_compatibilite'];
-                    int? score;
-                    if (rawScore is num) {
-                      final r = rawScore.round();
-                      score = r > 0 ? r : null;
-                    } else if (rawScore != null) {
-                      final p = int.tryParse(rawScore.toString());
-                      score = (p != null && p > 0) ? p : null;
-                    }
-                    return _OfferQuickCard(
-                      offreId: offreId,
-                      title: (o['titre'] ?? 'Offre').toString(),
-                      company: company,
-                      locationType:
-                          '${(o['localisation'] ?? 'N/A').toString()} · ${(o['type_contrat'] ?? 'N/A').toString()}',
-                      score: score,
-                      onPostuler: offreId.isEmpty
-                          ? null
-                          : () {
-                              Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) =>
-                                      CandidatOfferDetailScreen(offreId: offreId),
-                                ),
-                              );
-                            },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+          _buildOffresRecommandeesSection(context, recommended),
           const SizedBox(height: 12),
-          _sectionCard(
-            title: 'Suivi de mes candidatures',
-            actionLabel: 'Voir tout',
-            onAction: widget.onGoCandidatures,
-            child: recentCands.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Aucune candidature pour le moment. Postulez aux offres qui vous correspondent.',
-                    ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: recentCands.isEmpty && (statsMap['total_candidatures'] as num? ?? 0) == 0
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Suivi de mes candidatures',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Aucune candidature pour le moment. Postulez aux offres qui vous correspondent.',
+                        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
+                      ),
+                    ],
                   )
-                : Column(
-                    children: recentCands.map((c) {
-                      final offre = c['offre'];
-                      final titre = offre is Map
-                          ? (offre['titre'] ?? 'Offre').toString()
-                          : 'Offre';
-                      final ent = offre is Map ? offre['entreprise'] : null;
-                      final company = ent is Map
-                          ? (ent['nom_entreprise'] ?? 'Entreprise').toString()
-                          : 'Entreprise';
-                      final label = (c['statut_label'] ?? '').toString();
-                      final d = _shortDate(c['date_candidature']?.toString());
-                      final suffix = d.isEmpty ? '' : ' · $d';
-                      return _TrackRow(
-                        text: '$company · $titre → $label$suffix',
-                      );
-                    }).toList(),
+                : DashboardSuiviCandidatures(
+                    stats: statsMap,
+                    candidaturesRecentes: recentCands,
+                    onVoirTout: widget.onGoCandidatures,
                   ),
           ),
           const SizedBox(height: 12),
@@ -340,117 +278,128 @@ class _CandidatDashboardScreenState extends State<CandidatDashboardScreen> {
     );
   }
 
-  Widget _completionAlert(int completion, {VoidCallback? onGoProfil}) {
-    final isDark = context.isDark;
-    final bg = const Color(0xFF1A56DB).withValues(alpha: isDark ? 0.15 : 0.08);
-    final border = const Color(
-      0xFF1A56DB,
-    ).withValues(alpha: isDark ? 0.30 : 0.20);
-    return LayoutBuilder(
-      builder: (context, c) {
-        final compact = c.maxWidth < 760;
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
-          ),
-          child: compact
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.trending_up_rounded,
-                          color: Color(0xFF1A56DB),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Complétez votre profil pour obtenir de meilleures offres.',
-                          ),
-                        ),
-                      ],
+  Widget _buildOffresRecommandeesSection(
+    BuildContext context,
+    List<Map<String, dynamic>> offres,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
+                      ),
+                      borderRadius: BorderRadius.circular(100),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
+                    child: Row(
                       children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(99),
-                            child: LinearProgressIndicator(
-                              value: completion / 100,
-                              minHeight: 8,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
+                        const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
                         Text(
-                          '$completion%',
-                          style: const TextStyle(
-                            fontSize: 12,
+                          'IA',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
                             fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: onGoProfil,
-                        child: const Text('Compléter'),
-                      ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Offres pour vous',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF0F172A),
                     ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    const Icon(
-                      Icons.trending_up_rounded,
-                      color: Color(0xFF1A56DB),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Complétez votre profil pour obtenir de meilleures offres.',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 120,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '$completion%',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(99),
-                            child: LinearProgressIndicator(
-                              value: completion / 100,
-                              minHeight: 6,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: onGoProfil,
-                      child: const Text('Compléter'),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: widget.onGoRecommandations,
+                child: Text(
+                  'Voir tout →',
+                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF1A56DB)),
                 ),
-        );
-      },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (offres.isEmpty)
+            _buildEmptyOffresProfil(context)
+          else
+            LayoutBuilder(
+              builder: (ctx, c) {
+                final cols = c.maxWidth > 900 ? 3 : (c.maxWidth > 600 ? 2 : 1);
+                final slice = offres.take(6).toList();
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.82,
+                  ),
+                  itemCount: slice.length,
+                  itemBuilder: (ctx, i) => OffreRecommandeCard(
+                    offre: slice[i],
+                    index: i,
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyOffresProfil(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.work_outline_rounded, color: Color(0xFFE2E8F0), size: 48),
+          const SizedBox(height: 10),
+          Text(
+            'Complétez votre profil pour recevoir de meilleures recommandations',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF94A3B8)),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1A56DB),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: widget.onGoProfil,
+            child: Text('Compléter mon profil', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -613,90 +562,3 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _OfferQuickCard extends StatelessWidget {
-  const _OfferQuickCard({
-    required this.offreId,
-    required this.title,
-    required this.company,
-    required this.locationType,
-    required this.score,
-    this.onPostuler,
-  });
-  final String offreId;
-  final String title;
-  final String company;
-  final String locationType;
-  final int? score;
-  final VoidCallback? onPostuler;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final ext = context.themeExt;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: ext.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text(
-            company,
-            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-          ),
-          Text(
-            locationType,
-            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Builder(
-                  builder: (context) {
-                    final s = score;
-                    return Text(
-                      (s != null && s > 0) ? 'Score IA : $s%' : 'Score IA : —',
-                    );
-                  },
-                ),
-              ),
-              const Spacer(),
-              OutlinedButton(
-                onPressed: onPostuler,
-                child: const Text('Postuler'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrackRow extends StatelessWidget {
-  const _TrackRow({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          const Text('● ', style: TextStyle(color: Color(0xFF1A56DB))),
-          Expanded(child: Text(text)),
-        ],
-      ),
-    );
-  }
-}

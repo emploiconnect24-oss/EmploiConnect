@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/candidatures_service.dart';
 import '../../services/matching_service.dart';
 import '../../services/offres_service.dart';
-import '../../shared/widgets/offre_card_compact.dart';
+import 'widgets/apply_bottom_sheet.dart';
+import 'widgets/offre_ia_card.dart';
 
 class CandidatRecommendationsScreen extends StatefulWidget {
-  const CandidatRecommendationsScreen({super.key});
+  const CandidatRecommendationsScreen({super.key, this.onGoProfil});
+
+  final VoidCallback? onGoProfil;
 
   @override
   State<CandidatRecommendationsScreen> createState() =>
@@ -25,6 +29,11 @@ class _CandidatRecommendationsScreenState
   bool _loading = true;
   String? _error;
 
+  /// Score complétion profil (GET /candidat/recommandations), sinon null.
+  int? _scoreProfilIa;
+  List<String> _conseilsApi = [];
+  bool _usedRecommandationsEndpoint = false;
+
   String _scoreFilter = 'Tout';
   String _contractFilter = 'Tous';
   String _cityFilter = 'Toutes';
@@ -41,10 +50,42 @@ class _CandidatRecommendationsScreenState
       _error = null;
     });
     try {
-      final res = await _matchingService.getSuggestions(limite: 24);
-      final suggestions = (res['data'] as List<dynamic>? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      List<Map<String, dynamic>> suggestions = [];
+      int? scoreProfil;
+      List<String> conseils = [];
+      var usedNew = false;
+
+      try {
+        final res = await _matchingService.getRecommandationsIa(limite: 24);
+        final data = res['data'] as Map<String, dynamic>?;
+        if (res['success'] == true && data != null) {
+          usedNew = true;
+          scoreProfil = (data['score_profil'] as num?)?.toInt();
+          final rawC = data['conseils'];
+          if (rawC is List) {
+            conseils = rawC
+                .map((e) => e.toString())
+                .where((s) => s.isNotEmpty)
+                .toList();
+          }
+          final offres = data['offres'] as List<dynamic>? ?? [];
+          suggestions = offres
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+      } catch (_) {
+        usedNew = false;
+      }
+
+      if (!usedNew) {
+        final res = await _matchingService.getSuggestions(limite: 24);
+        suggestions = (res['data'] as List<dynamic>? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        scoreProfil = null;
+        conseils = [];
+      }
+
       final savedRows = await _offresService.getSavedOffres();
       final savedIds = savedRows
           .map((e) => (e['offre_id'] ?? e['offre']?['id'])?.toString() ?? '')
@@ -52,6 +93,9 @@ class _CandidatRecommendationsScreenState
           .toSet();
       setState(() {
         _items = suggestions;
+        _scoreProfilIa = scoreProfil;
+        _conseilsApi = conseils;
+        _usedRecommandationsEndpoint = usedNew;
         _saved
           ..clear()
           ..addAll(savedIds);
@@ -127,18 +171,94 @@ class _CandidatRecommendationsScreenState
       ).showSnackBar(const SnackBar(content: Text('Offre invalide.')));
       return;
     }
-    try {
-      await _candidaturesService.postuler(offreId: id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Candidature envoyée avec succès.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+    final title = (offre['titre'] ?? 'Offre').toString();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ApplyBottomSheet(
+        offerTitle: title,
+        onSubmit: (motivation) async {
+          await _candidaturesService.postuler(
+            offreId: id,
+            lettreMotivation: motivation,
+          );
+        },
+      ),
+    );
+    if (ok != true) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Candidature envoyée avec succès.')),
+    );
+  }
+
+  /// PRD §6 — aucune offre renvoyée par l’API (différent du cas « filtres trop stricts »).
+  Widget _emptyNoRecommendations() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 40, 8, 24),
+      child: Column(
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEFF6FF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFF1A56DB),
+              size: 40,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucune recommandation disponible',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Complétez votre profil et uploadez votre CV\n'
+            'pour recevoir des recommandations personnalisées.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (widget.onGoProfil != null) ...[
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1A56DB),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              onPressed: widget.onGoProfil,
+              icon: const Icon(Icons.person_outline_rounded, size: 18),
+              label: Text(
+                'Compléter mon profil',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -158,18 +278,67 @@ class _CandidatRecommendationsScreenState
       child: ListView(
         padding: pagePad,
         children: [
-          const Text(
-            'Offres recommandées par IA',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1A56DB), Color(0xFF7C3AED)],
+                  ),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      size: 11,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'IA',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Recommandations IA',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Notre IA analyse votre profil et votre CV pour vous proposer les offres les plus adaptées à vos compétences.',
-            style: TextStyle(color: Color(0xFF64748B)),
+          Text(
+            'L\'IA analyse votre profil pour proposer les offres les plus adaptées.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
+            ),
           ),
           const SizedBox(height: 12),
-          _globalScoreBar(_globalScore),
+          if (_usedRecommandationsEndpoint && _scoreProfilIa != null)
+            _profilScoreCard(_scoreProfilIa!)
+          else
+            _globalScoreBar(_globalScore),
           const SizedBox(height: 12),
+          if (_conseilsApi.isNotEmpty) ...[
+            _conseilsCard(),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -215,36 +384,47 @@ class _CandidatRecommendationsScreenState
           ),
           const SizedBox(height: 12),
           if (items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 36),
-              child: Center(
-                child: Text('Aucune recommandation pour ces filtres.'),
-              ),
-            )
+            _items.isEmpty
+                ? _emptyNoRecommendations()
+                : const Padding(
+                    padding: EdgeInsets.only(top: 36),
+                    child: Center(
+                      child: Text('Aucune recommandation pour ces filtres.'),
+                    ),
+                  )
           else
             LayoutBuilder(
               builder: (_, c) {
-                int count = 1;
-                if (c.maxWidth >= 1200) {
-                  count = 3;
-                } else if (c.maxWidth >= 760) {
-                  count = 2;
-                }
+                final cols = c.maxWidth > 1100
+                    ? 4
+                    : c.maxWidth > 750
+                    ? 3
+                    : c.maxWidth > 500
+                    ? 2
+                    : 1;
+                final aspect = cols >= 4
+                    ? 1.15
+                    : cols == 3
+                    ? 1.05
+                    : cols == 2
+                    ? 1.0
+                    : 1.3;
                 return GridView.builder(
                   itemCount: items.length,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: count,
-                    childAspectRatio: 1.5,
+                    crossAxisCount: cols,
+                    childAspectRatio: aspect,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
                   ),
                   itemBuilder: (_, i) {
                     final o = items[i];
                     final id = (o['id'] ?? '').toString();
-                    return OffreCardCompact(
+                    return OffreIACard(
                       offre: o,
+                      index: i,
                       estSauvegardee: _saved.contains(id),
                       onPostuler: () => _apply(o),
                       onSauvegarder: () async {
@@ -273,7 +453,184 @@ class _CandidatRecommendationsScreenState
               },
             ),
           const SizedBox(height: 16),
-          _tipsSection(),
+          if (_conseilsApi.isEmpty) _tipsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _profilScoreCard(int score) {
+    final ok = score >= 70;
+    final mid = score >= 40;
+    final grad = ok
+        ? const [Color(0xFFECFDF5), Color(0xFFF0FDF4)]
+        : mid
+        ? const [Color(0xFFEFF6FF), Color(0xFFF0F9FF)]
+        : const [Color(0xFFFEF3C7), Color(0xFFFFFBEB)];
+    final border = ok
+        ? const Color(0xFF10B981)
+        : mid
+        ? const Color(0xFF1A56DB)
+        : const Color(0xFFF59E0B);
+    final msg = ok
+        ? 'Excellent ! Votre profil attire les recruteurs.'
+        : mid
+        ? 'Bon profil. Ajoutez des détails pour affiner les matchs.'
+        : 'Profil incomplet. Complétez-le pour de meilleures offres.';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: grad),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: 1,
+                  strokeWidth: 6,
+                  color: const Color(0xFFE2E8F0),
+                ),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: score / 100),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutCubic,
+                  builder: (_, v, _) => CircularProgressIndicator(
+                    value: v,
+                    strokeWidth: 6,
+                    backgroundColor: Colors.transparent,
+                    valueColor: AlwaysStoppedAnimation<Color>(border),
+                  ),
+                ),
+                TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: score),
+                  duration: const Duration(milliseconds: 900),
+                  builder: (_, v, _) => Text(
+                    '$v',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Score de votre profil',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  msg,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: const Color(0xFF374151),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(100),
+                  child: LinearProgressIndicator(
+                    value: score / 100,
+                    minHeight: 5,
+                    backgroundColor: Colors.white,
+                    valueColor: AlwaysStoppedAnimation<Color>(border),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _conseilsCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.lightbulb_outline_rounded,
+                color: Color(0xFFF59E0B),
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Améliorer vos suggestions',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ..._conseilsApi.map(
+            (c) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 14,
+                    color: Color(0xFFF59E0B),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      c,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (widget.onGoProfil != null)
+            TextButton(
+              onPressed: widget.onGoProfil,
+              child: Text(
+                'Compléter mon profil',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A56DB),
+                ),
+              ),
+            ),
         ],
       ),
     );

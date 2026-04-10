@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { requireRecruteur } from '../../middleware/recruteurAuth.js';
 import { supabase } from '../../config/supabase.js';
 import { notifyChercheurCandidatureStatutChanged } from '../../services/candidatureSignalementNotify.service.js';
+import { createCvSignedUrl } from '../../helpers/cvSignedUrl.js';
 
 const router = Router();
 router.use(authenticate, requireRecruteur);
@@ -330,15 +331,35 @@ router.get('/:id', async (req, res) => {
     let cv = null;
 
     if (base.chercheur_id) {
-      const { data: ch, error: chErr } = await supabase
-        .from('chercheurs')
-        .select(`
-          id,
-          competences, niveau_etude, disponibilite,
-          utilisateur:utilisateur_id (id, nom, email, photo_url, telephone, adresse)
-        `)
-        .eq('id', base.chercheur_id)
-        .maybeSingle();
+      let ch = null;
+      let chErr = null;
+      {
+        const r1 = await supabase
+          .from('chercheurs')
+          .select(`
+            id,
+            competences, niveau_etude, disponibilite,
+            utilisateur:utilisateur_id (id, nom, email, photo_url, telephone, adresse)
+          `)
+          .eq('id', base.chercheur_id)
+          .maybeSingle();
+        ch = r1.data;
+        chErr = r1.error;
+      }
+      // Certaines bases utilisent encore chercheurs_emploi.
+      if (chErr && (chErr.code === 'PGRST205' || /chercheurs/i.test(String(chErr.message || '')))) {
+        const r2 = await supabase
+          .from('chercheurs_emploi')
+          .select(`
+            id,
+            competences, niveau_etude, disponibilite,
+            utilisateur:utilisateur_id (id, nom, email, photo_url, telephone, adresse)
+          `)
+          .eq('id', base.chercheur_id)
+          .maybeSingle();
+        ch = r2.data;
+        chErr = r2.error;
+      }
       if (chErr) {
         console.error('[recruteur/candidatures/:id] chercheur:', chErr);
       } else {
@@ -359,13 +380,22 @@ router.get('/:id', async (req, res) => {
       }
     }
 
+    let cvOut = cv;
+    if (cv && cv.fichier_url) {
+      const { signedUrl, error: signErr } = await createCvSignedUrl(cv.fichier_url);
+      if (signErr) {
+        console.error('[recruteur/candidatures/:id] signed_url:', signErr.message || signErr);
+      }
+      cvOut = { ...cv, signed_url: signedUrl };
+    }
+
     return res.json({
       success: true,
       data: {
         ...base,
         offre: offreCheck,
         chercheur,
-        cv,
+        cv: cvOut,
       },
     });
   } catch (err) {

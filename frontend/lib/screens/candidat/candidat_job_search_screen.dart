@@ -198,6 +198,12 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
     return list;
   }
 
+  bool get _hasFiltresAvances =>
+      _selectedVille != null ||
+      (_selectedSecteur != null && _selectedSecteur!.isNotEmpty) ||
+      _minSalaire > 0 ||
+      _sortBy != 'pertinence';
+
   Future<void> _applyBottomSheet(Map<String, dynamic> offre) async {
     final id = offre['id']?.toString() ?? '';
     final title = (offre['titre'] ?? 'Offre').toString();
@@ -210,7 +216,7 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
         onSubmit: (motivation) async {
           await _candService.postuler(
             offreId: id,
-            lettreMotivation: motivation.isEmpty ? null : motivation,
+            lettreMotivation: motivation,
           );
         },
       ),
@@ -295,17 +301,18 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final compact = MediaQuery.of(context).size.width < 380;
     final list = _filtered;
     final scheme = Theme.of(context).colorScheme;
     final ext = context.themeExt;
 
     final listBottom = MediaQuery.of(context).size.width <= 900 ? 80.0 : 20.0;
     return ResponsiveContainer(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      padding: EdgeInsets.fromLTRB(compact ? 12 : 20, compact ? 12 : 16, compact ? 12 : 20, 16),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(12),
@@ -316,18 +323,61 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'Titre, compétence, entreprise...',
-                          prefixIcon: Icon(Icons.search),
-                          isDense: true,
+                      child: Text(
+                        'Recherche d\'offres',
+                        style: TextStyle(
+                          fontSize: compact ? 18 : 20,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    ElevatedButton(onPressed: () => _load(reset: true), child: const Text('Rechercher')),
+                    Text(
+                      '${list.length} offre(s)',
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        onChanged: (v) {
+                          setState(() {});
+                          if (v.length >= 2 || v.isEmpty) _load(reset: true);
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Titre, entreprise, compétence...',
+                          prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF1A56DB), size: 22),
+                          suffixIcon: _searchCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, color: Color(0xFF94A3B8)),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    _load(reset: true);
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF1A56DB), width: 1.5),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -337,36 +387,53 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: _contracts
-                              .map(
-                                (type) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween<double>(begin: 1, end: _selectedContracts.contains(type) ? 1.06 : 1),
-                                    duration: const Duration(milliseconds: 150),
-                                    curve: Curves.easeOut,
-                                    builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
-                                    child: FilterChip(
-                                      label: Text(type),
-                                      selected: _selectedContracts.contains(type),
-                                      selectedColor: context.isDark ? const Color(0xFF1E3A5F) : const Color(0xFFEFF6FF),
-                                      onSelected: (v) {
-                                        setState(() => v ? _selectedContracts.add(type) : _selectedContracts.remove(type));
-                                      },
-                                    ),
+                          children: [
+                            _FiltreChip('Tous', null, _selectedContracts.isEmpty ? null : _selectedContracts.first, (v) {
+                              setState(() => _selectedContracts.clear());
+                              _load(reset: true);
+                            }),
+                            ...['CDI', 'CDD', 'Stage', 'Freelance'].map(
+                              (type) => _FiltreChip(type, type, _selectedContracts.isEmpty ? null : _selectedContracts.first, (v) {
+                                setState(() {
+                                  _selectedContracts
+                                    ..clear()
+                                    ..add(type);
+                                });
+                                _load(reset: true);
+                              }),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: _openFiltersBottomSheet,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: _hasFiltresAvances ? const Color(0xFF1A56DB) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(100),
+                                  border: Border.all(
+                                    color: _hasFiltresAvances ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
                                   ),
                                 ),
-                              )
-                              .toList(),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.tune_rounded, size: 14, color: _hasFiltresAvances ? Colors.white : const Color(0xFF64748B)),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'Filtres',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _hasFiltresAvances ? Colors.white : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    if (!isDesktop)
-                      OutlinedButton.icon(
-                        onPressed: _openFiltersBottomSheet,
-                        icon: const Icon(Icons.tune),
-                        label: const Text('Filtrer'),
-                      ),
                   ],
                 ),
               ],
@@ -595,6 +662,41 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FiltreChip extends StatelessWidget {
+  const _FiltreChip(this.label, this.valeur, this.selected, this.onTap);
+  final String label;
+  final String? valeur;
+  final String? selected;
+  final Function(String?) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSel = valeur == selected;
+    return GestureDetector(
+      onTap: () => onTap(isSel ? null : valeur),
+      child: Container(
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSel ? const Color(0xFF1A56DB) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: isSel ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isSel ? Colors.white : const Color(0xFF64748B),
+          ),
+        ),
       ),
     );
   }

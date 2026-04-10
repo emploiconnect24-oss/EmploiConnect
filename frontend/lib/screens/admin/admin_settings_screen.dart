@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import '../../config/api_config.dart';
@@ -45,6 +46,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _parserHostCtrl = TextEditingController();
   final _topicTaggingHostCtrl = TextEditingController();
   final _openaiKeyCtrl = TextEditingController();
+  final _anthropicApiKeyCtrl = TextEditingController();
   final _footerLinkedinCtrl = TextEditingController();
   final _footerFacebookCtrl = TextEditingController();
   final _footerTwitterCtrl = TextEditingController();
@@ -111,6 +113,22 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _iaTestLoading = false;
   String? _iaTestMessage;
   Map<String, dynamic>? _iaTestResult;
+  bool _isTestingIA = false;
+  String _iaAmeliorationProvider = 'anthropic';
+  String _anthropicModel = 'claude-haiku-4-5-20251001';
+  bool _iaMatchingActif = true;
+
+  static const Set<String> _iaAmeliorationProvidersAllowed = {
+    'anthropic',
+    'openai',
+    'local',
+    'aucun',
+  };
+
+  static const Set<String> _knownAnthropicModels = {
+    'claude-haiku-4-5-20251001',
+    'claude-sonnet-4-6',
+  };
   bool _smtpTestLoading = false;
   String? _smtpTestMessage;
 
@@ -316,6 +334,19 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _param(grouped, 'rapidapi_topic_tagging_host')?.toString() ?? '';
         _openaiKeyCtrl.text =
             _param(grouped, 'openai_api_key')?.toString() ?? '';
+        _anthropicApiKeyCtrl.text =
+            _param(grouped, 'anthropic_api_key')?.toString() ?? '';
+        final provA =
+            _param(grouped, 'ia_amelioration_provider')?.toString().toLowerCase().trim() ??
+            'anthropic';
+        final normalizedProv = provA == 'aucun' ? 'local' : provA;
+        _iaAmeliorationProvider =
+            _iaAmeliorationProvidersAllowed.contains(normalizedProv) ? normalizedProv : 'anthropic';
+        _iaMatchingActif =
+            _boolNotifDefaultTrue(_param(grouped, 'ia_matching_actif'));
+        final am =
+            _param(grouped, 'anthropic_model')?.toString().trim() ?? '';
+        _anthropicModel = am.isNotEmpty ? am : 'claude-haiku-4-5-20251001';
         _iaProvider = _param(grouped, 'ia_provider')?.toString() ?? 'rapidapi';
         _footerLinkedinCtrl.text =
             _param(grouped, 'footer_linkedin')?.toString() ?? '';
@@ -499,6 +530,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _parserHostCtrl.dispose();
     _topicTaggingHostCtrl.dispose();
     _openaiKeyCtrl.dispose();
+    _anthropicApiKeyCtrl.dispose();
     _footerLinkedinCtrl.dispose();
     _footerFacebookCtrl.dispose();
     _footerTwitterCtrl.dispose();
@@ -622,12 +654,21 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         },
         {'cle': 'email_service_actif', 'valeur': _emailServiceActif},
         {'cle': 'email_smtp_host', 'valeur': _smtpHostCtrl.text.trim()},
+        {'cle': 'smtp_host', 'valeur': _smtpHostCtrl.text.trim()},
         {
           'cle': 'email_smtp_port',
           'valeur': int.tryParse(_smtpPortCtrl.text.trim()) ?? 587,
         },
+        {
+          'cle': 'smtp_port',
+          'valeur': int.tryParse(_smtpPortCtrl.text.trim()) ?? 587,
+        },
         {'cle': 'email_smtp_user', 'valeur': _smtpUserCtrl.text.trim()},
+        {'cle': 'smtp_user', 'valeur': _smtpUserCtrl.text.trim()},
         {'cle': 'email_smtp_password', 'valeur': _smtpPasswordCtrl.text.trim()},
+        {'cle': 'smtp_password', 'valeur': _smtpPasswordCtrl.text.trim()},
+        {'cle': 'email_from', 'valeur': _smtpUserCtrl.text.trim()},
+        {'cle': 'email_nom', 'valeur': _emailSenderNameCtrl.text.trim()},
         {
           'cle': 'email_nom_expediteur',
           'valeur': _emailSenderNameCtrl.text.trim(),
@@ -662,6 +703,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           'valeur': _topicTaggingHostCtrl.text.trim(),
         },
         {'cle': 'openai_api_key', 'valeur': _openaiKeyCtrl.text.trim()},
+        {'cle': 'anthropic_api_key', 'valeur': _anthropicApiKeyCtrl.text.trim()},
+        {'cle': 'anthropic_model', 'valeur': _anthropicModel.trim()},
+        {'cle': 'ia_amelioration_provider', 'valeur': _iaAmeliorationProvider},
+        {'cle': 'ia_matching_provider', 'valeur': _iaAmeliorationProvider},
+        {'cle': 'ia_matching_actif', 'valeur': _iaMatchingActif},
         {'cle': 'mode_maintenance', 'valeur': _maintenanceMode},
         {
           'cle': 'message_maintenance',
@@ -729,6 +775,163 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         _iaTestMessage = e.toString();
         _iaTestResult = null;
       });
+    }
+  }
+
+  Future<void> _testerIaTexteApropos() async {
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session expirée : reconnectez-vous.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _isTestingIA = true);
+    try {
+      final uri = Uri.parse('$apiBaseUrl$apiPrefix/admin/parametres/test-ia-apropos');
+      final res = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'texte_original':
+              '[TEXTE DE TEST] Je suis développeur mobile avec quelques années d\'expérience.',
+          'titre_poste': 'Développeur Mobile',
+          'competences': ['Flutter', 'Dart', 'Firebase'],
+        }),
+      );
+      if (!mounted) return;
+      final body = jsonDecode(res.body) as Map<String, dynamic>?;
+      if (res.statusCode >= 200 &&
+          res.statusCode < 300 &&
+          body?['success'] == true) {
+        final data = body!['data'] as Map<String, dynamic>?;
+        final resultat = data?['texte_ameliore']?.toString() ?? '';
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF10B981),
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✅ IA opérationnelle !',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Texte test :',
+                        style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF94A3B8)),
+                      ),
+                      Text(
+                        '[TEXTE DE TEST] Je suis développeur mobile...',
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.maxFinite,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F3FF),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_awesome_rounded, size: 12, color: Color(0xFF7C3AED)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Résultat amélioré :',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF6D28D9),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      SingleChildScrollView(
+                        child: Text(
+                          resultat,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: const Color(0xFF374151),
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        final msg = body?['message']?.toString() ?? 'Erreur ${res.statusCode}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isTestingIA = false);
     }
   }
 
@@ -1991,6 +2194,39 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  String _anthropicModelForDropdown() {
+    final m = _anthropicModel.trim();
+    if (m.isEmpty) return 'claude-haiku-4-5-20251001';
+    return m;
+  }
+
+  List<DropdownMenuItem<String>> _anthropicModelDropdownItems() {
+    final m = _anthropicModel.trim();
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(
+        value: 'claude-haiku-4-5-20251001',
+        child: Text('Claude Haiku (rapide, économique)'),
+      ),
+      const DropdownMenuItem(
+        value: 'claude-sonnet-4-6',
+        child: Text('Claude Sonnet (meilleur résultat)'),
+      ),
+    ];
+    if (m.isNotEmpty && !_knownAnthropicModels.contains(m)) {
+      items.add(
+        DropdownMenuItem(
+          value: m,
+          child: Text(
+            m,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
+    return items;
+  }
+
   Widget _buildAiSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2169,14 +2405,256 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ],
         ),
         _sectionCard(
-          title: 'OpenAI (optionnel)',
+          title: 'Intelligence Artificielle — Amélioration textes',
           children: [
-            TextField(
-              controller: _openaiKeyCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Clé OpenAI'),
-              onChanged: (_) => _markChanged(),
+            Text(
+              'Utilisée pour améliorer le champ « À propos » des candidats. '
+              'Enregistrez les paramètres avant de tester si vous venez de les modifier.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFF64748B),
+                height: 1.4,
+              ),
             ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _iaAmeliorationProvider,
+              decoration: const InputDecoration(
+                labelText: 'Provider IA',
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'anthropic',
+                  child: Text('🟣 Anthropic Claude (Recommandé)'),
+                ),
+                DropdownMenuItem(
+                  value: 'openai',
+                  child: Text('🟢 OpenAI ChatGPT'),
+                ),
+                DropdownMenuItem(
+                  value: 'local',
+                  child: Text('⚙️ Texte de secours local (Sans IA)'),
+                ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() {
+                  _iaAmeliorationProvider = v;
+                  _markChanged();
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_iaAmeliorationProvider == 'anthropic') ...[
+              TextField(
+                controller: _anthropicApiKeyCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Clé API Anthropic',
+                  hintText: 'sk-ant-api03-...',
+                ),
+                onChanged: (_) => _markChanged(),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Obtenir sur console.anthropic.com → API Keys',
+                style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _anthropicModelForDropdown(),
+                decoration: const InputDecoration(labelText: 'Modèle Claude'),
+                items: _anthropicModelDropdownItems(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _anthropicModel = v;
+                    _markChanged();
+                  });
+                },
+              ),
+            ],
+            if (_iaAmeliorationProvider == 'openai') ...[
+              TextField(
+                controller: _openaiKeyCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Clé API OpenAI',
+                  hintText: 'sk-proj-...',
+                ),
+                onChanged: (_) => _markChanged(),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Obtenir sur platform.openai.com → API Keys',
+                style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Modèle utilisé : GPT-3.5-turbo',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF065F46),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (_iaAmeliorationProvider == 'local')
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, color: Color(0xFF64748B), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Mode local : l\'amélioration de texte utilisera des règles prédéfinies sans IA externe.',
+                        style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const Divider(height: 24),
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Color(0xFF8B5CF6),
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Scoring IA des offres',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      Text(
+                        'Claude analyse la compatibilité profil ↔ offre',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _iaMatchingActif,
+                  activeThumbColor: const Color(0xFF8B5CF6),
+                  onChanged: (v) {
+                    setState(() {
+                      _iaMatchingActif = v;
+                      _markChanged();
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F3FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline_rounded,
+                    color: Color(0xFF7C3AED),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Claude utilise la même clé pour améliorer les textes ET calculer la compatibilité des offres.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: const Color(0xFF6D28D9),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_iaAmeliorationProvider != 'local') ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, color: Color(0xFFF59E0B), size: 14),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Le test utilise un texte d\'exemple fictif (pas de données de candidats réels).',
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF92400E)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: _isTestingIA
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.play_arrow_rounded, size: 16),
+                  label: Text(_isTestingIA ? 'Test en cours...' : 'Tester l\'IA'),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF8B5CF6)),
+                    foregroundColor: const Color(0xFF8B5CF6),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _isTestingIA ? null : _testerIaTexteApropos,
+                ),
+              ),
+            ],
           ],
         ),
         _sectionCard(
@@ -2366,7 +2844,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _footerField(
               controller: _footerEmailCtrl,
               label: 'Email public',
-              hint: 'contact@emploiconnect.gn',
+              hint: 'contact@example.com',
               tooltip: 'Email affiché dans le footer (contact public).',
             ),
             _footerField(

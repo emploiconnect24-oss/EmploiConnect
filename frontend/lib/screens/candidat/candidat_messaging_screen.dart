@@ -1,11 +1,25 @@
 import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../providers/candidat_provider.dart';
 import '../../services/candidat_messages_service.dart';
 import 'candidat_applications_screen.dart';
 
 class CandidatMessagingScreen extends StatefulWidget {
-  const CandidatMessagingScreen({super.key});
+  const CandidatMessagingScreen({
+    super.key,
+    this.initialPeerId,
+    this.initialPeerName,
+    this.initialPeerPhotoUrl,
+  });
+
+  final String? initialPeerId;
+  final String? initialPeerName;
+  final String? initialPeerPhotoUrl;
 
   @override
   State<CandidatMessagingScreen> createState() =>
@@ -25,6 +39,14 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
   Timer? _pollTimer;
   bool _loading = true;
   String? _error;
+
+  String? _pendingPjUrl;
+  String? _pendingPjNom;
+  bool _uploadingPj = false;
+  String? _activePeerPhotoUrl;
+  bool _initialPeerHandled = false;
+  bool _autreEcrit = false;
+  Timer? _typingTimer;
 
   @override
   void initState() {
@@ -47,6 +69,7 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
     _messageCtrl.dispose();
     _scrollCtrl.dispose();
     _pollTimer?.cancel();
+    _typingTimer?.cancel();
     super.dispose();
   }
 
@@ -79,36 +102,296 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
     }).toList();
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageCtrl.text.trim();
-    if (text.isEmpty) return;
+    final pj = _pendingPjUrl;
+    if (text.isEmpty && (pj == null || pj.isEmpty)) return;
     final idx = _conversations.indexWhere((c) => c.id == _selected.id);
     if (idx < 0) return;
     final conv = _conversations[idx];
-    _svc
-        .sendMessage(conv.peerId, text, offreId: conv.offreId)
-        .then((_) => _openConversation(conv.id))
-        .catchError((e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(e.toString())));
-        });
-    _messageCtrl.clear();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollCtrl.hasClients) return;
-      _scrollCtrl.animateTo(
-        _scrollCtrl.position.maxScrollExtent + 100,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
+    try {
+      await _svc.sendMessage(
+        conv.peerId,
+        text,
+        offreId: conv.offreId,
+        pieceJointeUrl: pj,
+        pieceJointeNom: _pendingPjNom,
       );
-    });
+      if (!mounted) return;
+      _messageCtrl.clear();
+      setState(() {
+        _pendingPjUrl = null;
+        _pendingPjNom = null;
+      });
+      await _openConversation(conv.id);
+      _scrollerEnBas();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  Future<void> _pickPieceJointe() async {
+    final r = await FilePicker.platform.pickFiles(withData: true);
+    if (r == null || r.files.isEmpty) return;
+    final f = r.files.first;
+    final bytes = f.bytes;
+    if (bytes == null || bytes.isEmpty) return;
+    setState(() => _uploadingPj = true);
+    try {
+      final res = await _svc.uploadPieceJointe(bytes, f.name);
+      final data = res['data'] as Map<String, dynamic>? ?? {};
+      final url = data['url']?.toString();
+      if (url == null || url.isEmpty) throw Exception('URL manquante');
+      if (!mounted) return;
+      setState(() {
+        _pendingPjUrl = url;
+        _pendingPjNom = data['nom']?.toString() ?? f.name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _uploadingPj = false);
+    }
+  }
+
+  Future<void> _pickImagePieceJointe() async {
+    final picker = ImagePicker();
+    final x = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+    );
+    if (x == null) return;
+    final bytes = await x.readAsBytes();
+    if (bytes.isEmpty) return;
+    setState(() => _uploadingPj = true);
+    try {
+      final res = await _svc.uploadPieceJointe(bytes, x.name);
+      final data = res['data'] as Map<String, dynamic>? ?? {};
+      final url = data['url']?.toString();
+      if (url == null || url.isEmpty) throw Exception('URL manquante');
+      if (!mounted) return;
+      setState(() {
+        _pendingPjUrl = url;
+        _pendingPjNom = data['nom']?.toString() ?? x.name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _uploadingPj = false);
+    }
+  }
+
+  _Msg _msgFromMap(Map<String, dynamic> m) {
+    final iso = m['date_envoi']?.toString();
+    return _Msg(
+      id: m['id']?.toString(),
+      sender: (m['is_mine'] == true) ? 'candidat' : 'recruteur',
+      content: m['contenu']?.toString() ?? '',
+      time: _fmtMsgTime(iso),
+      dateIso: iso,
+      read: m['est_lu'] == true,
+      pieceJointeUrl: m['piece_jointe_url']?.toString(),
+      pieceJointeNom: m['piece_jointe_nom']?.toString(),
+    );
+  }
+
+  String _fmtMsgTime(String? iso) {
+    if (iso == null || iso.isEmpty) return _nowLabel();
+    final d = DateTime.tryParse(iso)?.toLocal();
+    if (d == null) return _nowLabel();
+    final h = d.hour.toString().padLeft(2, '0');
+    final min = d.minute.toString().padLeft(2, '0');
+    return '$h:$min';
   }
 
   String _nowLabel() {
     final now = TimeOfDay.now();
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _confirmDeleteMessage(_Msg msg) async {
+    final id = msg.id;
+    if (id == null || id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce message ?'),
+        content: const Text(
+          'Le message sera retiré de votre vue (suppression côté expéditeur).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _svc.deleteMessage(id);
+      if (!mounted) return;
+      final conv = _selected;
+      await _openConversation(conv.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message supprimé')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      color: Colors.white,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_pendingPjNom != null && _pendingPjNom!.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF1A56DB).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.attach_file_rounded,
+                    color: Color(0xFF1A56DB),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _pendingPjNom!,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: const Color(0xFF1A56DB),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _pendingPjUrl = null;
+                      _pendingPjNom = null;
+                    }),
+                    child: const Icon(Icons.close, size: 16, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+            ),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _uploadingPj ? null : _pickPieceJointe,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.attach_file_rounded,
+                    color: _uploadingPj
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF64748B),
+                    size: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: _uploadingPj ? null : _pickImagePieceJointe,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: _uploadingPj
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF64748B),
+                    size: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _messageCtrl,
+                  maxLines: null,
+                  minLines: 1,
+                  decoration: InputDecoration(
+                    hintText: 'Écrire un message...',
+                    hintStyle: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: const Color(0xFFCBD5E1),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(100),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(100),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _sendMessage,
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1A56DB),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.send_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -309,7 +592,7 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
           children: [
             Row(
               children: [
-                _ConversationAvatar(conv: conv),
+                _HeaderPeerAvatar(conv: conv, photoUrl: _activePeerPhotoUrl),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -348,6 +631,31 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
               ],
             ),
             const Divider(height: 18),
+            if (_autreEcrit)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: const Row(
+                        children: [
+                          _PointAnimation(delai: 0),
+                          SizedBox(width: 4),
+                          _PointAnimation(delai: 150),
+                          SizedBox(width: 4),
+                          _PointAnimation(delai: 300),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: ListView.builder(
                 controller: _scrollCtrl,
@@ -355,145 +663,24 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
                 itemBuilder: (_, i) {
                   final msg = conv.messages[i];
                   final isMe = msg.sender == 'candidat';
-                  return Align(
-                    alignment: isMe
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxWidth: MediaQuery.of(context).size.width * 0.52,
+                  final isDateSeparator = _changementJour(conv.messages, i);
+                  return Column(
+                    children: [
+                      if (isDateSeparator)
+                        _buildSeparateurDate(_labelDate(msg.dateIso)),
+                      _MessageBubble(
+                        msg: msg,
+                        isMe: isMe,
+                        onLongPress: isMe && msg.id != null && msg.id!.isNotEmpty
+                            ? () => _confirmDeleteMessage(msg)
+                            : null,
                       ),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isMe ? const Color(0xFF1A56DB) : Colors.white,
-                        borderRadius: BorderRadius.circular(12).copyWith(
-                          bottomRight: isMe ? const Radius.circular(2) : null,
-                          bottomLeft: !isMe ? const Radius.circular(2) : null,
-                        ),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                        boxShadow: isMe
-                            ? null
-                            : const [
-                                BoxShadow(
-                                  color: Color(0x0A000000),
-                                  blurRadius: 6,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (msg.pieceJointeUrl != null && msg.pieceJointeUrl!.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Material(
-                                color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFEFF6FF),
-                                borderRadius: BorderRadius.circular(8),
-                                child: InkWell(
-                                  onTap: () async {
-                                    final u = Uri.tryParse(msg.pieceJointeUrl!);
-                                    if (u != null && await canLaunchUrl(u)) {
-                                      await launchUrl(u, mode: LaunchMode.externalApplication);
-                                    }
-                                  },
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.attach_file_rounded,
-                                          size: 18,
-                                          color: isMe ? Colors.white : const Color(0xFF1A56DB),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            (msg.pieceJointeNom != null && msg.pieceJointeNom!.isNotEmpty)
-                                                ? msg.pieceJointeNom!
-                                                : 'Pièce jointe',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: isMe ? Colors.white : const Color(0xFF1A56DB),
-                                              decoration: TextDecoration.underline,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          Text(
-                            msg.content,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isMe
-                                  ? Colors.white
-                                  : const Color(0xFF0F172A),
-                              height: 1.35,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            msg.read ? '${msg.time} • lu' : msg.time,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isMe
-                                  ? Colors.white70
-                                  : const Color(0xFF94A3B8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   );
                 },
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Envoi de pièce jointe à connecter.'),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.attach_file),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _messageCtrl,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: 'Écrire votre message...',
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _sendMessage,
-                  icon: const Icon(Icons.send, size: 16),
-                  label: const Text('Envoyer'),
-                ),
-              ],
-            ),
+            _buildMessageInput(),
           ],
         ),
       ),
@@ -584,7 +771,13 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
       unread: _asInt(r['nb_non_lus']),
       messages: messages ?? [],
       offreId: r['offre_id']?.toString(),
-      logoUrl: r['entreprise_logo_url']?.toString(),
+      logoUrl: (() {
+        final fromEntreprise = r['entreprise_logo_url']?.toString();
+        if (fromEntreprise != null && fromEntreprise.isNotEmpty) return fromEntreprise;
+        final peerPhoto = peer['photo_url']?.toString();
+        if (peerPhoto != null && peerPhoto.isNotEmpty) return peerPhoto;
+        return null;
+      })(),
     );
   }
 
@@ -617,6 +810,9 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
           _selectedId = next.isNotEmpty ? next.first.id : null;
         }
       });
+      if (mounted) {
+        await context.read<CandidatProvider>().loadDashboardMetrics();
+      }
     } catch (_) {}
   }
 
@@ -642,6 +838,8 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
         }
         _loading = false;
       });
+      await context.read<CandidatProvider>().loadDashboardMetrics();
+      await _openInitialPeerIfAny();
       if (_selectedId != null) await _openConversation(_selectedId!);
     } catch (e) {
       if (!mounted) return;
@@ -650,6 +848,40 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _openInitialPeerIfAny() async {
+    if (_initialPeerHandled) return;
+    final peerId = widget.initialPeerId?.trim() ?? '';
+    if (peerId.isEmpty) {
+      _initialPeerHandled = true;
+      return;
+    }
+    context.read<CandidatProvider>().clearMessageriePrefill();
+    _initialPeerHandled = true;
+    final existing = _conversations.where((c) => c.peerId == peerId).toList();
+    if (existing.isNotEmpty) {
+      _selectedId = existing.first.id;
+      return;
+    }
+
+    final fallbackId = 'prefill-$peerId';
+    final conv = _Conversation(
+      id: fallbackId,
+      peerId: peerId,
+      companyName: (widget.initialPeerName ?? 'Entreprise').trim(),
+      offerTitle: 'Nouveau contact',
+      lastMessage: '',
+      lastTime: '',
+      unread: 0,
+      messages: [],
+      logoUrl: widget.initialPeerPhotoUrl,
+    );
+    if (!mounted) return;
+    setState(() {
+      _conversations = [conv, ..._conversations];
+      _selectedId = fallbackId;
+    });
   }
 
   int _asInt(dynamic v) {
@@ -674,32 +906,29 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
     if (idx < 0) return;
     final conv = _conversations[idx];
     final thread = await _svc.getThread(conv.peerId);
+    final data = (thread['data'] as Map?)?.cast<String, dynamic>() ?? {};
     final messages = List<Map<String, dynamic>>.from(
-      (thread['data']?['messages']) ?? const [],
+      data['messages'] ?? const [],
     );
+    final interloc = data['interlocuteur'] as Map?;
+    final photo = interloc?['photo_url']?.toString().trim();
     if (!mounted) return;
     setState(() {
       _selectedId = conversationId;
-      _lastTimestamp = thread['data']?['timestamp']?.toString();
+      _lastTimestamp = data['timestamp']?.toString();
+      _activePeerPhotoUrl =
+          (photo != null && photo.isNotEmpty) ? photo : null;
       _conversations[idx].messages
         ..clear()
         ..addAll(
-          messages.map(
-            (m) => _Msg(
-              sender: (m['is_mine'] == true) ? 'candidat' : 'recruteur',
-              content: m['contenu']?.toString() ?? '',
-              time: _nowLabel(),
-              read: m['est_lu'] == true,
-              pieceJointeUrl: m['piece_jointe_url']?.toString(),
-              pieceJointeNom: m['piece_jointe_nom']?.toString(),
-            ),
-          ),
+          messages.map((m) => _msgFromMap(Map<String, dynamic>.from(m))),
         );
       _conversations[idx].unread = 0;
       if (MediaQuery.of(context).size.width < 900) {
         _showConversationOnMobile = true;
       }
     });
+    _scrollerEnBas();
   }
 
   Future<void> _pollNouveauxMessages() async {
@@ -726,27 +955,81 @@ class _CandidatMessagingScreenState extends State<CandidatMessagingScreen> {
         _lastTimestamp = data['timestamp']?.toString() ?? _lastTimestamp;
         _conversations[idx].messages.addAll(
           incoming.map(
-            (m) => _Msg(
-              sender: (m['is_mine'] == true) ? 'candidat' : 'recruteur',
-              content: m['contenu']?.toString() ?? '',
-              time: _nowLabel(),
-              read: m['est_lu'] == true,
-              pieceJointeUrl: m['piece_jointe_url']?.toString(),
-              pieceJointeNom: m['piece_jointe_nom']?.toString(),
-            ),
+            (m) => _msgFromMap(Map<String, dynamic>.from(m)),
           ),
         );
+        _autreEcrit = true;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollCtrl.hasClients) return;
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
+      _typingTimer?.cancel();
+      _typingTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() => _autreEcrit = false);
       });
+      _scrollerEnBas();
     } catch (_) {}
   }
+
+  void _scrollerEnBas() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollCtrl.hasClients) return;
+      _scrollCtrl.animateTo(
+        _scrollCtrl.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  bool _changementJour(List<_Msg> messages, int index) {
+    if (index == 0) return true;
+    final d1 = messages[index].dateTime;
+    final d2 = messages[index - 1].dateTime;
+    if (d1 == null || d2 == null) return false;
+    return d1.day != d2.day || d1.month != d2.month || d1.year != d2.year;
+  }
+
+  String _labelDate(String? iso) {
+    try {
+      if (iso == null || iso.isEmpty) return '';
+      final dt = DateTime.parse(iso).toLocal();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final target = DateTime(dt.year, dt.month, dt.day);
+      final diff = today.difference(target).inDays;
+      if (diff == 0) return "Aujourd'hui";
+      if (diff == 1) return 'Hier';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Widget _buildSeparateurDate(String date) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Row(
+      children: [
+        const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(
+            date,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              color: const Color(0xFF94A3B8),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+      ],
+    ),
+  );
 }
 
 class _Conversation {
@@ -783,19 +1066,280 @@ class _Conversation {
 
 class _Msg {
   _Msg({
+    this.id,
     required this.sender,
     required this.content,
     required this.time,
+    this.dateIso,
     required this.read,
     this.pieceJointeUrl,
     this.pieceJointeNom,
   });
+  final String? id;
   final String sender; // candidat | recruteur
   final String content;
   final String time;
+  final String? dateIso;
   final bool read;
   final String? pieceJointeUrl;
   final String? pieceJointeNom;
+
+  DateTime? get dateTime {
+    final iso = dateIso;
+    if (iso == null || iso.isEmpty) return null;
+    return DateTime.tryParse(iso)?.toLocal();
+  }
+}
+
+class _MessageBubble extends StatefulWidget {
+  const _MessageBubble({
+    required this.msg,
+    required this.isMe,
+    this.onLongPress,
+  });
+
+  final _Msg msg;
+  final bool isMe;
+  final VoidCallback? onLongPress;
+
+  @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+    );
+    _slide = Tween<Offset>(
+      begin: Offset(widget.isMe ? 0.3 : -0.3, 0),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+    );
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = widget.msg;
+    final isMe = widget.isMe;
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: GestureDetector(
+            onLongPress: widget.onLongPress,
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.52,
+              ),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isMe ? const Color(0xFF1A56DB) : Colors.white,
+                borderRadius: BorderRadius.circular(12).copyWith(
+                  bottomRight: isMe ? const Radius.circular(2) : null,
+                  bottomLeft: !isMe ? const Radius.circular(2) : null,
+                ),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: isMe
+                    ? null
+                    : const [
+                        BoxShadow(
+                          color: Color(0x0A000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (msg.pieceJointeUrl != null && msg.pieceJointeUrl!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                        child: InkWell(
+                          onTap: () async {
+                            final u = Uri.tryParse(msg.pieceJointeUrl!);
+                            if (u != null && await canLaunchUrl(u)) {
+                              await launchUrl(u, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.attach_file_rounded,
+                                  size: 18,
+                                  color: isMe ? Colors.white : const Color(0xFF1A56DB),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    (msg.pieceJointeNom != null && msg.pieceJointeNom!.isNotEmpty)
+                                        ? msg.pieceJointeNom!
+                                        : 'Pièce jointe',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isMe ? Colors.white : const Color(0xFF1A56DB),
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Text(
+                    msg.content,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isMe ? Colors.white : const Color(0xFF0F172A),
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        msg.time,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isMe ? Colors.white70 : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          msg.read ? Icons.done_all_rounded : Icons.done_rounded,
+                          size: 12,
+                          color: msg.read ? Colors.white : Colors.white.withValues(alpha: 0.6),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PointAnimation extends StatefulWidget {
+  const _PointAnimation({required this.delai});
+  final int delai;
+
+  @override
+  State<_PointAnimation> createState() => _PointAnimationState();
+}
+
+class _PointAnimationState extends State<_PointAnimation> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _anim = Tween<double>(begin: 0.35, end: 1).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    Future<void>.delayed(Duration(milliseconds: widget.delai), () {
+      if (!mounted) return;
+      _ctrl.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _anim,
+      child: const CircleAvatar(
+        radius: 2.5,
+        backgroundColor: Color(0xFF94A3B8),
+      ),
+    );
+  }
+}
+
+class _HeaderPeerAvatar extends StatelessWidget {
+  const _HeaderPeerAvatar({
+    required this.conv,
+    this.photoUrl,
+  });
+
+  final _Conversation conv;
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = (photoUrl != null && photoUrl!.isNotEmpty)
+        ? photoUrl!
+        : (conv.logoUrl ?? '');
+    if (u.isNotEmpty) {
+      return CircleAvatar(
+        radius: 22,
+        backgroundColor: const Color(0xFFE2E8F0),
+        backgroundImage: NetworkImage(u),
+        onBackgroundImageError: (_, _) {},
+      );
+    }
+    return CircleAvatar(
+      radius: 22,
+      backgroundColor: const Color(0xFFE2E8F0),
+      child: Text(
+        conv.initials,
+        style: const TextStyle(
+          fontSize: 13,
+          color: Color(0xFF334155),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }
 
 class _ConversationAvatar extends StatelessWidget {
@@ -811,7 +1355,7 @@ class _ConversationAvatar extends StatelessWidget {
         radius: 20,
         backgroundColor: const Color(0xFFE2E8F0),
         backgroundImage: NetworkImage(u),
-        onBackgroundImageError: (context, error, stackTrace) {},
+        onBackgroundImageError: (error, stackTrace) {},
         child: null,
       );
     }

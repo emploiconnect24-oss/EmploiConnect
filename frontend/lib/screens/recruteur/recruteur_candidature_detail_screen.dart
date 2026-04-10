@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/cv_service.dart';
 import '../../services/recruteur_service.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/responsive_container.dart';
 import '../../widgets/signalement_content_sheet.dart';
 import 'recruteur_messagerie_connected_screen.dart';
 
@@ -172,6 +172,33 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
     }
   }
 
+  String? _validateEntretienForm({
+    required DateTime dateTime,
+    required String type,
+    required String? lienVisio,
+    required String? lieuOuNumero,
+  }) {
+    if (dateTime.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
+      return 'La date/heure doit être dans le futur.';
+    }
+    if (type == 'visio') {
+      final v = (lienVisio ?? '').trim();
+      if (v.isEmpty) return 'Le lien visio est requis.';
+      final uri = Uri.tryParse(v);
+      if (uri == null || !(uri.hasScheme && uri.host.isNotEmpty)) {
+        return 'Le lien visio doit être une URL valide.';
+      }
+    } else {
+      final v = (lieuOuNumero ?? '').trim();
+      if (v.isEmpty) {
+        return type == 'presentiel'
+            ? 'Le lieu de l’entretien est requis.'
+            : 'Le numéro à appeler est requis.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _showPlanifierEntretienDialog() async {
     final d0 = _data ?? {};
     var day = DateTime.tryParse(d0['date_entretien']?.toString() ?? '') ?? DateTime.now().add(const Duration(days: 2));
@@ -183,6 +210,7 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
     final lieuCtrl = TextEditingController(text: d0['lieu_entretien']?.toString() ?? '');
     final notesCtrl = TextEditingController(text: d0['notes_entretien']?.toString() ?? '');
     final stepRef = <int>[0];
+    final errorRef = <String?>[null];
 
     await showDialog<void>(
       context: context,
@@ -194,6 +222,7 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
           final lv = type == 'visio' ? lienCtrl.text.trim() : null;
           final lu = (type == 'presentiel' || type == 'telephone') ? lieuCtrl.text.trim() : null;
           final notesPreview = notesCtrl.text.trim();
+          final formError = errorRef[0];
 
           Widget recapBlock() {
             return Container(
@@ -212,8 +241,16 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                   _RecapLine(Icons.category_outlined, 'Type', _labelTypeEntretien(type)),
                   if (type == 'visio' && (lv ?? '').isNotEmpty)
                     _RecapLine(Icons.link, 'Lien visio', lv!),
+                  if (type == 'visio' && (lv ?? '').isEmpty)
+                    const _RecapLine(Icons.link_off, 'Lien visio', 'Non renseigné'),
                   if ((type == 'presentiel' || type == 'telephone') && (lu ?? '').isNotEmpty)
                     _RecapLine(type == 'presentiel' ? Icons.place_outlined : Icons.phone_outlined, type == 'presentiel' ? 'Lieu' : 'Coordonnées', lu!),
+                  if ((type == 'presentiel' || type == 'telephone') && (lu ?? '').isEmpty)
+                    _RecapLine(
+                      type == 'presentiel' ? Icons.place_outlined : Icons.phone_outlined,
+                      type == 'presentiel' ? 'Lieu' : 'Coordonnées',
+                      'Non renseigné',
+                    ),
                   if (notesPreview.isNotEmpty)
                     _RecapLine(Icons.notes_outlined, 'Notes', notesPreview),
                 ],
@@ -310,6 +347,17 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                               isDense: true,
                             ),
                           ),
+                          if (formError != null) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              formError,
+                              style: GoogleFonts.inter(
+                                color: const Color(0xFFDC2626),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ],
                       )
                     : Column(
@@ -330,7 +378,18 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
               if (step == 0)
                 FilledButton(
-                  onPressed: () => setDlg(() => stepRef[0] = 1),
+                  onPressed: () {
+                    final msg = _validateEntretienForm(
+                      dateTime: dt,
+                      type: type,
+                      lienVisio: lv,
+                      lieuOuNumero: lu,
+                    );
+                    setDlg(() {
+                      errorRef[0] = msg;
+                      if (msg == null) stepRef[0] = 1;
+                    });
+                  },
                   child: const Text('Voir le récapitulatif'),
                 )
               else ...[
@@ -339,6 +398,19 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                   onPressed: _savingAction
                       ? null
                       : () async {
+                          final msg = _validateEntretienForm(
+                            dateTime: dt,
+                            type: type,
+                            lienVisio: lv,
+                            lieuOuNumero: lu,
+                          );
+                          if (msg != null) {
+                            setDlg(() {
+                              errorRef[0] = msg;
+                              stepRef[0] = 0;
+                            });
+                            return;
+                          }
                           final notes = notesPreview.isEmpty ? null : notesPreview;
                           Navigator.pop(ctx);
                           await _action(
@@ -362,20 +434,27 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
 
   Future<void> _showCv() async {
     try {
-      final url = await _cvService.getDownloadUrl(candidatureId: widget.candidatureId);
+      final cv = _data?['cv'];
+      String? url;
+      if (cv is Map) {
+        final su = cv['signed_url'];
+        if (su is String && su.isNotEmpty) url = su;
+      }
+      url ??= await _cvService.getDownloadUrl(candidatureId: widget.candidatureId);
       if (!mounted) return;
       if (url == null || url.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucun CV disponible')));
         return;
       }
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Lien CV'),
-          content: SelectableText(url),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer'))],
-        ),
-      );
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lien CV invalide')));
+        return;
+      }
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir le CV')));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -391,7 +470,74 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
 
   List<String> _asStringList(dynamic v) {
     if (v == null) return const [];
-    if (v is List) return v.map((e) => e.toString()).where((s) => s.trim().isNotEmpty).toList();
+    if (v is Map) {
+      final map = v.map((k, val) => MapEntry('$k'.toLowerCase(), val));
+      final keysPriority = [
+        'competences',
+        'skills',
+        'technologies',
+        'langues',
+        'languages',
+        'soft_skills',
+      ];
+      final out = <String>[];
+      void addValue(dynamic value) {
+        if (value == null) return;
+        if (value is List) {
+          for (final item in value) {
+            final s = '$item'.trim();
+            if (s.isNotEmpty && !s.startsWith('{')) out.add(s);
+          }
+          return;
+        }
+        if (value is Map) {
+          for (final entry in value.entries) {
+            final vv = '${entry.value}'.trim();
+            if (vv.isNotEmpty && vv != 'null') {
+              out.add(vv);
+            }
+          }
+          return;
+        }
+        final s = '$value'.trim();
+        if (s.isNotEmpty && s != 'null' && !s.startsWith('{')) out.add(s);
+      }
+
+      for (final k in keysPriority) {
+        if (map.containsKey(k)) addValue(map[k]);
+      }
+      // fallback sur le reste des clés utiles
+      for (final e in map.entries) {
+        if (keysPriority.contains(e.key)) continue;
+        if (e.value is String || e.value is List) addValue(e.value);
+      }
+      return out.toSet().toList();
+    }
+    if (v is List) {
+      final out = <String>[];
+      for (final e in v) {
+        if (e == null) continue;
+        if (e is String) {
+          final s = e.trim();
+          if (s.isNotEmpty) out.add(s);
+          continue;
+        }
+        if (e is Map) {
+          final m = e.map((k, val) => MapEntry('$k', val));
+          final picked = (m['nom'] ?? m['name'] ?? m['label'] ?? m['libelle'] ?? m['valeur'] ?? m['value'])?.toString().trim();
+          if (picked != null && picked.isNotEmpty) {
+            out.add(picked);
+            continue;
+          }
+          final fallback = m.values.map((x) => '$x').join(' - ').trim();
+          if (fallback.isNotEmpty) out.add(fallback);
+          continue;
+        }
+        final s = e.toString().trim();
+        if (s.isNotEmpty) out.add(s);
+      }
+      return out;
+    }
     if (v is String) {
       final s = v.trim();
       if (s.isEmpty) return const [];
@@ -442,6 +588,7 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
     final cv = (d['cv'] as Map?)?.cast<String, dynamic>();
 
     final fullName = (user?['nom'] ?? 'Candidat').toString();
+    final candidatePhoto = user?['photo_url']?.toString();
     final offerTitle = (offre?['titre'] ?? 'Offre').toString();
     final email = (user?['email'] ?? '—').toString();
     final phone = (user?['telephone'] ?? '—').toString();
@@ -462,17 +609,22 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
     final createdStr = d['date_candidature']?.toString();
     final createdDt = createdStr == null ? null : DateTime.tryParse(createdStr);
 
-    final headlineStyle = GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900);
+    final headlineStyle = GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w900, color: const Color(0xFF1E3A8A));
     final subStyle = GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF475569));
+    final normalizedStatut = (statut ?? '').toLowerCase().trim();
+    final isTerminalStatut = normalizedStatut == 'acceptee' || normalizedStatut == 'refusee';
+    final canReview = normalizedStatut == 'en_attente';
+    final canPlanInterview = normalizedStatut == 'en_cours' || normalizedStatut == 'entretien';
+    final canAccept = normalizedStatut == 'en_attente' || normalizedStatut == 'en_cours' || normalizedStatut == 'entretien';
+    final canReject = normalizedStatut == 'en_attente' || normalizedStatut == 'en_cours' || normalizedStatut == 'entretien';
 
-    return ResponsiveContainer(
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        body: CustomScrollView(
-          slivers: [
+    return Scaffold(
+      backgroundColor: const Color(0xFFEFF6FF),
+      body: CustomScrollView(
+        slivers: [
             SliverAppBar(
               pinned: true,
-              backgroundColor: const Color(0xFF0B1220),
+              backgroundColor: const Color(0xFF1A56DB),
               leading: IconButton(
                 onPressed: () => Navigator.of(context).maybePop(),
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -498,14 +650,14 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                 style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w800),
               ),
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(92),
+                preferredSize: const Size.fromHeight(104),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF0B1220), Color(0xFF0F2A5F)],
+                      colors: [Color(0xFF1A56DB), Color(0xFF0EA5E9)],
                     ),
                   ),
                   child: Row(
@@ -513,10 +665,18 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                       CircleAvatar(
                         radius: 22,
                         backgroundColor: const Color(0xFFDBEAFE),
-                        child: Text(
-                          fullName.trim().isEmpty ? '?' : fullName.trim()[0].toUpperCase(),
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w900, color: const Color(0xFF1E40AF)),
-                        ),
+                        backgroundImage: (candidatePhoto != null && candidatePhoto.isNotEmpty)
+                            ? NetworkImage(candidatePhoto)
+                            : null,
+                        child: (candidatePhoto == null || candidatePhoto.isEmpty)
+                            ? Text(
+                                fullName.trim().isEmpty ? '?' : fullName.trim()[0].toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF1E40AF),
+                                ),
+                              )
+                            : null,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -525,12 +685,19 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(fullName, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             Text(
                               offerTitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.inter(color: const Color(0xFFBFDBFE), fontWeight: FontWeight.w700, fontSize: 12),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              'Profil et candidature',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(color: Colors.white70, fontWeight: FontWeight.w500, fontSize: 11),
                             ),
                           ],
                         ),
@@ -639,43 +806,69 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                                   ],
                                 ),
                                 const SizedBox(height: 10),
-                                _ActionTile(
-                                  title: 'Mettre en examen',
-                                  subtitle: 'Passe la candidature en “En cours”.',
-                                  icon: Icons.fact_check_outlined,
-                                  color: const Color(0xFF1D4ED8),
-                                  onTap: () => _action('mettre_en_examen'),
-                                ),
-                                const SizedBox(height: 8),
-                                _ActionTile(
-                                  title: 'Planifier un entretien',
-                                  subtitle: entretienDt == null
-                                      ? 'Date, heure, type (visio, présentiel, téléphone) et notes.'
-                                      : _fmtDateTime(entretienDt),
-                                  icon: Icons.event_available_outlined,
-                                  color: const Color(0xFF7C3AED),
-                                  onTap: _showPlanifierEntretienDialog,
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: FilledButton(
-                                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-                                        onPressed: _savingAction ? null : () => _action('accepter'),
-                                        child: const Text('Accepter'),
+                                if (isTerminalStatut)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: Text(
+                                      normalizedStatut == 'acceptee'
+                                          ? 'Cette candidature est acceptée. Les actions de refus/examen sont verrouillées.'
+                                          : 'Cette candidature est refusée. Les actions de validation sont verrouillées.',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF334155),
                                       ),
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: FilledButton(
-                                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                                        onPressed: _savingAction ? null : _confirmRefus,
-                                        child: const Text('Refuser'),
-                                      ),
+                                  )
+                                else ...[
+                                  if (canReview) ...[
+                                    _ActionTile(
+                                      title: 'Mettre en examen',
+                                      subtitle: 'Passe la candidature en “En cours”.',
+                                      icon: Icons.fact_check_outlined,
+                                      color: const Color(0xFF1D4ED8),
+                                      onTap: () => _action('mettre_en_examen'),
                                     ),
+                                    const SizedBox(height: 8),
                                   ],
-                                ),
+                                  if (canPlanInterview) ...[
+                                    _ActionTile(
+                                      title: 'Planifier un entretien',
+                                      subtitle: entretienDt == null
+                                          ? 'Date, heure, type (visio, présentiel, téléphone) et notes.'
+                                          : _fmtDateTime(entretienDt),
+                                      icon: Icons.event_available_outlined,
+                                      color: const Color(0xFF7C3AED),
+                                      onTap: _showPlanifierEntretienDialog,
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: FilledButton(
+                                          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                                          onPressed: (_savingAction || !canAccept) ? null : () => _action('accepter'),
+                                          child: const Text('Accepter'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: FilledButton(
+                                          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                          onPressed: (_savingAction || !canReject) ? null : _confirmRefus,
+                                          child: const Text('Refuser'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -791,7 +984,10 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                                 Text('Historique', style: headlineStyle),
                                 const SizedBox(height: 10),
                                 if (_timeline.isEmpty)
-                                  Text('Aucune action enregistrée côté UI.', style: subStyle)
+                                  Text(
+                                    'Aucune action récente pour le moment.',
+                                    style: subStyle,
+                                  )
                                 else
                                   ..._timeline.map(
                                     (e) => Padding(
@@ -867,8 +1063,7 @@ class _RecruteurCandidatureDetailScreenState extends State<RecruteurCandidatureD
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -1082,11 +1277,15 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Color(0xFFF8FBFF)],
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFD6E6FF)),
         boxShadow: const [
-          BoxShadow(color: Color(0x0A0F172A), blurRadius: 18, offset: Offset(0, 8)),
+          BoxShadow(color: Color(0x101A56DB), blurRadius: 18, offset: Offset(0, 8)),
         ],
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(16), child: child),
@@ -1130,18 +1329,21 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF334155)),
-          const SizedBox(width: 8),
-          Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: const Color(0xFF0F172A))),
+          Icon(icon, size: 16, color: const Color(0xFF1E40AF)),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: const Color(0xFF1E3A8A)),
+          ),
         ],
       ),
     );
@@ -1155,13 +1357,16 @@ class _SkillChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFDBEAFE),
+        color: const Color(0xFFE0EEFF),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
+        border: Border.all(color: const Color(0xFF93C5FD)),
       ),
-      child: Text(text, style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: const Color(0xFF1E40AF))),
+      child: Text(
+        text,
+        style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: const Color(0xFF1D4ED8)),
+      ),
     );
   }
 }
@@ -1214,7 +1419,7 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF8FAFC),
+      color: const Color(0xFFF1F7FF),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -1229,6 +1434,7 @@ class _ActionTile extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: 0.18)),
                 ),
                 child: Icon(icon, color: color),
               ),

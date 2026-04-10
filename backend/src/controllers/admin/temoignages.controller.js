@@ -32,6 +32,9 @@ export async function getTemoignages(req, res) {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
+    // PGRST201 si "utilisateurs" sans hint : deux FK vers utilisateurs
+    // (utilisateur_id → temoignages_recrutement_utilisateur_id_fkey,
+    //  moderateur_user_id → temoignages_recrutement_moderateur_user_id_fkey).
     let q = supabase
       .from('temoignages_recrutement')
       .select(
@@ -45,7 +48,12 @@ export async function getTemoignages(req, res) {
         date_moderation,
         candidature_id,
         utilisateur_id,
-        utilisateurs ( id, nom, email, photo_url ),
+        auteur:utilisateurs!temoignages_recrutement_utilisateur_id_fkey (
+          id,
+          nom,
+          email,
+          photo_url
+        ),
         entreprises ( id, nom_entreprise, logo_url )
       `,
         { count: 'exact' },
@@ -61,7 +69,7 @@ export async function getTemoignages(req, res) {
     if (error) throw error;
 
     const rows = (data || []).map((row) => {
-      const u = row.utilisateurs;
+      const u = row.auteur;
       const uRow = Array.isArray(u) ? u[0] : u;
       const e = row.entreprises;
       const eRow = Array.isArray(e) ? e[0] : e;
@@ -168,6 +176,32 @@ export async function patchTemoignage(req, res) {
     });
   } catch (err) {
     console.error('[admin patchTemoignage]', err);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+}
+
+export async function deleteTemoignage(req, res) {
+  try {
+    const { id } = req.params;
+    const { data: row, error: fe } = await supabase
+      .from('temoignages_recrutement')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (fe) throw fe;
+    if (!row) {
+      return res.status(404).json({ success: false, message: 'Témoignage introuvable' });
+    }
+
+    const { error } = await supabase
+      .from('temoignages_recrutement')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+
+    return res.json({ success: true, message: 'Témoignage supprimé.' });
+  } catch (err) {
+    console.error('[admin deleteTemoignage]', err);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 }

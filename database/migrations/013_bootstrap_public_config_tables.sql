@@ -18,7 +18,7 @@ VALUES
   ('nom_plateforme', 'EmploiConnect', 'string', 'general', 'Nom de la plateforme'),
   ('logo_url', '', 'string', 'general', 'URL du logo'),
   ('couleur_primaire', '#1A56DB', 'string', 'general', 'Couleur principale'),
-  ('footer_email', 'contact@emploiconnect.gn', 'string', 'footer', 'Email footer'),
+  ('footer_email', 'contact@example.com', 'string', 'footer', 'Email footer'),
   ('footer_telephone', '+224 620 00 00 00', 'string', 'footer', 'Tel footer'),
   ('footer_adresse', 'Conakry, Guinée', 'string', 'footer', 'Adresse footer'),
   ('footer_tagline', 'Plateforme intelligente emploi Guinée', 'string', 'footer', 'Tagline footer'),

@@ -73,6 +73,66 @@ router.patch('/tout-lire/action', async (req, res) => {
   }
 });
 
+router.patch('/:id/lire', async (req, res) => {
+  try {
+    let query = supabase
+      .from('notifications')
+      .update({ est_lue: true, date_lecture: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .eq('destinataire_id', req.user.id)
+      .select();
+    let { data, error } = await query.maybeSingle();
+    if (error?.code === 'PGRST204') {
+      // Fallback: certaines bases n'ont pas encore la colonne date_lecture.
+      query = supabase
+        .from('notifications')
+        .update({ est_lue: true })
+        .eq('id', req.params.id)
+        .eq('destinataire_id', req.user.id)
+        .select();
+      ({ data, error } = await query.maybeSingle());
+    }
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'Notification introuvable' });
+    }
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[PATCH /notifications/:id/lire]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.patch('/:id/non-lue', async (req, res) => {
+  try {
+    let query = supabase
+      .from('notifications')
+      .update({ est_lue: false, date_lecture: null })
+      .eq('id', req.params.id)
+      .eq('destinataire_id', req.user.id)
+      .select();
+    let { data, error } = await query.maybeSingle();
+    if (error?.code === 'PGRST204') {
+      // Fallback: ignorer date_lecture si colonne absente.
+      query = supabase
+        .from('notifications')
+        .update({ est_lue: false })
+        .eq('id', req.params.id)
+        .eq('destinataire_id', req.user.id)
+        .select();
+      ({ data, error } = await query.maybeSingle());
+    }
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'Notification introuvable' });
+    }
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[PATCH /notifications/:id/non-lue]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 router.post('/parametres', async (req, res) => {
   try {
     const {

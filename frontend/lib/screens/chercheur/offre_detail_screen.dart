@@ -18,6 +18,7 @@ class _OffreDetailScreenState extends State<OffreDetailScreen> {
   final _offres = OffresService();
   final _cand = CandidaturesService();
   final _lettreCtrl = TextEditingController();
+  final _lettreFormKey = GlobalKey<FormState>();
   Map<String, dynamic>? _offre;
   bool _loading = true;
   String? _error;
@@ -55,11 +56,12 @@ class _OffreDetailScreenState extends State<OffreDetailScreen> {
   }
 
   Future<void> _postuler() async {
+    if (!(_lettreFormKey.currentState?.validate() ?? false)) return;
     setState(() => _postulant = true);
     try {
       await _cand.postuler(
         offreId: widget.offreId,
-        lettreMotivation: _lettreCtrl.text.trim().isEmpty ? null : _lettreCtrl.text.trim(),
+        lettreMotivation: _lettreCtrl.text.trim(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -139,13 +141,28 @@ class _OffreDetailScreenState extends State<OffreDetailScreen> {
                           Text(_offre!['exigences']?.toString() ?? ''),
                           if (isChercheur) ...[
                             const SizedBox(height: 24),
-                            TextField(
-                              controller: _lettreCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Lettre de motivation (optionnel)',
-                                border: OutlineInputBorder(),
+                            Form(
+                              key: _lettreFormKey,
+                              child: TextFormField(
+                                controller: _lettreCtrl,
+                                maxLines: 8,
+                                maxLength: 4000,
+                                validator: (v) {
+                                  final t = (v ?? '').trim();
+                                  if (t.isEmpty) {
+                                    return 'La lettre de motivation est obligatoire';
+                                  }
+                                  if (t.length < 100) {
+                                    return 'Minimum 100 caractères (${t.length}/100)';
+                                  }
+                                  return null;
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Lettre de motivation (obligatoire, min. 100 car.)',
+                                  alignLabelWithHint: true,
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
-                              maxLines: 4,
                             ),
                             const SizedBox(height: 16),
                             SizedBox(

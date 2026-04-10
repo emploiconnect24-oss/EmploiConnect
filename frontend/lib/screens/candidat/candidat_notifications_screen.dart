@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/candidat_provider.dart';
 import '../../services/notifications_service.dart';
@@ -8,10 +10,12 @@ class CandidatNotificationsScreen extends StatefulWidget {
   const CandidatNotificationsScreen({super.key});
 
   @override
-  State<CandidatNotificationsScreen> createState() => _CandidatNotificationsScreenState();
+  State<CandidatNotificationsScreen> createState() =>
+      _CandidatNotificationsScreenState();
 }
 
-class _CandidatNotificationsScreenState extends State<CandidatNotificationsScreen> {
+class _CandidatNotificationsScreenState
+    extends State<CandidatNotificationsScreen> {
   final _svc = NotificationsService();
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
@@ -21,6 +25,67 @@ class _CandidatNotificationsScreenState extends State<CandidatNotificationsScree
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _actionNotification(String action, Map<String, dynamic> notif) async {
+    final id = (notif['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    try {
+      switch (action) {
+        case 'lire':
+          await _svc.markRead(id);
+          break;
+        case 'non_lue':
+          await _svc.markUnread(id);
+          break;
+        case 'supprimer':
+          final confirme = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                'Supprimer cette notification ?',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEF4444),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(
+                    'Supprimer',
+                    style: GoogleFonts.inter(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          );
+          if (confirme != true) return;
+          await _svc.remove(id);
+          break;
+      }
+      if (!mounted) return;
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
   }
 
   Future<void> _load() async {
@@ -33,7 +98,9 @@ class _CandidatNotificationsScreenState extends State<CandidatNotificationsScree
       final data = (res['data'] as Map?)?.cast<String, dynamic>() ?? {};
       if (!mounted) return;
       setState(() {
-        _items = List<Map<String, dynamic>>.from(data['notifications'] ?? const []);
+        _items = List<Map<String, dynamic>>.from(
+          data['notifications'] ?? const [],
+        );
         _loading = false;
       });
       await context.read<CandidatProvider>().loadDashboardMetrics();
@@ -46,237 +113,420 @@ class _CandidatNotificationsScreenState extends State<CandidatNotificationsScree
     }
   }
 
+  Future<void> _marquerToutLu() async {
+    try {
+      await _svc.markAllRead();
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text(_error!));
 
-    final unread = _items.where((e) => e['est_lue'] != true).length;
-    final pagePad = EdgeInsets.fromLTRB(
-      20,
-      16,
-      20,
-      MediaQuery.of(context).size.width <= 900 ? 80 : 24,
-    );
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: pagePad,
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-        Row(
-          children: [
-            const Text('Notifications', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-            const SizedBox(width: 10),
-            if (unread > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEF4444),
-                  borderRadius: BorderRadius.all(Radius.circular(999)),
+    final nbNonLues = _items.where((e) => e['est_lue'] != true).length;
+    final bottomInset = MediaQuery.of(context).size.width <= 900 ? 80.0 : 24.0;
+
+    return ColoredBox(
+      color: const Color(0xFFF8FAFC),
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                color: Colors.white,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Notifications',
+                            style: GoogleFonts.poppins(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0F172A),
+                            ),
+                          ),
+                          Text(
+                            '$nbNonLues non lue(s)',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (nbNonLues > 0)
+                      TextButton.icon(
+                        icon: const Icon(Icons.done_all_rounded, size: 16),
+                        label: const Text('Tout lire'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF1A56DB),
+                          textStyle: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onPressed: _marquerToutLu,
+                      ),
+                  ],
                 ),
-                child: Text('$unread non lues', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
               ),
-            const Spacer(),
-            OutlinedButton(
-              onPressed: () async {
-                await _svc.markAllRead();
-                await _load();
-              },
-              child: const Text('Tout marquer comme lu'),
             ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Paramètres de notification à connecter (section 18).')),
-                );
-              },
-              icon: const Icon(Icons.settings_outlined, size: 16),
-              label: const Text('Paramètres'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Retrouvez ici les mises à jour sur vos candidatures, messages, alertes et recommandations.',
-          style: TextStyle(color: Color(0xFF64748B)),
-        ),
-        const SizedBox(height: 14),
-        _group('AUJOURD\'HUI'),
-        const SizedBox(height: 12),
-        _group('HIER'),
-        const SizedBox(height: 12),
-        _group('CETTE SEMAINE'),
-      ],
-      ),
-    );
-  }
-
-  Widget _group(String key) {
-    final list = _items.where((n) => _groupOf(n['date_creation']?.toString()) == key).toList();
-    if (list.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          key,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-            color: Color(0xFF64748B),
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...list.map(_tile),
-      ],
-    );
-  }
-
-  Widget _tile(Map<String, dynamic> item) {
-    final theme = _theme(item['type']?.toString());
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: ListTile(
-        onTap: () async {
-          final lien = item['lien']?.toString() ?? '';
-          if (lien.contains('temoignage')) {
-            final q = lien.indexOf('?');
-            final cid = q >= 0
-                ? Uri.splitQueryString(lien.substring(q + 1))['c']?.trim()
-                : null;
-            if (cid != null && cid.isNotEmpty && mounted) {
-              await Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => CandidatTemoignageScreen(initialCandidatureId: cid),
+            if (_items.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: bottomInset),
+                  child: _buildEmpty(),
                 ),
-              );
-            }
-          }
-          if (item['est_lue'] != true) {
-            final id = (item['id'] ?? '').toString();
-            if (id.isNotEmpty) {
-              try {
-                await _svc.markRead(id);
-                if (!mounted) return;
-                await _load();
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            }
-          }
-        },
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: theme.bg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(theme.icon, size: 18, color: theme.fg),
-        ),
-        title: Text(
-          item['message']?.toString() ?? item['titre']?.toString() ?? '',
-          style: TextStyle(
-            fontSize: 14,
-            color: const Color(0xFF0F172A),
-            fontWeight: item['est_lue'] == true ? FontWeight.w500 : FontWeight.w700,
-          ),
-        ),
-        subtitle: Text(_timeAgo(item['date_creation']?.toString()), style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) async {
-            if (value == 'read') {
-              await _svc.markRead((item['id'] ?? '').toString());
-              await _load();
-            } else if (value == 'remove') {
-              await _svc.remove((item['id'] ?? '').toString());
-              await _load();
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'read', child: Text('Marquer comme lu')),
-            PopupMenuItem(value: 'remove', child: Text('Supprimer')),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) {
+                      if (i == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Retrouvez ici les mises à jour sur vos candidatures, messages et alertes.',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: const Color(0xFF64748B),
+                              height: 1.4,
+                            ),
+                          ),
+                        );
+                      }
+                      final item = _items[i - 1];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _NotifTile(
+                          item: item,
+                          onTap: () => _onTapNotif(item),
+                          onAction: (action) => _actionNotification(action, item),
+                        ),
+                      );
+                    },
+                    childCount: _items.length + 1,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  String _groupOf(String? iso) {
-    if (iso == null || iso.isEmpty) return 'CETTE SEMAINE';
-    final d = DateTime.tryParse(iso)?.toLocal();
-    if (d == null) return 'CETTE SEMAINE';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(d.year, d.month, d.day);
-    final diff = today.difference(day).inDays;
-    if (diff == 0) return 'AUJOURD\'HUI';
-    if (diff == 1) return 'HIER';
-    return 'CETTE SEMAINE';
-  }
-
-  String _timeAgo(String? iso) {
-    if (iso == null || iso.isEmpty) return '';
-    final d = DateTime.tryParse(iso)?.toLocal();
-    if (d == null) return '';
-    final diff = DateTime.now().difference(d);
-    if (diff.inMinutes < 1) return 'à l’instant';
-    if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'il y a ${diff.inHours} h';
-    return 'il y a ${diff.inDays} j';
-  }
-
-  _NotifTheme _theme(String? type) {
-    switch (type) {
-      case 'message':
-        return const _NotifTheme(
-          icon: Icons.chat_bubble_outline,
-          bg: Color(0xFFEFF6FF),
-          fg: Color(0xFF1D4ED8),
+  Future<void> _onTapNotif(Map<String, dynamic> item) async {
+    final lien = item['lien']?.toString() ?? '';
+    if (lien.contains('temoignage')) {
+      final q = lien.indexOf('?');
+      final cid = q >= 0
+          ? Uri.splitQueryString(lien.substring(q + 1))['c']?.trim()
+          : null;
+      if (cid != null && cid.isNotEmpty && mounted) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                CandidatTemoignageScreen(initialCandidatureId: cid),
+          ),
         );
-      case 'alerte':
-      case 'alerte_emploi':
-      case 'offre':
-        return const _NotifTheme(
-          icon: Icons.notifications_active_outlined,
-          bg: Color(0xFFDBEAFE),
-          fg: Color(0xFF1E40AF),
-        );
-      case 'candidature':
-      case 'statut':
-        return const _NotifTheme(
-          icon: Icons.check_circle_outline,
-          bg: Color(0xFFD1FAE5),
-          fg: Color(0xFF047857),
-        );
-      default:
-        return const _NotifTheme(
-          icon: Icons.notifications_outlined,
-          bg: Color(0xFFE2E8F0),
-          fg: Color(0xFF334155),
-        );
+      }
+    }
+    if (item['est_lue'] != true) {
+      final id = (item['id'] ?? '').toString();
+      if (id.isNotEmpty) {
+        try {
+          await _svc.markRead(id);
+          if (!mounted) return;
+          await _load();
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
+      }
     }
   }
 
+  Widget _buildEmpty() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEFF6FF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.notifications_none_rounded,
+              color: Color(0xFF1A56DB),
+              size: 40,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucune notification',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Vous serez notifié des mises à jour\nde vos candidatures ici.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _NotifTheme {
-  const _NotifTheme({
-    required this.icon,
-    required this.bg,
-    required this.fg,
+class _NotifTile extends StatelessWidget {
+  const _NotifTile({
+    required this.item,
+    required this.onTap,
+    required this.onAction,
   });
 
-  final IconData icon;
-  final Color bg;
-  final Color fg;
+  final Map<String, dynamic> item;
+  final VoidCallback onTap;
+  final ValueChanged<String> onAction;
+
+  static String _fmtDate(dynamic v) {
+    final s = v?.toString();
+    if (s == null || s.isEmpty) return '';
+    final d = DateTime.tryParse(s)?.toLocal();
+    if (d == null) return '';
+    return DateFormat('dd/MM/yyyy HH:mm').format(d);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lue = item['est_lue'] == true;
+    final type = item['type']?.toString();
+    final titre = (item['titre'] ?? '').toString();
+    final corps = (item['message'] ?? '').toString();
+    final couleur = _notifColor(type);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: lue ? Colors.white : const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: lue
+                  ? const Color(0xFFE2E8F0)
+                  : const Color(0xFF1A56DB).withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: couleur.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _notifIcon(type),
+                  color: couleur,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titre.isNotEmpty ? titre : corps,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: lue ? FontWeight.w500 : FontWeight.w700,
+                        color: const Color(0xFF0F172A),
+                      ),
+                      maxLines: titre.isNotEmpty ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (titre.isNotEmpty && corps.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        corps,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: const Color(0xFF64748B),
+                          height: 1.4,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      _fmtDate(item['date_creation']),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  size: 18,
+                  color: lue
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF1A56DB),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                offset: const Offset(0, 30),
+                itemBuilder: (_) => [
+                  if (!lue)
+                    PopupMenuItem<String>(
+                      value: 'lire',
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.done_rounded,
+                            size: 16,
+                            color: Color(0xFF1A56DB),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Marquer comme lu',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: const Color(0xFF374151),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (lue)
+                    PopupMenuItem<String>(
+                      value: 'non_lue',
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.mark_email_unread_outlined,
+                            size: 16,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Marquer comme non lu',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: const Color(0xFF374151),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem<String>(
+                    value: 'supprimer',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                          color: Color(0xFFEF4444),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Supprimer',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: const Color(0xFFEF4444),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                onSelected: onAction,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Color _notifColor(String? type) {
+  switch (type) {
+    case 'candidature':
+    case 'statut':
+      return const Color(0xFF1A56DB);
+    case 'entretien':
+      return const Color(0xFF8B5CF6);
+    case 'acceptee':
+      return const Color(0xFF10B981);
+    case 'refusee':
+      return const Color(0xFFEF4444);
+    case 'message':
+      return const Color(0xFF0EA5E9);
+    default:
+      return const Color(0xFFF59E0B);
+  }
+}
+
+IconData _notifIcon(String? type) {
+  switch (type) {
+    case 'candidature':
+    case 'statut':
+      return Icons.assignment_outlined;
+    case 'entretien':
+      return Icons.event_available_rounded;
+    case 'acceptee':
+      return Icons.check_circle_outline_rounded;
+    case 'refusee':
+      return Icons.cancel_outlined;
+    case 'message':
+      return Icons.chat_bubble_outline_rounded;
+    default:
+      return Icons.notifications_outlined;
+  }
 }

@@ -16,7 +16,7 @@ const defaultGeneralConfig = {
 };
 
 const defaultFooterConfig = {
-  footer_email: 'contact@emploiconnect.gn',
+  footer_email: 'contact@example.com',
   footer_telephone: '+224 620 00 00 00',
   footer_adresse: 'Conakry, Guinée',
   footer_tagline: 'Plateforme intelligente de l\'emploi',

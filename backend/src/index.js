@@ -131,13 +131,41 @@ app.listen(PORT, () => {
 });
 
 async function checkBuckets() {
-  const buckets = ['logos', 'bannieres', 'cv-files', 'avatars'];
+  const buckets = [
+    process.env.SUPABASE_LOGOS_BUCKET || 'logos',
+    process.env.SUPABASE_BANNIERES_BUCKET || 'bannieres',
+    process.env.SUPABASE_STORAGE_BUCKET || 'cv-files',
+    process.env.SUPABASE_STORAGE_BUCKET_AVATARS || process.env.SUPABASE_STORAGE_BUCKET_PHOTOS || 'avatars',
+  ];
   for (const bucket of buckets) {
-    const { data, error } = await supabase.storage.getBucket(bucket);
-    if (error) {
-      console.warn(`⚠️  Bucket "${bucket}" manquant ou inaccessible: ${error.message}`);
-    } else {
-      console.log(`✅ Bucket "${bucket}" OK (public: ${data.public})`);
+    try {
+      const { data, error } = await supabase.storage.getBucket(bucket);
+      if (error) {
+        const msg = String(error.message || '');
+        const notFound = /not found|does not exist|404/i.test(msg) || error.statusCode === '404';
+        if (notFound) {
+          const shouldBePublic = ['logos', 'bannieres', 'avatars'].includes(bucket);
+          const { error: createErr } = await supabase.storage.createBucket(bucket, {
+            public: shouldBePublic,
+          });
+          if (createErr) {
+            console.warn(`⚠️  Bucket "${bucket}" absent et création impossible: ${createErr.message}`);
+          } else {
+            console.log(`✅ Bucket "${bucket}" créé automatiquement (public: ${shouldBePublic})`);
+          }
+        } else {
+          console.warn(`⚠️  Bucket "${bucket}" inaccessible: ${msg}`);
+        }
+      } else {
+        console.log(`✅ Bucket "${bucket}" OK (public: ${data.public})`);
+      }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (/fetch failed|network|ENOTFOUND|ECONNREFUSED|timeout/i.test(msg)) {
+        console.warn(`⚠️  Vérification bucket "${bucket}" ignorée (réseau Supabase indisponible): ${msg}`);
+      } else {
+        console.warn(`⚠️  Vérification bucket "${bucket}" en erreur: ${msg}`);
+      }
     }
   }
 }

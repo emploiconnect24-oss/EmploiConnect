@@ -24,7 +24,7 @@ VALUES
   ('footer_twitter', '', 'string', 'URL compte Twitter/X', 'footer'),
   ('footer_instagram', '', 'string', 'URL compte Instagram', 'footer'),
   ('footer_whatsapp', '', 'string', 'Numéro WhatsApp Business', 'footer'),
-  ('footer_email', 'contact@emploiconnect.gn', 'string', 'Email affiché dans le footer', 'footer'),
+  ('footer_email', 'contact@example.com', 'string', 'Email affiché dans le footer', 'footer'),
   ('footer_telephone', '+224 620 00 00 00', 'string', 'Téléphone affiché dans le footer', 'footer'),
   ('footer_adresse', 'Conakry, République de Guinée', 'string', 'Adresse affichée dans le footer', 'footer'),
   ('footer_tagline', 'La plateforme intelligente de l''emploi en Guinée', 'string', 'Tagline sous le logo dans le footer', 'footer'),

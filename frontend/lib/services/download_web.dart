@@ -4,8 +4,8 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 
 /// Déclenche le téléchargement du navigateur (Flutter Web).
-void downloadFileWeb(Uint8List bytes, String fileName) {
-  final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
+void downloadFileWeb(Uint8List bytes, String fileName, {String mimeType = 'application/octet-stream'}) {
+  final blob = html.Blob([bytes], mimeType);
   final url = html.Url.createObjectUrlFromBlob(blob);
   final anchor = html.document.createElement('a') as html.AnchorElement
     ..href = url

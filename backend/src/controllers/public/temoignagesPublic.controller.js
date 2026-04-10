@@ -7,6 +7,9 @@ export async function getTemoignagesPublic(req, res) {
   try {
     const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 24);
 
+    // Deux FK vers utilisateurs → PostgREST exige le nom de contrainte (PGRST201) :
+    // - temoignages_recrutement_utilisateur_id_fkey (auteur / candidat)
+    // - temoignages_recrutement_moderateur_user_id_fkey (modérateur — non utilisé ici)
     const { data, error } = await supabase
       .from('temoignages_recrutement')
       .select(
@@ -14,7 +17,10 @@ export async function getTemoignagesPublic(req, res) {
         id,
         message,
         date_creation,
-        utilisateurs ( nom, photo_url ),
+        auteur:utilisateurs!temoignages_recrutement_utilisateur_id_fkey (
+          nom,
+          photo_url
+        ),
         entreprises ( nom_entreprise, logo_url )
       `,
       )
@@ -26,7 +32,7 @@ export async function getTemoignagesPublic(req, res) {
     if (error) throw error;
 
     const rows = (data || []).map((row) => {
-      const u = row.utilisateurs;
+      const u = row.auteur;
       const uRow = Array.isArray(u) ? u[0] : u;
       const e = row.entreprises;
       const eRow = Array.isArray(e) ? e[0] : e;

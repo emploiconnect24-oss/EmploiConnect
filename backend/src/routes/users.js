@@ -54,15 +54,55 @@ router.get('/me', async (req, res) => {
     if (role === ROLES.CHERCHEUR) {
       const { data: ch } = await supabase
         .from('chercheurs_emploi')
-        .select('id, date_naissance, genre, competences, niveau_etude, disponibilite, titre_poste, about')
+        .select('id, date_naissance, genre, competences, experiences, formations, langues, niveau_etude, disponibilite, titre_poste, about')
         .eq('utilisateur_id', id)
         .maybeSingle();
-      profil = ch;
       const { data: cv } = await supabase
         .from('cv')
-        .select('fichier_url, nom_fichier, competences_extrait')
+        .select('fichier_url, nom_fichier, taille_fichier, competences_extrait')
         .eq('chercheur_id', ch?.id)
         .maybeSingle();
+
+      const cvData = cv?.competences_extrait && typeof cv.competences_extrait === 'object'
+        ? cv.competences_extrait
+        : {};
+      const competencesCV = Array.isArray(cvData.competences) ? cvData.competences : [];
+      const competencesDb = ch?.competences;
+      const competences = Array.isArray(competencesDb)
+        ? [...new Set(competencesDb.map((c) => String(c)).filter(Boolean))]
+        : [...new Set(competencesCV.map((c) => String(c)).filter(Boolean))];
+
+      const experiencesCV = Array.isArray(cvData.experience) ? cvData.experience : [];
+      const experiencesDb = ch?.experiences;
+      const experiences = Array.isArray(experiencesDb)
+        ? experiencesDb
+        : experiencesCV;
+
+      const formationsCV = Array.isArray(cvData.formation) ? cvData.formation : [];
+      const formationsDb = ch?.formations;
+      const formations = Array.isArray(formationsDb)
+        ? formationsDb
+        : formationsCV;
+
+      const languesCV = Array.isArray(cvData.langues) ? cvData.langues : [];
+      const languesDb = ch?.langues;
+      const langues = Array.isArray(languesDb)
+        ? [...new Set([...languesDb.map((x) => String(x)).filter(Boolean), 'Français'])]
+        : [...new Set([...languesCV.map((x) => String(x)).filter(Boolean), 'Français'])];
+
+      profil = {
+        ...(ch || {}),
+        competences,
+        experiences,
+        formations,
+        langues,
+        cv: cv ? {
+          fichier_url: cv.fichier_url,
+          nom_fichier: cv.nom_fichier,
+          taille_fichier: cv.taille_fichier,
+          analyse: cvData,
+        } : null,
+      };
       completionProfil = calculerCompletionProfil(user, ch || null, cv || null);
     } else if (role === ROLES.ENTREPRISE) {
       const { data: ent } = await supabase
@@ -131,11 +171,18 @@ router.patch('/me', async (req, res) => {
     if (role === ROLES.CHERCHEUR) {
       const allowedChercheur = [
         'date_naissance', 'genre', 'competences', 'niveau_etude', 'disponibilite',
-        'titre_poste', 'about',
+        'titre_poste', 'about', 'experiences', 'formations', 'langues',
       ];
+      const arrayChercheurKeys = new Set(['competences', 'experiences', 'formations', 'langues']);
       const chUpdate = {};
       for (const key of allowedChercheur) {
-        if (body[key] !== undefined) chUpdate[key] = body[key];
+        if (body[key] === undefined) continue;
+        if (arrayChercheurKeys.has(key) && !Array.isArray(body[key])) {
+          return res.status(400).json({
+            message: `Le champ « ${key} » doit être un tableau (utilisez [] pour vider).`,
+          });
+        }
+        chUpdate[key] = body[key];
       }
       if (Object.keys(chUpdate).length > 0) {
         const { data: ch, error: errCh } = await supabase

@@ -16,6 +16,7 @@ import 'candidat_saved_offers_screen.dart';
 import 'candidat_settings_screen.dart';
 import 'candidat_temoignage_screen.dart';
 import 'candidat_tips_resources_screen.dart';
+import 'pages/createur_cv_page.dart';
 import 'pages/ia_demo_page.dart';
 import 'widgets/candidat_sidebar.dart';
 import 'widgets/candidat_topbar.dart';
@@ -74,7 +75,9 @@ class _CandidatShellScreenState extends State<CandidatShellScreen> {
           initialKeyword: _offresInitialKeyword,
         );
       case '/dashboard/recommandations':
-        return const CandidatRecommendationsScreen();
+        return CandidatRecommendationsScreen(
+          onGoProfil: () => setState(() => _currentRoute = '/dashboard/profil'),
+        );
       case '/dashboard/ia-demo':
         return IADemoPage(
           onOpenRecommandations: () =>
@@ -86,11 +89,27 @@ class _CandidatShellScreenState extends State<CandidatShellScreen> {
         );
       case '/dashboard/profil':
         return const CandidatProfileCvScreen();
+      case '/dashboard/cv/creer':
+        return CreateurCvPage(
+          onClose: () => setState(() => _currentRoute = '/dashboard/profil'),
+          onDone: () async {
+            await context.read<CandidatProvider>().loadDashboardMetrics();
+            if (!mounted) return;
+            setState(() => _currentRoute = '/dashboard/profil');
+          },
+        );
       case '/dashboard/sauvegardes':
         return const CandidatSavedOffersScreen();
       case '/dashboard/messages':
-        return const CandidatMessagingScreen();
+        final prefill = context.read<CandidatProvider>().messageriePrefill;
+        return CandidatMessagingScreen(
+          initialPeerId: prefill?['peerId'],
+          initialPeerName: prefill?['nom'],
+          initialPeerPhotoUrl: prefill?['photoUrl'],
+        );
       case '/dashboard/conseils':
+        return const CandidatTipsResourcesScreen();
+      case '/dashboard/parcours':
         return const CandidatTipsResourcesScreen();
       case '/dashboard/alertes':
         return const CandidatJobAlertsScreen();

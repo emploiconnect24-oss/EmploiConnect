@@ -382,7 +382,7 @@ class _ConnectColState extends State<_ConnectCol> {
           icon: Icons.mail_outline,
           text: widget.footer['footer_email']?.trim().isNotEmpty == true
               ? widget.footer['footer_email']!
-              : 'contact@emploiconnect.gn',
+              : 'contact@example.com',
         ),
         const SizedBox(height: 8),
         _ContactLine(

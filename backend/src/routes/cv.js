@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { supabase, BUCKET_CV } from '../config/supabase.js';
+import { createCvSignedUrl, CV_SIGNED_URL_TTL_SEC } from '../helpers/cvSignedUrl.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { attachProfileIds } from '../helpers/userProfile.js';
 import { ROLES } from '../config/constants.js';
@@ -11,6 +12,7 @@ import { extractTextFromBuffer, simpleExtractSkills } from '../services/cvExtrac
 import { parseResumeWithApi } from '../services/nlpRapidApi.js';
 import { analyserCV } from '../services/ia.service.js';
 import { sendCvAnalyseTermineeEmail } from '../services/mail.service.js';
+import { resumerTexteProfil } from '../services/textResume.service.js';
 
 const router = Router();
 
@@ -35,6 +37,74 @@ const upload = multer({
 
 router.use(authenticate);
 router.use(attachProfileIds);
+
+async function prepareResumeForProfil(texteBrut) {
+  let t = String(texteBrut || '').trim();
+  if (!t) return '';
+  if (t.length > 500) t = await resumerTexteProfil(t, 500);
+  return t;
+}
+
+/** Met à jour `about` uniquement s’il est vide (PRD §1). */
+async function applyAboutIfEmpty(chercheurId, resumeAPropos) {
+  if (!resumeAPropos || String(resumeAPropos).trim().length <= 20) return false;
+  const { data: ch } = await supabase
+    .from('chercheurs_emploi')
+    .select('about')
+    .eq('id', chercheurId)
+    .maybeSingle();
+  if (String(ch?.about || '').trim()) return false;
+  await supabase
+    .from('chercheurs_emploi')
+    .update({ about: String(resumeAPropos).trim() })
+    .eq('id', chercheurId);
+  console.log('[/cv/analyser] À propos mis à jour depuis CV');
+  return true;
+}
+
+async function mettreAJourProfilDepuisAnalyse(chercheurId, competences, experience, formation, langues) {
+  try {
+    const { data: profil } = await supabase
+      .from('chercheurs_emploi')
+      .select('competences, experiences, formations, langues')
+      .eq('id', chercheurId)
+      .maybeSingle();
+
+    const compsExistantes = Array.isArray(profil?.competences) ? profil.competences : [];
+    const nouvellesComps = [...new Set([
+      ...compsExistantes,
+      ...(Array.isArray(competences) ? competences : []),
+    ])];
+
+    const expsExistantes = Array.isArray(profil?.experiences) ? profil.experiences : [];
+    const nouvellesExps = Array.isArray(experience) && experience.length > 0 ? experience : expsExistantes;
+
+    const fmtsExistantes = Array.isArray(profil?.formations) ? profil.formations : [];
+    const nouvellesFmts = Array.isArray(formation) && formation.length > 0 ? formation : fmtsExistantes;
+
+    const langsExistantes = Array.isArray(profil?.langues) ? profil.langues : ['Français'];
+    const nouvellesLangs = [...new Set([
+      ...langsExistantes,
+      ...(Array.isArray(langues) ? langues : []),
+      'Français',
+    ])];
+
+    await supabase
+      .from('chercheurs_emploi')
+      .update({
+        competences: nouvellesComps,
+        experiences: nouvellesExps,
+        formations: nouvellesFmts,
+        langues: nouvellesLangs,
+      })
+      .eq('id', chercheurId);
+
+    return true;
+  } catch (err) {
+    console.error('[mettreAJourProfilDepuisAnalyse]', err?.message || err);
+    return false;
+  }
+}
 
 /**
  * POST /cv/upload - Téléverser un CV (chercheur uniquement)
@@ -86,8 +156,24 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
     const ext = ALLOWED_EXTS.includes(rawExt)
       ? rawExt
       : (String(req.file.mimetype || '').includes('pdf') ? 'pdf' : 'docx');
-    const mimeType = MIME_MAP[ext] || req.file.mimetype || 'application/octet-stream';
-    const storagePath = `${chercheurId}/${Date.now()}-${(req.file.originalname || 'cv').replace(/[^a-zA-Z0-9._-]/g, '_')}.${ext}`;
+
+    const nomPropre = String(req.file.originalname || `cv.${ext}`)
+      .replace(/\.pdf\.pdf$/i, '.pdf')
+      .replace(/\.docx\.docx$/i, '.docx')
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    const extFromName = nomPropre.includes('.')
+      ? nomPropre.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || ext
+      : ext;
+    const extFinal = ALLOWED_EXTS.includes(extFromName) ? extFromName : ext;
+    const mimeType = MIME_MAP[extFinal] || req.file.mimetype || 'application/octet-stream';
+
+    const baseSansExt = nomPropre.includes('.')
+      ? nomPropre.slice(0, nomPropre.lastIndexOf('.'))
+      : nomPropre.replace(/_+$/, '');
+    const fichierAvecExt = nomPropre.toLowerCase().endsWith(`.${extFinal}`)
+      ? nomPropre
+      : `${baseSansExt || 'cv'}.${extFinal}`;
+    const storagePath = `${chercheurId}/${Date.now()}-${fichierAvecExt}`;
 
     console.log('[uploadCV] Upload vers:', BUCKET_CV, storagePath);
 
@@ -95,7 +181,7 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
       .from(BUCKET_CV)
       .upload(storagePath, req.file.buffer, {
         contentType: mimeType,
-        upsert: true,
+        upsert: false,
       });
 
     if (uploadError) {
@@ -126,7 +212,7 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
 
     const nlpResult = await parseResumeWithApi(
       req.file.buffer,
-      req.file.originalname || `cv.${ext}`,
+      req.file.originalname || `cv.${extFinal}`,
       req.file.mimetype
     );
     if (nlpResult) {
@@ -140,7 +226,7 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
       chercheur_id: chercheurId,
       fichier_url: fichierUrl,
       nom_fichier: req.file.originalname || null,
-      type_fichier: ext.toUpperCase(),
+      type_fichier: extFinal.toUpperCase(),
       taille_fichier: req.file.size,
       competences_extrait: competencesExtrait,
       experience: experienceJson ?? undefined,
@@ -200,24 +286,58 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
             .createSignedUrl(storagePath, 3600);
           if (signErr || !signed?.signedUrl) return;
           const resultat = await analyserCV(signed.signedUrl);
+          const nComp = Array.isArray(resultat.competences) ? resultat.competences.length : 0;
+          const nExp = Array.isArray(resultat.experience) ? resultat.experience.length : 0;
+          const nFmt = Array.isArray(resultat.formation) ? resultat.formation.length : 0;
+          const resumeUp = await prepareResumeForProfil(resultat.resume_profil);
+          const hasStructured = nComp > 0 || nExp > 0 || nFmt > 0;
+          const hasResume = resumeUp.length > 20;
+
+          const { data: cvRowUp } = await supabase
+            .from('cv')
+            .select('competences_extrait')
+            .eq('id', result.id)
+            .single();
+          const prev = cvRowUp?.competences_extrait && typeof cvRowUp.competences_extrait === 'object'
+            ? cvRowUp.competences_extrait
+            : {};
+
+          const mergedUp = {
+            competences: hasStructured ? (resultat.competences || []) : (Array.isArray(prev.competences) ? prev.competences : []),
+            experience: hasStructured ? (resultat.experience || []) : (Array.isArray(prev.experience) ? prev.experience : []),
+            formation: hasStructured ? (resultat.formation || []) : (Array.isArray(prev.formation) ? prev.formation : []),
+            langues: hasStructured ? (resultat.langues || ['Français']) : (Array.isArray(prev.langues) ? prev.langues : ['Français']),
+            resume_profil: resumeUp || prev.resume_profil || prev.resume || '',
+            score_ia: resultat.score_ia ?? prev.score_ia ?? null,
+            fallback: resultat.fallback === true,
+            source: resultat.source || 'api_externe',
+            analyse_le: new Date().toISOString(),
+          };
+
           await supabase
             .from('cv')
             .update({
-              competences_extrait: {
-                competences: resultat.competences || [],
-                experience: resultat.experience || [],
-                formation: resultat.formation || [],
-                langues: resultat.langues || ['Français'],
-                fallback: resultat.fallback || true,
-                analyse_le: new Date().toISOString(),
-              },
+              competences_extrait: mergedUp,
               date_analyse: new Date().toISOString(),
             })
             .eq('id', result.id);
-          console.log('[uploadCV] IA OK:', resultat.competences?.length, 'compétences');
-          const nComp = Array.isArray(resultat.competences) ? resultat.competences.length : 0;
-          const nExp = Array.isArray(resultat.experience) ? resultat.experience.length : 0;
-          const extractionRiche = nComp > 0 || nExp > 0;
+
+          if (hasStructured) {
+            await mettreAJourProfilDepuisAnalyse(
+              chercheurId,
+              resultat.competences || [],
+              resultat.experience || [],
+              resultat.formation || [],
+              resultat.langues || ['Français'],
+            );
+            console.log('[uploadCV] Profil chercheur enrichi depuis analyse');
+          }
+          if (hasResume) {
+            await applyAboutIfEmpty(chercheurId, resumeUp);
+          }
+
+          console.log('[uploadCV] IA OK:', nComp, 'compétences');
+          const extractionRiche = hasStructured || hasResume;
           await supabase.from('notifications').insert({
             destinataire_id: notifyUser.id,
             type_destinataire: 'individuel',
@@ -277,9 +397,13 @@ router.post('/upload', requireRole(ROLES.CHERCHEUR), (req, res, next) => {
 
 /**
  * POST /cv/analyser - Relancer l'analyse IA du CV courant (chercheur)
+ * Téléchargement fichier côté serveur + multipart RapidAPI (voir ia.service).
  */
 router.post('/analyser', requireRole(ROLES.CHERCHEUR), async (req, res) => {
   try {
+    console.log('\n[/cv/analyser] ═══ NOUVELLE DEMANDE ═══');
+    console.log('[/cv/analyser] Utilisateur:', req.user?.id);
+
     const chercheurId = req.chercheurId;
     if (!chercheurId) {
       return res.status(404).json({
@@ -290,7 +414,7 @@ router.post('/analyser', requireRole(ROLES.CHERCHEUR), async (req, res) => {
 
     const { data: cvRow, error: cvErr } = await supabase
       .from('cv')
-      .select('id, fichier_url, texte_complet')
+      .select('id, fichier_url, nom_fichier, competences_extrait, type_fichier, texte_complet, taille_fichier')
       .eq('chercheur_id', chercheurId)
       .single();
 
@@ -301,54 +425,270 @@ router.post('/analyser', requireRole(ROLES.CHERCHEUR), async (req, res) => {
       });
     }
 
-    let cvPublicUrl = null;
-    if (cvRow.fichier_url) {
-      const { data: signed } = await supabase.storage
-        .from(BUCKET_CV)
-        .createSignedUrl(cvRow.fichier_url, 60);
-      cvPublicUrl = signed?.signedUrl || null;
-    }
-
-    const result = await analyserCV(cvPublicUrl || '');
-    const payload = {
-      competences_extrait: {
-        competences: result.competences || [],
-        experience: result.experience || [],
-        formation: result.formation || [],
-        langues: result.langues || ['Français'],
-        score_ia: result.score_ia ?? null,
-        fallback: result.fallback === true,
-        analyse_le: new Date().toISOString(),
-      },
-      date_analyse: new Date().toISOString(),
-    };
-
-    const { error: updateErr } = await supabase
-      .from('cv')
-      .update(payload)
-      .eq('id', cvRow.id);
-
-    if (updateErr) {
-      console.error('[POST /cv/analyser] update cv:', updateErr);
-      return res.status(500).json({
+    if (!cvRow.fichier_url) {
+      return res.status(400).json({
         success: false,
-        message: 'Erreur lors de la sauvegarde de l\'analyse',
+        message: 'URL du CV manquante. Veuillez ré-uploader votre CV.',
       });
     }
 
+    console.log('[/cv/analyser] CV trouvé:', cvRow.id);
+    console.log('[/cv/analyser] fichier_url:', String(cvRow.fichier_url).substring(0, 80));
+
+    const srcPlateforme = cvRow.competences_extrait?.source;
+    const compsExistantes = Array.isArray(cvRow.competences_extrait?.competences)
+      ? cvRow.competences_extrait.competences
+      : [];
+    const expsExistantes = Array.isArray(cvRow.competences_extrait?.experience)
+      ? cvRow.competences_extrait.experience
+      : [];
+    const ressembleCvGenere = String(cvRow.nom_fichier || '').startsWith('CV_')
+      || String(cvRow.fichier_url || '').includes('cv-genere-');
+    const bypassPlateforme = srcPlateforme === 'plateforme_cv_builder'
+      || srcPlateforme === 'plateforme'
+      || (ressembleCvGenere && (compsExistantes.length > 0 || expsExistantes.length > 0));
+
+    if (bypassPlateforme) {
+      const comps = compsExistantes;
+      const exps = expsExistantes;
+      const fmts = Array.isArray(cvRow.competences_extrait?.formation) ? cvRow.competences_extrait.formation : [];
+      const langs = Array.isArray(cvRow.competences_extrait?.langues) ? cvRow.competences_extrait.langues : ['Français'];
+
+      console.log('[/cv/analyser] CV plateforme → bypass API');
+      console.log('[/cv/analyser] Compétences:', comps.length);
+
+      const msgPlateforme = srcPlateforme === 'plateforme_cv_builder'
+        ? `✅ ${comps.length} compétence(s) détectée(s) depuis votre CV plateforme`
+        : `✅ Analyse terminée ! ${comps.length} compétence(s) et ${exps.length} expérience(s) détectée(s).`;
+
+      const profilMaj = await mettreAJourProfilDepuisAnalyse(
+        chercheurId,
+        comps,
+        exps,
+        fmts,
+        langs,
+      );
+
+      const { error: updBypass } = await supabase
+        .from('cv')
+        .update({ date_analyse: new Date().toISOString() })
+        .eq('id', cvRow.id);
+
+      if (updBypass) {
+        console.error('[POST /cv/analyser] update bypass:', updBypass);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la mise à jour',
+        });
+      }
+
+      const resumePlat = String(
+        cvRow.competences_extrait?.resume_profil
+          || cvRow.competences_extrait?.resume
+          || '',
+      ).trim();
+
+      return res.json({
+        success: true,
+        message: msgPlateforme,
+        data: {
+          cv_id: cvRow.id,
+          competences: comps,
+          experience: exps,
+          formation: fmts,
+          langues: langs,
+          resume_profil: resumePlat,
+          nb_competences: comps.length,
+          nb_experiences: exps.length,
+          nb_formations: fmts.length,
+          source: srcPlateforme === 'plateforme_cv_builder' ? 'plateforme_cv_builder' : 'plateforme',
+          profil_mis_a_jour: profilMaj,
+          conseil: null,
+        },
+      });
+    }
+
+    const tailleOctets = Number(cvRow.taille_fichier);
+    if (Number.isFinite(tailleOctets) && tailleOctets > 0 && tailleOctets < 5000) {
+      console.warn('[/cv/analyser] Fichier < 5000 octets → pas d’appel API parsing externe');
+      const comps = compsExistantes;
+      const exps = expsExistantes;
+      const fmts = Array.isArray(cvRow.competences_extrait?.formation)
+        ? cvRow.competences_extrait.formation
+        : [];
+      const langs = Array.isArray(cvRow.competences_extrait?.langues)
+        ? cvRow.competences_extrait.langues
+        : ['Français'];
+
+      let profilMajPetit = false;
+      if (comps.length > 0 || exps.length > 0) {
+        profilMajPetit = await mettreAJourProfilDepuisAnalyse(
+          chercheurId,
+          comps,
+          exps,
+          fmts,
+          langs,
+        );
+        await supabase
+          .from('cv')
+          .update({ date_analyse: new Date().toISOString() })
+          .eq('id', cvRow.id);
+      }
+
+      const conseilPetit =
+        'Pour que l’IA analyse correctement : uploadez un vrai CV Word (.docx) ou un PDF avec du texte sélectionnable.';
+
+      const resumePetit = String(
+        cvRow.competences_extrait?.resume_profil
+          || cvRow.competences_extrait?.resume
+          || '',
+      ).trim();
+
+      return res.json({
+        success: true,
+        message:
+          comps.length > 0 || exps.length > 0
+            ? `✅ ${comps.length} compétence(s) réutilisée(s) (fichier court, analyse externe ignorée).`
+            : '⚠️ Ce fichier CV est trop léger pour une extraction IA fiable.',
+        data: {
+          cv_id: cvRow.id,
+          competences: comps,
+          experience: exps,
+          formation: fmts,
+          langues: langs,
+          resume_profil: resumePetit,
+          nb_competences: comps.length,
+          nb_experiences: exps.length,
+          nb_formations: fmts.length,
+          source: 'fichier_trop_petit',
+          profil_mis_a_jour: profilMajPetit,
+          conseil: conseilPetit,
+        },
+      });
+    }
+
+    console.log('[/cv/analyser] CV importé → appel API (multipart)');
+
+    const resultat = await analyserCV(cvRow.fichier_url);
+
+    const nbComps = resultat.competences?.length || 0;
+    const nbExps = resultat.experience?.length || 0;
+    const nbFmts = resultat.formation?.length || 0;
+
+    console.log('[/cv/analyser] Résultat:', nbComps, 'compétences,', nbExps, 'expériences');
+
+    const resumeFinal = await prepareResumeForProfil(resultat.resume_profil);
+    const hasStructured = nbComps > 0 || nbExps > 0 || nbFmts > 0;
+    const hasResume = resumeFinal.length > 20;
+
+    let profilMaj = false;
+    if (hasStructured || hasResume) {
+      const prev = cvRow.competences_extrait && typeof cvRow.competences_extrait === 'object'
+        ? cvRow.competences_extrait
+        : {};
+      const mergedCe = {
+        competences: hasStructured ? (resultat.competences || []) : (Array.isArray(prev.competences) ? prev.competences : []),
+        experience: hasStructured ? (resultat.experience || []) : (Array.isArray(prev.experience) ? prev.experience : []),
+        formation: hasStructured ? (resultat.formation || []) : (Array.isArray(prev.formation) ? prev.formation : []),
+        langues: hasStructured ? (resultat.langues || ['Français']) : (Array.isArray(prev.langues) ? prev.langues : ['Français']),
+        resume_profil: resumeFinal || prev.resume_profil || prev.resume || '',
+        score_ia: resultat.score_ia ?? prev.score_ia ?? null,
+        fallback: resultat.fallback === true,
+        source: 'api_externe',
+        analyse_le: new Date().toISOString(),
+      };
+
+      const { error: updateErr } = await supabase
+        .from('cv')
+        .update({
+          competences_extrait: mergedCe,
+          date_analyse: new Date().toISOString(),
+        })
+        .eq('id', cvRow.id);
+
+      if (updateErr) {
+        console.error('[POST /cv/analyser] update cv:', updateErr);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la sauvegarde de l\'analyse',
+        });
+      }
+      console.log('[/cv/analyser] ✅ Données sauvegardées en BDD');
+      if (hasStructured) {
+        profilMaj = await mettreAJourProfilDepuisAnalyse(
+          chercheurId,
+          resultat.competences || [],
+          resultat.experience || [],
+          resultat.formation || [],
+          resultat.langues || ['Français'],
+        );
+      }
+      if (hasResume) {
+        const aboutOk = await applyAboutIfEmpty(chercheurId, resumeFinal);
+        if (aboutOk) profilMaj = true;
+      }
+    }
+
+    const peutRecyclerExistant = (nbComps === 0 && nbExps === 0 && Boolean(resultat.erreur))
+      && (compsExistantes.length > 0 || expsExistantes.length > 0);
+    if (peutRecyclerExistant) {
+      console.warn('[/cv/analyser] API indisponible, conservation des données existantes du CV');
+      return res.json({
+        success: true,
+        message: '⚠️ API indisponible. Vos données CV existantes ont été conservées.',
+        data: {
+          cv_id: cvRow.id,
+          competences: compsExistantes,
+          experience: expsExistantes,
+          formation: cvRow.competences_extrait?.formation || [],
+          langues: cvRow.competences_extrait?.langues || ['Français'],
+          nb_competences: compsExistantes.length,
+          nb_experiences: expsExistantes.length,
+          nb_formations: Array.isArray(cvRow.competences_extrait?.formation)
+            ? cvRow.competences_extrait.formation.length
+            : 0,
+          resume_profil: String(
+            cvRow.competences_extrait?.resume_profil
+              || cvRow.competences_extrait?.resume
+              || '',
+          ).trim(),
+          conseil: 'Vous pouvez réessayer plus tard ou utiliser le créateur CV intégré.',
+          fallback: true,
+          source: 'donnees_existantes',
+          profil_mis_a_jour: false,
+        },
+      });
+    }
+
+    let message;
+    let conseil = null;
+
+    if (nbComps >= 8) {
+      message = `✅ Excellent ! ${nbComps} compétences et ${nbExps} expériences extraites avec succès.`;
+    } else if (nbComps >= 3) {
+      message = `✅ ${nbComps} compétence(s) et ${nbExps} expérience(s) détectée(s).`;
+    } else if (nbComps > 0) {
+      message = `⚠️ Seulement ${nbComps} compétence(s) détectée(s).`;
+      conseil = 'Pour de meilleurs résultats, utilisez le Créateur de CV de la plateforme ou uploadez un CV Word (.docx).';
+    } else if (resultat.erreur) {
+      message = `❌ Erreur d'analyse : ${resultat.erreur}`;
+      conseil = 'Essayez le Créateur de CV intégré pour une analyse garantie.';
+    } else {
+      message = '❌ Aucune compétence détectée dans ce CV.';
+      conseil = 'Assurez-vous que votre CV est en format texte (pas scanné) ou utilisez le Créateur de CV.';
+    }
+
     try {
-      const nComp = Array.isArray(result.competences) ? result.competences.length : 0;
-      const nExp = Array.isArray(result.experience) ? result.experience.length : 0;
-      const extractionRiche = nComp > 0 || nExp > 0;
+      const extractionRiche = nbComps > 0 || nbExps > 0 || resumeFinal.length > 20;
       await supabase.from('notifications').insert({
         destinataire_id: req.user.id,
         type_destinataire: 'individuel',
         titre: extractionRiche
-            ? 'Analyse de votre CV terminée'
-            : 'Analyse CV : peu d’informations extraites',
+          ? 'Analyse de votre CV terminée'
+          : 'Analyse CV : peu d’informations extraites',
         message: extractionRiche
-            ? 'Les compétences extraites sont à jour dans votre profil.'
-            : 'Peu de compétences ou d’expériences détectées. Vérifiez la qualité du CV ou complétez le profil manuellement.',
+          ? 'Les compétences extraites sont à jour dans votre profil.'
+          : 'Peu de compétences ou d’expériences détectées. Vérifiez la qualité du CV ou complétez le profil manuellement.',
         type: 'systeme',
         lien: '/dashboard/profil',
       });
@@ -361,19 +701,27 @@ router.post('/analyser', requireRole(ROLES.CHERCHEUR), async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'CV analysé avec succès',
+      message,
       data: {
         cv_id: cvRow.id,
-        fallback: result.fallback === true,
-        competences_count: Array.isArray(result.competences) ? result.competences.length : 0,
-        competences: result.competences || [],
+        competences: resultat.competences || [],
+        experience: resultat.experience || [],
+        formation: resultat.formation || [],
+        langues: resultat.langues || ['Français'],
+        resume_profil: resumeFinal,
+        nb_competences: nbComps,
+        nb_experiences: nbExps,
+        nb_formations: nbFmts,
+        profil_mis_a_jour: profilMaj,
+        conseil,
+        fallback: resultat.fallback === true,
       },
     });
   } catch (err) {
-    console.error('[POST /cv/analyser]', err);
+    console.error('[/cv/analyser] ERREUR:', err?.message, err?.stack);
     return res.status(500).json({
       success: false,
-      message: 'Erreur serveur',
+      message: err?.message ? `Erreur serveur: ${err.message}` : 'Erreur serveur',
     });
   }
 });
@@ -438,11 +786,12 @@ router.get('/download-url', async (req, res) => {
       const { data: cvRow } = await supabase.from('cv').select('fichier_url').eq('id', cand.cv_id).single();
       if (!cvRow) return res.status(404).json({ message: 'CV non trouvé' });
 
-      const { data: signed } = await supabase.storage.from(BUCKET_CV).createSignedUrl(cvRow.fichier_url, 60);
-      if (signed?.error) {
+      const { signedUrl, error: signErr } = await createCvSignedUrl(cvRow.fichier_url);
+      if (signErr || !signedUrl) {
+        console.error('[GET /cv/download-url candidature]', signErr?.message || signErr);
         return res.status(500).json({ message: 'Impossible de générer l\'URL de téléchargement' });
       }
-      return res.json({ url: signed.signedUrl, expiresIn: 60 });
+      return res.json({ url: signedUrl, expiresIn: CV_SIGNED_URL_TTL_SEC });
     }
 
     if (role !== ROLES.CHERCHEUR) {
@@ -455,11 +804,12 @@ router.get('/download-url', async (req, res) => {
     const { data: cvRow } = await supabase.from('cv').select('fichier_url').eq('chercheur_id', chercheurId).single();
     if (!cvRow) return res.status(404).json({ message: 'Aucun CV enregistré' });
 
-    const { data: signed } = await supabase.storage.from(BUCKET_CV).createSignedUrl(cvRow.fichier_url, 60);
-    if (signed?.error) {
+    const { signedUrl, error: signErr } = await createCvSignedUrl(cvRow.fichier_url);
+    if (signErr || !signedUrl) {
+      console.error('[GET /cv/download-url chercheur]', signErr?.message || signErr);
       return res.status(500).json({ message: 'Impossible de générer l\'URL de téléchargement' });
     }
-    res.json({ url: signed.signedUrl, expiresIn: 60 });
+    res.json({ url: signedUrl, expiresIn: CV_SIGNED_URL_TTL_SEC });
   } catch (err) {
     console.error('GET /cv/download-url:', err);
     res.status(500).json({ message: 'Erreur serveur' });

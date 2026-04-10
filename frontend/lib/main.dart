@@ -87,6 +87,7 @@ class EmploiConnectApp extends StatelessWidget {
                 '/dashboard/sauvegardes',
                 '/dashboard/messages',
                 '/dashboard/conseils',
+                '/dashboard/parcours',
                 '/dashboard/alertes',
                 '/dashboard/notifications',
                 '/dashboard/parametres',

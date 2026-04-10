@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
     let query = supabase
       .from('chercheurs_emploi')
       .select(`
-        id, competences, niveau_etude, disponibilite, genre, utilisateur_id,
+        id, titre_poste, about, experiences, formations, competences, niveau_etude, disponibilite, genre, utilisateur_id,
         utilisateur:utilisateur_id (
           id, nom, email, photo_url, adresse, est_actif, est_valide, date_creation
         )
@@ -65,6 +65,15 @@ router.get('/', async (req, res) => {
           const cv = cvMap[talent.id];
           const compsProfil = Array.isArray(talent.competences) ? talent.competences : Object.values(talent.competences || {});
           const compsCv = cv?.competences_extrait?.competences || [];
+          const toutesCompsCandidat = [...new Set([...compsProfil, ...compsCv])];
+          const score = await calculerMatchingScore({
+            competences: toutesCompsCandidat,
+            titre_poste: talent.titre_poste || '',
+            about: talent.about || '',
+            experiences: Array.isArray(talent.experiences) ? talent.experiences : [],
+            formations: Array.isArray(talent.formations) ? talent.formations : [],
+          }, offre);
+          console.log('[talents] Candidat:', talent.titre_poste || talent.utilisateur?.nom || talent.id, '| Score:', score);
           return {
             ...talent,
             cv: cv ? {
@@ -73,8 +82,8 @@ router.get('/', async (req, res) => {
               niveau_experience: cv.niveau_experience,
               competences_extrait: cv.competences_extrait,
             } : null,
-            toutes_competences: [...new Set([...compsProfil, ...compsCv])],
-            score_matching: await calculerMatchingScore({ competences: [...compsProfil, ...compsCv] }, offre),
+            toutes_competences: toutesCompsCandidat,
+            score_matching: score,
           };
         }));
         resultats.sort((a, b) => (b.score_matching || 0) - (a.score_matching || 0));

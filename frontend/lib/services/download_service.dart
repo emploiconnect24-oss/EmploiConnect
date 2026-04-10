@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -58,8 +59,22 @@ class DownloadService {
     required String fileName,
     BuildContext? context,
   }) async {
+    await saveBytes(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: 'text/csv;charset=utf-8',
+      context: context,
+    );
+  }
+
+  static Future<void> saveBytes({
+    required Uint8List bytes,
+    required String fileName,
+    String mimeType = 'application/octet-stream',
+    BuildContext? context,
+  }) async {
     if (kIsWeb) {
-      downloadFileWeb(bytes, fileName);
+      downloadFileWeb(bytes, fileName, mimeType: mimeType);
       return;
     }
 
@@ -89,6 +104,31 @@ class DownloadService {
         ),
       );
     }
+  }
+
+  static Future<void> downloadFileFromUrl({
+    required String url,
+    required String fileName,
+    String mimeType = 'application/octet-stream',
+    BuildContext? context,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final dio = Dio();
+    final response = await dio.get<List<int>>(
+      url,
+      options: Options(responseType: ResponseType.bytes, followRedirects: true),
+      onReceiveProgress: onProgress,
+    );
+    final bytes = Uint8List.fromList(response.data ?? const <int>[]);
+    if (bytes.isEmpty) {
+      throw Exception('Téléchargement vide.');
+    }
+    await saveBytes(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+      context: context,
+    );
   }
 
   static void showWebDownloadSnackBar(BuildContext context, String fileName) {

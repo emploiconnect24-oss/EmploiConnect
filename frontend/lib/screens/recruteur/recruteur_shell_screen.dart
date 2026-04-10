@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,6 +30,7 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String _currentRoute = '/dashboard-recruteur';
   String? _candidaturesOffreId;
+  Timer? _countsTimer;
 
   @override
   void initState() {
@@ -38,6 +41,18 @@ class _RecruteurShellScreenState extends State<RecruteurShellScreen> {
       if (token.isEmpty) return;
       await context.read<RecruteurProvider>().loadAll(token);
     });
+    _countsTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      if (!mounted) return;
+      final token = context.read<AuthProvider>().token ?? '';
+      if (token.isEmpty) return;
+      await context.read<RecruteurProvider>().refreshCounts(token);
+    });
+  }
+
+  @override
+  void dispose() {
+    _countsTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _logout() async {

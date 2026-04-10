@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 import 'api_service.dart';
 
 class CandidatMessagesService {
@@ -41,10 +43,31 @@ class CandidatMessagesService {
     return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
   }
 
+  /// Upload pièce jointe → `{ url, nom }` dans `data`.
+  Future<Map<String, dynamic>> uploadPieceJointe(
+    List<int> bytes,
+    String filename,
+  ) async {
+    final streamed = await _api.postMultipart(
+      '/candidat/messages/attachment',
+      fileBytes: bytes,
+      filename: filename,
+      fieldName: 'file',
+      useAuth: true,
+    );
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(ApiService.errorMessage(res) ?? 'Erreur upload');
+    }
+    return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+  }
+
   Future<void> sendMessage(
     String destinataireId,
     String contenu, {
     String? offreId,
+    String? pieceJointeUrl,
+    String? pieceJointeNom,
   }) async {
     final res = await _api.post(
       '/candidat/messages',
@@ -53,10 +76,24 @@ class CandidatMessagesService {
         'destinataire_id': destinataireId,
         'contenu': contenu,
         if (offreId != null && offreId.isNotEmpty) 'offre_id': offreId,
+        if (pieceJointeUrl != null && pieceJointeUrl.isNotEmpty)
+          'piece_jointe_url': pieceJointeUrl,
+        if (pieceJointeNom != null && pieceJointeNom.isNotEmpty)
+          'piece_jointe_nom': pieceJointeNom,
       },
     );
     if (res.statusCode != 201) {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur envoi message');
+    }
+  }
+
+  Future<void> deleteMessage(String messageId) async {
+    final res = await _api.delete(
+      '/candidat/messages/$messageId',
+      useAuth: true,
+    );
+    if (res.statusCode != 200) {
+      throw Exception(ApiService.errorMessage(res) ?? 'Erreur suppression');
     }
   }
 }

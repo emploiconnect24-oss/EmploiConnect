@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/theme/theme_extension.dart';
 import '../../services/candidatures_service.dart';
 import 'candidat_offer_detail_screen.dart';
 
@@ -112,6 +112,12 @@ class _CandidatApplicationsScreenState
 
   String _offerId(Map<String, dynamic>? offer) =>
       (offer?['id'] ?? '').toString();
+
+  String _offerLocation(Map<String, dynamic>? offer) =>
+      (offer?['localisation'] ?? offer?['ville'] ?? '').toString();
+
+  String _offerContract(Map<String, dynamic>? offer) =>
+      (offer?['type_contrat'] ?? '').toString();
 
   List<Map<String, dynamic>> get _filtered {
     return _list.where((c) {
@@ -274,10 +280,14 @@ class _CandidatApplicationsScreenState
               final raison =
                   (c['raison_refus'] ?? '').toString().trim();
               return _TimelineCard(
+                rawStatut: raw,
                 title: title,
                 company: company,
                 logoUrl: _logoUrl(offer),
                 status: status,
+                loc: _offerLocation(offer),
+                contrat: _offerContract(offer),
+                dateCandidature: d,
                 dateLabel: dateLabel,
                 statusMessage: _statusMessage(status),
                 raisonRefus:
@@ -349,10 +359,14 @@ class _CandidatApplicationsScreenState
 
 class _TimelineCard extends StatelessWidget {
   const _TimelineCard({
+    required this.rawStatut,
     required this.title,
     required this.company,
     this.logoUrl,
     required this.status,
+    required this.loc,
+    required this.contrat,
+    this.dateCandidature,
     required this.dateLabel,
     required this.statusMessage,
     this.raisonRefus,
@@ -362,10 +376,14 @@ class _TimelineCard extends StatelessWidget {
     this.onCancel,
   });
 
+  final String rawStatut;
   final String title;
   final String company;
   final String? logoUrl;
   final String status;
+  final String loc;
+  final String contrat;
+  final DateTime? dateCandidature;
   final String dateLabel;
   final String statusMessage;
   final String? raisonRefus;
@@ -374,383 +392,490 @@ class _TimelineCard extends StatelessWidget {
   final VoidCallback? onPrepareInterview;
   final VoidCallback? onCancel;
 
-  int get _step {
-    switch (status) {
-      case 'Envoyée':
+  Color get _accent => _candidatureStatutColor(rawStatut);
+
+  @override
+  Widget build(BuildContext context) {
+    final fmtShort = DateFormat('dd/MM/yyyy');
+    final dateStr = dateCandidature != null
+        ? fmtShort.format(dateCandidature!.toLocal())
+        : dateLabel.replaceFirst('Postulé le ', '');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _accent.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: _accent.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: _accent,
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(12),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: logoUrl != null && logoUrl!.isNotEmpty
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    logoUrl!,
+                                    fit: BoxFit.cover,
+                                    width: 36,
+                                    height: 36,
+                                    errorBuilder: (_, _, _) =>
+                                        _logoLetter(company),
+                                  ),
+                                )
+                              : _logoLetter(company),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF0F172A),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                company,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _accent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(100),
+                            border: Border.all(
+                              color: _accent.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _candidatureStatutIcon(rawStatut),
+                                size: 11,
+                                color: _accent,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                status,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: _accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (loc.isNotEmpty) ...[
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 12,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              loc,
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        if (contrat.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              contrat,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: const Color(0xFF1A56DB),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        const Spacer(),
+                        Text(
+                          dateStr,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    _BarreEvolution(statut: rawStatut),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _accent.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        statusMessage,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: const Color(0xFF334155),
+                        ),
+                      ),
+                    ),
+                    if (raisonRefus != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Motif communiqué par l’entreprise',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                color: const Color(0xFF991B1B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              raisonRefus!,
+                              style: GoogleFonts.inter(
+                                color: const Color(0xFF991B1B),
+                                height: 1.35,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton(
+                          onPressed: onViewOffer,
+                          child: const Text('Voir l\'offre'),
+                        ),
+                        if (onPrepareInterview != null)
+                          ElevatedButton.icon(
+                            onPressed: onPrepareInterview,
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 14,
+                            ),
+                            label: const Text('Préparer'),
+                          ),
+                        if (onMessage != null)
+                          OutlinedButton.icon(
+                            onPressed: onMessage,
+                            icon: const Icon(Icons.chat_outlined, size: 14),
+                            label: const Text('Message'),
+                          ),
+                        if (onCancel != null)
+                          TextButton(
+                            onPressed: onCancel,
+                            child: const Text('Annuler'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _logoLetter(String nomEnt) {
+    return Center(
+      child: Text(
+        nomEnt.isNotEmpty ? nomEnt[0].toUpperCase() : '?',
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF1A56DB),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarreEvolution extends StatefulWidget {
+  const _BarreEvolution({required this.statut});
+
+  final String statut;
+
+  @override
+  State<_BarreEvolution> createState() => _BarreEvolutionState();
+}
+
+class _BarreEvolutionState extends State<_BarreEvolution>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  static const _etapes = [
+    _Etape('Envoyée', Icons.send_rounded, Color(0xFF94A3B8)),
+    _Etape('En examen', Icons.search_rounded, Color(0xFF1A56DB)),
+    _Etape('Entretien', Icons.event_available_rounded, Color(0xFF8B5CF6)),
+    _Etape('Décision', Icons.gavel_rounded, Color(0xFFF59E0B)),
+  ];
+
+  int get _etapeActuelle {
+    switch (widget.statut.toLowerCase().trim()) {
+      case 'en_attente':
         return 0;
-      case 'En examen':
+      case 'en_cours':
         return 1;
-      case 'Entretien':
+      case 'entretien':
         return 2;
-      case 'Acceptée':
-      case 'Refusée':
-      case 'Annulée':
+      case 'acceptee':
+      case 'refusee':
+      case 'annulee':
         return 3;
       default:
         return 0;
     }
   }
 
-  bool get _isRejected => status == 'Refusée';
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _anim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+    );
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    const steps = ['Envoyée', 'En examen', 'Entretien', 'Réponse'];
-    return LayoutBuilder(
-      builder: (context, c) {
-        final scheme = Theme.of(context).colorScheme;
-        final ext = context.themeExt;
-        final isMobile = c.maxWidth < 700;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: ext.cardBorder),
+    final etapeIdx = _etapeActuelle;
+    final raw = widget.statut.toLowerCase().trim();
+    final isRefusee = raw == 'refusee' || raw == 'annulee';
+    final isAcceptee = raw == 'acceptee';
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        children: [
+          AnimatedBuilder(
+            animation: _anim,
+            builder: (_, _) {
+              final progress = etapeIdx == 0
+                  ? 0.0
+                  : (etapeIdx / (_etapes.length - 1)) * _anim.value;
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(100),
+                child: LinearProgressIndicator(
+                  value: isRefusee ? 1.0 * _anim.value : progress,
+                  minHeight: 4,
+                  backgroundColor: const Color(0xFFE2E8F0),
+                  valueColor: AlwaysStoppedAnimation(
+                    isRefusee
+                        ? const Color(0xFFEF4444)
+                        : isAcceptee
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF1A56DB),
+                  ),
+                ),
+              );
+            },
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _CompanyAvatar(logoUrl: logoUrl, company: company),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          company,
-                          style: const TextStyle(color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _statusBadge(status),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                dateLabel,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-              ),
-              const SizedBox(height: 12),
-              if (isMobile)
-                _buildVerticalTimeline(steps)
-              else
-                _buildHorizontalTimeline(steps),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _statusBg(status),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  statusMessage,
-                  style: TextStyle(color: _statusFg(status)),
-                ),
-              ),
-              if (raisonRefus != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFECACA)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Motif communiqué par l’entreprise',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        raisonRefus!,
-                        style: const TextStyle(
-                          color: Color(0xFF991B1B),
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton(
-                    onPressed: onViewOffer,
-                    child: const Text('Voir l\'offre'),
-                  ),
-                  if (onPrepareInterview != null)
-                    ElevatedButton.icon(
-                      onPressed: onPrepareInterview,
-                      icon: const Icon(Icons.calendar_today_outlined, size: 14),
-                      label: const Text('Préparer'),
-                    ),
-                  if (onMessage != null)
-                    OutlinedButton.icon(
-                      onPressed: onMessage,
-                      icon: const Icon(Icons.chat_outlined, size: 14),
-                      label: const Text('Message'),
-                    ),
-                  if (onCancel != null)
-                    TextButton(
-                      onPressed: onCancel,
-                      child: const Text('Annuler'),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHorizontalTimeline(List<String> steps) {
-    return Row(
-      children: List.generate(steps.length, (i) {
-        final completed = i < _step || (_isRejected && i == 3);
-        final current = i == _step && !_isRejected;
-        final rejectedStep = _isRejected && i == 3;
-        final color = rejectedStep
-            ? const Color(0xFFEF4444)
-            : (completed || current
-                  ? const Color(0xFF1A56DB)
-                  : const Color(0xFFE2E8F0));
-        return Expanded(
-          child: Row(
-            children: [
-              Expanded(
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(_etapes.length, (i) {
+              final fait = i < etapeIdx;
+              final enCours = i == etapeIdx && !isRefusee && !isAcceptee;
+              final etape = _etapes[i];
+              Color couleurFinale;
+              if (isAcceptee && i == _etapes.length - 1) {
+                couleurFinale = const Color(0xFF10B981);
+              } else if (isRefusee && i == _etapes.length - 1) {
+                couleurFinale = const Color(0xFFEF4444);
+              } else {
+                couleurFinale = etape.couleur;
+              }
+              return Expanded(
                 child: Column(
                   children: [
-                    Container(
-                      width: 22,
-                      height: 22,
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
-                        color: color,
+                        color: fait || enCours
+                            ? couleurFinale.withValues(alpha: 0.15)
+                            : const Color(0xFFF1F5F9),
                         shape: BoxShape.circle,
-                        border: current
-                            ? Border.all(
-                                color: const Color(0xFF1A56DB),
-                                width: 3,
-                              )
-                            : null,
+                        border: Border.all(
+                          color: fait || enCours
+                              ? couleurFinale
+                              : const Color(0xFFE2E8F0),
+                          width: enCours ? 2 : 1,
+                        ),
                       ),
-                      child: (completed || rejectedStep)
-                          ? Icon(
-                              rejectedStep ? Icons.close : Icons.check,
-                              size: 12,
-                              color: Colors.white,
-                            )
-                          : null,
+                      child: Icon(
+                        fait ? Icons.check_rounded : etape.icon,
+                        size: 13,
+                        color: fait || enCours
+                            ? couleurFinale
+                            : const Color(0xFFCBD5E1),
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      steps[i],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: completed || current
-                            ? const Color(0xFF1A56DB)
+                      i == _etapes.length - 1 && isAcceptee
+                          ? 'Acceptée ✓'
+                          : i == _etapes.length - 1 && isRefusee
+                              ? 'Refusée'
+                              : etape.label,
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: enCours || (fait && i == etapeIdx - 1)
+                            ? FontWeight.w700
+                            : FontWeight.w400,
+                        color: fait || enCours
+                            ? couleurFinale
                             : const Color(0xFF94A3B8),
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
-              ),
-              if (i < steps.length - 1)
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 18),
-                    height: 2,
-                    color: i < _step
-                        ? const Color(0xFF1A56DB)
-                        : const Color(0xFFE2E8F0),
-                  ),
-                ),
-            ],
+              );
+            }),
           ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildVerticalTimeline(List<String> steps) {
-    return Column(
-      children: List.generate(steps.length, (i) {
-        final completed = i < _step || (_isRejected && i == 3);
-        final current = i == _step && !_isRejected;
-        final rejectedStep = _isRejected && i == 3;
-        final color = rejectedStep
-            ? const Color(0xFFEF4444)
-            : (completed || current
-                  ? const Color(0xFF1A56DB)
-                  : const Color(0xFFE2E8F0));
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Column(
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: current
-                        ? Border.all(color: const Color(0xFF1A56DB), width: 3)
-                        : null,
-                  ),
-                  child: (completed || rejectedStep)
-                      ? Icon(
-                          rejectedStep ? Icons.close : Icons.check,
-                          size: 11,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-                if (i < steps.length - 1)
-                  Container(
-                    width: 2,
-                    height: 24,
-                    color: i < _step
-                        ? const Color(0xFF1A56DB)
-                        : const Color(0xFFE2E8F0),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(
-                  steps[i],
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: completed || current
-                        ? const Color(0xFF1A56DB)
-                        : const Color(0xFF94A3B8),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-
-  Widget _statusBadge(String s) {
-    final bg = _statusBg(s);
-    final fg = _statusFg(s);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        s,
-        style: TextStyle(fontSize: 12, color: fg, fontWeight: FontWeight.w700),
+        ],
       ),
     );
-  }
-
-  Color _statusBg(String s) {
-    switch (s) {
-      case 'En examen':
-        return const Color(0xFFFEF3C7);
-      case 'Entretien':
-        return const Color(0xFFF5F3FF);
-      case 'Acceptée':
-        return const Color(0xFFD1FAE5);
-      case 'Refusée':
-      case 'Annulée':
-        return const Color(0xFFFEE2E2);
-      default:
-        return const Color(0xFFEFF6FF);
-    }
-  }
-
-  Color _statusFg(String s) {
-    switch (s) {
-      case 'En examen':
-        return const Color(0xFF92400E);
-      case 'Entretien':
-        return const Color(0xFF6D28D9);
-      case 'Acceptée':
-        return const Color(0xFF047857);
-      case 'Refusée':
-      case 'Annulée':
-        return const Color(0xFFB91C1C);
-      default:
-        return const Color(0xFF1E40AF);
-    }
   }
 }
 
-class _CompanyAvatar extends StatelessWidget {
-  const _CompanyAvatar({this.logoUrl, required this.company});
+class _Etape {
+  const _Etape(this.label, this.icon, this.couleur);
+  final String label;
+  final IconData icon;
+  final Color couleur;
+}
 
-  final String? logoUrl;
-  final String company;
-
-  @override
-  Widget build(BuildContext context) {
-    final letter =
-        company.trim().isNotEmpty ? company.trim()[0].toUpperCase() : 'E';
-    final u = logoUrl;
-    if (u != null && u.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.network(
-          u,
-          width: 42,
-          height: 42,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallback(letter),
-        ),
-      );
-    }
-    return _fallback(letter);
+Color _candidatureStatutColor(String raw) {
+  final s = raw.toLowerCase().trim();
+  switch (s) {
+    case 'acceptee':
+      return const Color(0xFF10B981);
+    case 'entretien':
+      return const Color(0xFF8B5CF6);
+    case 'en_cours':
+      return const Color(0xFF1A56DB);
+    case 'refusee':
+    case 'annulee':
+      return const Color(0xFFEF4444);
+    default:
+      return const Color(0xFFF59E0B);
   }
+}
 
-  Widget _fallback(String letter) {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Center(
-        child: Text(
-          letter,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1A56DB),
-          ),
-        ),
-      ),
-    );
+IconData _candidatureStatutIcon(String raw) {
+  final s = raw.toLowerCase().trim();
+  switch (s) {
+    case 'acceptee':
+      return Icons.check_circle_rounded;
+    case 'entretien':
+      return Icons.event_available_rounded;
+    case 'en_cours':
+      return Icons.search_rounded;
+    case 'refusee':
+    case 'annulee':
+      return Icons.cancel_rounded;
+    default:
+      return Icons.hourglass_empty_rounded;
   }
 }
 

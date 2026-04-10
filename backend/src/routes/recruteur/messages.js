@@ -3,7 +3,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../../middleware/auth.js';
 import { requireRecruteur } from '../../middleware/recruteurAuth.js';
-import { supabase } from '../../config/supabase.js';
+import { supabase, BUCKET_CV, BUCKET_ADMIN_AVATARS } from '../../config/supabase.js';
 import { sendNewMessageEmail } from '../../services/mail.service.js';
 
 const router = Router();
@@ -11,8 +11,91 @@ router.use(authenticate, requireRecruteur);
 
 const uploadPj = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
+
+function inferMimeFromFilename(name = '') {
+  const lower = String(name).toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  return null;
+}
+
+function inferMimeFromMagic(buffer) {
+  if (!buffer || buffer.length < 4) return null;
+  const b = buffer;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return 'application/pdf';
+  if (
+    b[0] === 0x52
+    && b[1] === 0x49
+    && b[2] === 0x46
+    && b[3] === 0x46
+    && b.length > 11
+    && b[8] === 0x57
+    && b[9] === 0x45
+    && b[10] === 0x42
+    && b[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+function resolveUploadMime(file) {
+  const raw = String(file?.mimetype || '').trim().toLowerCase();
+  if (raw && raw !== 'application/octet-stream') return raw;
+  return (
+    inferMimeFromMagic(file?.buffer)
+    || inferMimeFromFilename(file?.originalname)
+    || 'application/octet-stream'
+  );
+}
+
+function isMimeRejected(err) {
+  const msg = String(err?.message || '');
+  return /mime type/i.test(msg) && /not supported/i.test(msg);
+}
+
+async function uploadWithBucketFallback(path, buffer, contentType) {
+  const logosBucket = process.env.SUPABASE_LOGOS_BUCKET || 'logos';
+  const messageBucket = process.env.SUPABASE_STORAGE_BUCKET_MESSAGES?.trim() || '';
+  const docsBucket = process.env.SUPABASE_STORAGE_BUCKET_DOCS?.trim() || BUCKET_CV;
+  const avatarsBucket = BUCKET_ADMIN_AVATARS;
+  const isImage = String(contentType).startsWith('image/');
+
+  const candidates = isImage
+    ? [messageBucket, logosBucket, avatarsBucket, docsBucket]
+    : [messageBucket, docsBucket, logosBucket, avatarsBucket];
+  const buckets = [...new Set(candidates.filter(Boolean))];
+
+  let lastError = null;
+  for (const bucket of buckets) {
+    try {
+      const { error } = await supabase.storage
+        .from(bucket)
+        .upload(path, buffer, { contentType, upsert: false });
+      if (!error) return { bucket, error: null };
+      lastError = error;
+      // Si l'erreur n'est pas liée au MIME, on tente quand même les autres buckets (permissions/règles différentes).
+      if (!isMimeRejected(error)) continue;
+    } catch (thrown) {
+      lastError = thrown;
+      continue;
+    }
+  }
+  return { bucket: null, error: lastError };
+}
 
 function conversationId(a, b) {
   return crypto.createHash('md5').update([a, b].sort().join('-')).digest('hex');
@@ -33,7 +116,7 @@ router.get('/', async (req, res) => {
     const userId = req.user.id;
     const { data: rows, error } = await supabase
       .from('messages')
-      .select('id, conversation_id, expediteur_id, destinataire_id, contenu, est_lu, date_envoi, offre_id')
+      .select('id, conversation_id, expediteur_id, destinataire_id, contenu, est_lu, date_envoi, offre_id, est_supprime_exp, est_supprime_dest, piece_jointe_nom, piece_jointe_url, fichier_nom')
       .or(`expediteur_id.eq.${userId},destinataire_id.eq.${userId}`)
       .order('date_envoi', { ascending: false });
 
@@ -53,20 +136,32 @@ router.get('/', async (req, res) => {
     const summaries = [];
     const unreadByCid = {};
 
-    for (const m of rows || []) {
+    const visibleRows = (rows || []).filter((m) => {
+      if (m.expediteur_id === userId && m.est_supprime_exp === true) return false;
+      if (m.destinataire_id === userId && m.est_supprime_dest === true) return false;
+      return true;
+    });
+
+    for (const m of visibleRows) {
       if (m.destinataire_id === userId && m.est_lu === false) {
         unreadByCid[m.conversation_id] = (unreadByCid[m.conversation_id] || 0) + 1;
       }
     }
 
-    for (const m of rows || []) {
+    for (const m of visibleRows) {
       if (seenCid.has(m.conversation_id)) continue;
       seenCid.add(m.conversation_id);
       const peerId = m.expediteur_id === userId ? m.destinataire_id : m.expediteur_id;
+      const hasAttachment = !!(m.piece_jointe_url);
+      const preview = (String(m.contenu || '').trim().isNotEmpty)
+        ? m.contenu
+        : (hasAttachment
+            ? `📎 ${m.piece_jointe_nom || m.fichier_nom || 'Pièce jointe'}`
+            : '');
       summaries.push({
         conversation_id: m.conversation_id,
         peer_id: peerId,
-        dernier_message: m.contenu,
+        dernier_message: preview,
         date_dernier: m.date_envoi,
         offre_id: m.offre_id,
         nb_non_lus: unreadByCid[m.conversation_id] || 0,
@@ -94,7 +189,7 @@ router.get('/', async (req, res) => {
       offreMap = Object.fromEntries((offres || []).map((o) => [o.id, o]));
     }
 
-    const data = summaries.map((s) => {
+    const conversations = summaries.map((s) => {
       const peer = userMap[s.peer_id] || { id: s.peer_id, nom: 'Utilisateur', email: '', photo_url: null };
       const offre = s.offre_id ? offreMap[s.offre_id] : null;
       return {
@@ -111,9 +206,16 @@ router.get('/', async (req, res) => {
       };
     });
 
-    data.sort((a, b) => new Date(b.date_dernier || 0) - new Date(a.date_dernier || 0));
+    conversations.sort((a, b) => new Date(b.date_dernier || 0) - new Date(a.date_dernier || 0));
+    const totalNonLus = conversations.reduce((sum, c) => sum + (Number(c.nb_non_lus) || 0), 0);
 
-    return res.json({ success: true, data });
+    return res.json({
+      success: true,
+      data: {
+        conversations,
+        total_non_lus: totalNonLus,
+      },
+    });
   } catch (err) {
     console.error('[recruteur/messages GET /]', err);
     return res.status(500).json({ success: false, message: 'Erreur serveur' });
@@ -155,28 +257,58 @@ async function handlePeerSearch(req, res) {
 
       const chercheurIds = [...new Set((candRows || []).map((c) => c.chercheur_id).filter(Boolean))];
       if (chercheurIds.length) {
-        const { data: chercheurs, error: chErr } = await supabase
-          .from('chercheurs_emploi')
-          .select('id, utilisateur:utilisateur_id (id, nom, email, photo_url, role)')
-          .in('id', chercheurIds);
-        if (chErr) throw chErr;
+        const userIds = new Set();
 
-        const seen = new Set();
-        peers = (chercheurs || [])
-          .map((c) => c.utilisateur)
-          .filter(Boolean)
-          .filter((u) => {
-            const nom = String(u.nom || '').toLowerCase();
-            const email = String(u.email || '').toLowerCase();
-            return nom.includes(needle) || email.includes(needle);
-          })
-          .filter((u) => {
-            const id = u.id;
-            if (!id || seen.has(id)) return false;
-            seen.add(id);
-            return true;
-          })
-          .slice(0, 25);
+        const { data: chEmp, error: chEmpErr } = await supabase
+          .from('chercheurs_emploi')
+          .select('id, utilisateur_id')
+          .in('id', chercheurIds);
+        if (!chEmpErr) {
+          for (const row of chEmp || []) {
+            if (row.utilisateur_id) userIds.add(row.utilisateur_id);
+          }
+        }
+
+        const { data: ch, error: chErr } = await supabase
+          .from('chercheurs')
+          .select('id, utilisateur_id')
+          .in('id', chercheurIds);
+        if (!chErr) {
+          for (const row of ch || []) {
+            if (row.utilisateur_id) userIds.add(row.utilisateur_id);
+          }
+        }
+
+        // Certains schémas stockent déjà utilisateur_id dans candidatures.chercheur_id.
+        if (userIds.size === 0) {
+          for (const id of chercheurIds) userIds.add(id);
+        }
+
+        const ids = [...userIds].filter(Boolean);
+        if (ids.length) {
+          const { data: users, error: uErr } = await supabase
+            .from('utilisateurs')
+            .select('id, nom, email, photo_url, role')
+            .in('id', ids)
+            .eq('role', 'chercheur')
+            .limit(80);
+          if (uErr) throw uErr;
+
+          const seen = new Set();
+          peers = (users || [])
+            .filter((u) => {
+              const nom = String(u.nom || '').toLowerCase();
+              const email = String(u.email || '').toLowerCase();
+              return nom.includes(needle) || email.includes(needle);
+            })
+            .filter((u) => {
+              const id = u.id;
+              if (!id || seen.has(id)) return false;
+              seen.add(id);
+              return true;
+            })
+            .slice(0, 25);
+        }
       }
     }
 
@@ -206,33 +338,63 @@ async function handlePeerSearch(req, res) {
 router.get('/peers/search', handlePeerSearch);
 router.get('/rechercher-destinataire', handlePeerSearch);
 
-/**
- * POST /recruteur/messages/attachment — upload fichier → URL publique (bucket logos, préfixe dédié).
- */
-router.post('/attachment', uploadPj.single('file'), async (req, res) => {
+async function handleUploadMessageFile(req, res) {
   try {
     if (!req.file?.buffer) {
-      return res.status(400).json({ success: false, message: 'Fichier requis (champ file)' });
+      return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
     }
-    const rawName = String(req.file.originalname || 'piece-jointe').replace(/[^\w.\-()+ ]/g, '_').slice(0, 160);
+    const rawName = String(req.file.originalname || 'piece-jointe').replace(/[^\w.\-()+ ]/g, '_').slice(0, 200);
+    const contentType = resolveUploadMime(req.file);
+    const ext = (rawName.split('.').pop() || 'bin').toLowerCase();
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+    const bucket = isImage ? (process.env.SUPABASE_STORAGE_BUCKET_AVATARS || 'avatars') : 'messagerie-files';
     const path = `msg-pj/${req.user.id}/${Date.now()}-${rawName}`;
-    const { error } = await supabase.storage
-      .from('logos')
+
+    const { error: uploadErr } = await supabase.storage
+      .from(bucket)
       .upload(path, req.file.buffer, {
-        contentType: req.file.mimetype || 'application/octet-stream',
+        contentType,
         upsert: false,
       });
-    if (error) throw error;
-    const { data } = supabase.storage.from('logos').getPublicUrl(path);
+    if (uploadErr) throw uploadErr;
+
+    let finalUrl = '';
+    if (isImage) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      finalUrl = data?.publicUrl || '';
+    } else {
+      const { data: signed, error: signedErr } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 60 * 60 * 24); // 24h
+      if (!signedErr && signed?.signedUrl) {
+        finalUrl = signed.signedUrl;
+      }
+    }
+    if (!finalUrl) {
+      throw new Error('Impossible de générer une URL de téléchargement pour la pièce jointe.');
+    }
     return res.json({
       success: true,
-      data: { url: data.publicUrl, nom: rawName },
+      data: {
+        url: finalUrl,
+        nom: rawName,
+        bucket,
+        path,
+        fichier_url: finalUrl,
+        fichier_nom: rawName,
+        fichier_taille: req.file.size,
+        fichier_type: contentType,
+        type_message: isImage ? 'image' : 'fichier',
+      },
     });
   } catch (err) {
-    console.error('[recruteur/messages attachment]', err);
+    console.error('[recruteur/messages upload-fichier]', err);
     return res.status(500).json({ success: false, message: err.message || 'Erreur upload' });
   }
-});
+}
+
+router.post('/upload-fichier', uploadPj.single('fichier'), handleUploadMessageFile);
+router.post('/attachment', uploadPj.single('file'), handleUploadMessageFile);
 
 router.get('/:destinataireId', async (req, res) => {
   try {
@@ -262,12 +424,46 @@ router.get('/:destinataireId', async (req, res) => {
       .eq('destinataire_id', req.user.id)
       .eq('est_lu', false);
 
-    const messages = (data || []).map((m) => ({
-      ...m,
-      is_mine: m.expediteur_id === req.user.id,
-    }));
+    const messages = (data || [])
+      .filter((m) => {
+        if (m.expediteur_id === req.user.id && m.est_supprime_exp === true) return false;
+        if (m.destinataire_id === req.user.id && m.est_supprime_dest === true) return false;
+        return true;
+      })
+      .map((m) => {
+        const fileUrl = m.fichier_url || m.piece_jointe_url || null;
+        const fileNom = m.fichier_nom || m.piece_jointe_nom || null;
+        let type = m.type_message || 'texte';
+        if (type === 'texte' && fileUrl) {
+          const lower = String(fileNom || fileUrl).toLowerCase();
+          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some((ext) => lower.endsWith(ext));
+          type = isImage ? 'image' : 'fichier';
+        }
+        return {
+          ...m,
+          type_message: type,
+          fichier_url: fileUrl,
+          fichier_nom: fileNom,
+          piece_jointe_url: fileUrl,
+          piece_jointe_nom: fileNom,
+          is_mine: m.expediteur_id === req.user.id,
+        };
+      });
 
-    return res.json({ success: true, data: { messages, conversation_id: cid } });
+    const { data: interlocuteur } = await supabase
+      .from('utilisateurs')
+      .select('id, nom, email, photo_url, role')
+      .eq('id', destinataireId)
+      .maybeSingle();
+
+    return res.json({
+      success: true,
+      data: {
+        messages,
+        interlocuteur: interlocuteur || null,
+        conversation_id: cid,
+      },
+    });
   } catch (err) {
     console.error('[recruteur/messages/:id]', err);
     return res.status(500).json({ success: false, message: 'Erreur serveur' });
@@ -283,21 +479,25 @@ router.post('/', async (req, res) => {
       piece_jointe_url: pieceUrl,
       piece_jointe_nom: pieceNom,
     } = req.body || {};
-    if (!destinataireId || !contenu) {
-      return res.status(400).json({ success: false, message: 'destinataire_id et contenu requis' });
-    }
-    const cid = conversationId(req.user.id, destinataireId);
+    const rawContenu = contenu != null ? String(contenu).trim() : '';
     const pjUrl = pieceUrl != null ? String(pieceUrl).trim() || null : null;
     const pjNom = pieceNom != null ? String(pieceNom).trim() || null : null;
+    if (!destinataireId || (!rawContenu && !pjUrl)) {
+      return res.status(400).json({ success: false, message: 'destinataire_id et (contenu ou pièce jointe) requis' });
+    }
+    const cid = conversationId(req.user.id, destinataireId);
     const row = {
       conversation_id: cid,
       expediteur_id: req.user.id,
       destinataire_id: destinataireId,
-      contenu: String(contenu).trim(),
+      contenu: rawContenu,
       offre_id: offreId || null,
     };
     if (pjUrl) row.piece_jointe_url = pjUrl;
     if (pjNom) row.piece_jointe_nom = pjNom;
+    if (pjUrl) row.fichier_url = pjUrl;
+    if (pjNom) row.fichier_nom = pjNom;
+    if (pjUrl) row.type_message = 'fichier';
     const { data, error } = await supabase
       .from('messages')
       .insert(row)
@@ -319,7 +519,7 @@ router.post('/', async (req, res) => {
         destinataire_id: destinataireId,
         type_destinataire: 'individuel',
         titre: `💬 Message de ${req.entreprise?.nom_entreprise || 'une entreprise'}`,
-        message: String(contenu).trim().slice(0, 140),
+        message: rawContenu.slice(0, 140),
         type: 'message',
         lien: '/dashboard/messages',
         est_lue: false,
@@ -330,7 +530,7 @@ router.post('/', async (req, res) => {
 
     void sendNewMessageEmail(destinataireId, {
       senderLabel: `Message de ${req.entreprise?.nom_entreprise || 'une entreprise'}`,
-      excerpt: String(contenu).trim(),
+      excerpt: rawContenu,
       lienLibelle:
           'Ouvrez la messagerie dans votre espace candidat sur la plateforme pour répondre.',
     });
@@ -338,6 +538,46 @@ router.post('/', async (req, res) => {
     return res.status(201).json({ success: true, data: { ...data, is_mine: true } });
   } catch (err) {
     console.error('[recruteur/messages POST]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.delete('/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    if (!messageId) {
+      return res.status(400).json({ success: false, message: 'messageId requis' });
+    }
+    const userId = req.user.id;
+    const { data: row, error: selErr } = await supabase
+      .from('messages')
+      .select('id, expediteur_id, destinataire_id')
+      .eq('id', messageId)
+      .maybeSingle();
+    if (selErr) throw selErr;
+    if (!row) {
+      return res.status(404).json({ success: false, message: 'Message introuvable' });
+    }
+    const participant = row.expediteur_id === userId || row.destinataire_id === userId;
+    if (!participant) {
+      return res.status(403).json({ success: false, message: 'Action non autorisée' });
+    }
+    const field = row.expediteur_id === userId ? 'est_supprime_exp' : 'est_supprime_dest';
+    const { error: softErr } = await supabase
+      .from('messages')
+      .update({ [field]: true })
+      .eq('id', messageId);
+    if (softErr) {
+      // Fallback si colonnes soft-delete absentes.
+      const { error: delErr } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId);
+      if (delErr) throw delErr;
+    }
+    return res.json({ success: true, message: 'Message supprimé' });
+  } catch (err) {
+    console.error('[recruteur/messages DELETE]', err);
     return res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

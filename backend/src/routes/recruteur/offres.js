@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireRecruteur } from '../../middleware/recruteurAuth.js';
 import { supabase } from '../../config/supabase.js';
-import { extraireMotsCles } from '../../services/ia.service.js';
+import { _appellerIA, _getClesIA, extraireMotsCles } from '../../services/ia.service.js';
 import { notifNouvelleOffre } from '../../services/auto_notification.service.js';
 import { notifierAlertesPourOffrePubliee } from '../../services/alerteEmploiNotify.service.js';
 
@@ -17,6 +17,63 @@ async function offresPublicationAutoActive() {
 
 const router = Router();
 router.use(authenticate, requireRecruteur);
+
+router.post('/ameliorer-description', async (req, res) => {
+  try {
+    const {
+      description_originale: descriptionOriginale,
+      titre_poste: titrePoste,
+      competences_requises: competencesRequises,
+      type_contrat: typeContrat,
+    } = req.body || {};
+
+    if (!String(descriptionOriginale || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description originale requise',
+      });
+    }
+
+    const cles = await _getClesIA();
+    const prompt = `Tu es un expert RH en Guinée (Afrique de l'Ouest).
+Améliore cette description de poste pour une offre d'emploi.
+
+Titre du poste : ${String(titrePoste || 'Non précisé')}
+Type de contrat : ${String(typeContrat || 'Non précisé')}
+Compétences requises : ${Array.isArray(competencesRequises) ? competencesRequises.join(', ') : ''}
+
+Description originale :
+"${String(descriptionOriginale)}"
+
+Consignes :
+- Rendre la description professionnelle et attractive
+- Garder les informations importantes
+- Structurer clairement les responsabilités
+- Mentionner l'environnement de travail
+- Maximum 600 caractères
+- En français
+- Retourner UNIQUEMENT la description améliorée`;
+
+    const descriptionAmelioree = await _appellerIA(prompt, cles, 'texte');
+    if (!descriptionAmelioree) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service IA non configuré',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        description_originale: String(descriptionOriginale),
+        description_amelioree: String(descriptionAmelioree).trim(),
+      },
+    });
+  } catch (err) {
+    console.error('[recruteur/offres/ameliorer-description]', err);
+    return res.status(500).json({ success: false, message: err?.message || 'Erreur serveur' });
+  }
+});
 
 router.get('/export/csv', async (req, res) => {
   try {

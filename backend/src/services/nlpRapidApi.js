@@ -12,6 +12,8 @@ function getHeaders(host, apiKey) {
   return {
     'X-RapidAPI-Key': apiKey,
     'X-RapidAPI-Host': host,
+    'x-rapidapi-key': apiKey,
+    'x-rapidapi-host': host,
   };
 }
 
@@ -76,7 +78,7 @@ export async function parseResumeWithApi(fileBuffer, filename, mimeType) {
 
     const parserHost = String(keys.parserHost || '').replace(/^https?:\/\//, '');
     if (!parserHost) return null;
-    const path = (process.env.RAPIDAPI_RESUME_PARSER_PATH || '').trim() || '/';
+    const path = (process.env.RAPIDAPI_RESUME_PARSER_PATH || '').trim() || '/parse';
     const url = `https://${parserHost}${path.startsWith('/') ? path : '/' + path}`;
     const res = await fetch(url, {
       method: 'POST',

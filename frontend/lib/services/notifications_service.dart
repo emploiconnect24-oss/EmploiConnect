@@ -31,10 +31,19 @@ class NotificationsService {
   }
 
   Future<void> markRead(String id) async {
-    final res = await _api.patch('/notifications/$id', useAuth: true);
+    final res = await _api.patch('/notifications/$id/lire', useAuth: true);
     if (res.statusCode != 200) {
       throw Exception(
         ApiService.errorMessage(res) ?? 'Erreur marquage notification',
+      );
+    }
+  }
+
+  Future<void> markUnread(String id) async {
+    final res = await _api.patch('/notifications/$id/non-lue', useAuth: true);
+    if (res.statusCode != 200) {
+      throw Exception(
+        ApiService.errorMessage(res) ?? 'Erreur marquage notification non lue',
       );
     }
   }
@@ -63,9 +72,15 @@ class NotificationsService {
         'email_candidature': emailCandidature,
         'email_message': emailMessage,
         'notif_in_app': notifInApp,
-        if (offresAlertesEmail != null) 'offres_alertes_email': offresAlertesEmail,
-        if (resumeHebdo != null) 'resume_hebdo': resumeHebdo,
-        if (conseilsEmail != null) 'conseils_email': conseilsEmail,
+        ...?(offresAlertesEmail == null
+            ? null
+            : {'offres_alertes_email': offresAlertesEmail}),
+        ...?(resumeHebdo == null
+            ? null
+            : {'resume_hebdo': resumeHebdo}),
+        ...?(conseilsEmail == null
+            ? null
+            : {'conseils_email': conseilsEmail}),
       },
     );
     if (res.statusCode != 200) {

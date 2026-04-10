@@ -31,6 +31,15 @@ class MatchingService {
     return _parseJson(res.body, res.statusCode, 'Erreur suggestions IA');
   }
 
+  /// PRD §6 : score profil + conseils + offres scorées.
+  Future<Map<String, dynamic>> getRecommandationsIa({int limite = 24}) async {
+    final res = await _api.get(
+      '/candidat/recommandations?limite=$limite',
+      useAuth: true,
+    );
+    return _parseJson(res.body, res.statusCode, 'Erreur recommandations IA');
+  }
+
   Map<String, dynamic> _parseJson(String body, int status, String fallbackMessage) {
     final parsed = jsonDecode(body) as Map<String, dynamic>;
     if (status >= 400) {

@@ -64,14 +64,23 @@ class CandidaturesService {
 
   Future<Map<String, dynamic>> postuler({
     required String offreId,
-    String? lettreMotivation,
+    required String lettreMotivation,
     String? cvId,
   }) async {
+    final lm = lettreMotivation.trim();
+    if (lm.length < 100) {
+      throw Exception(
+        'La lettre de motivation doit contenir au moins 100 caractères.',
+      );
+    }
+    if (lm.length > 4000) {
+      throw Exception(
+        'La lettre de motivation ne doit pas dépasser 4000 caractères.',
+      );
+    }
     final body = <String, dynamic>{
       'offre_id': offreId,
-      ...?((lettreMotivation == null || lettreMotivation.isEmpty)
-          ? null
-          : {'lettre_motivation': lettreMotivation}),
+      'lettre_motivation': lm,
       ...?(cvId == null ? null : {'cv_id': cvId}),
     };
     final res = await _api.post('/candidatures', body: body, useAuth: true);

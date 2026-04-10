@@ -25,6 +25,9 @@ import candidatSavedRoutes from './candidat/sauvegardes.js';
 import candidatAlertesRoutes from './candidat/alertes.js';
 import candidatCandidaturesRoutes from './candidat/candidatures.js';
 import candidatParametresRoutes from './candidat/parametres.js';
+import candidatCvCreatorRoutes from './candidat/cvCreator.js';
+import candidatProfilRoutes from './candidat/profil.js';
+import candidatRecommandationsRoutes from './candidat/recommandations.js';
 import { listBannieresPubliques } from '../controllers/admin/bannieres.controller.js';
 import { getFooterConfig, getGeneralConfig } from '../controllers/public/siteConfig.controller.js';
 import { getTopEntreprisesPublic } from '../controllers/public/entreprisesPublic.controller.js';
@@ -38,6 +41,7 @@ router.get('/config/footer', getFooterConfig);
 router.get('/config/general', getGeneralConfig);
 router.get('/entreprises/top-public', getTopEntreprisesPublic);
 router.get('/temoignages/public', getTemoignagesPublic);
+router.get('/temoignages', getTemoignagesPublic);
 
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
@@ -52,6 +56,7 @@ router.use('/recruteur/offres', recruteurOffresRoutes);
 router.use('/recruteur/candidatures', recruteurCandidaturesRoutes);
 router.use('/recruteur/profil', recruteurProfilRoutes);
 router.use('/recruteur/messages', recruteurMessagesRoutes);
+router.use('/messages', recruteurMessagesRoutes); // alias compat
 router.use('/recruteur/notifications', recruteurNotificationsRoutes);
 router.use('/recruteur/talents', recruteurTalentsRoutes);
 router.use('/recruteur/stats', recruteurStatsRoutes);
@@ -61,7 +66,11 @@ router.use('/candidat/sauvegardes', candidatSavedRoutes);
 router.use('/candidat/alertes', candidatAlertesRoutes);
 router.use('/candidat/candidatures', candidatCandidaturesRoutes);
 router.use('/candidat/temoignages', candidatTemoignagesRoutes);
+router.use('/temoignages', candidatTemoignagesRoutes);
 router.use('/candidat/parametres', candidatParametresRoutes);
+router.use('/candidat/cv', candidatCvCreatorRoutes);
+router.use('/candidat', candidatProfilRoutes);
+router.use('/candidat', candidatRecommandationsRoutes);
 router.use('/admin', adminRoutes);
 
 // Santé de l'API (sans auth)

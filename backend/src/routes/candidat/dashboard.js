@@ -290,6 +290,7 @@ router.get('/', async (req, res) => {
             en_cours: 0,
             acceptees: 0,
             entretiens: 0,
+            refusees: 0,
           },
           candidatures_recentes: [],
           offres_recommandees: [],
@@ -315,7 +316,7 @@ router.get('/', async (req, res) => {
           id, statut, date_candidature,
           offre:offre_id (
             id, titre,
-            entreprise:entreprise_id ( nom_entreprise )
+            entreprise:entreprise_id ( nom_entreprise, logo_url )
           )
         `)
         .eq('chercheur_id', chercheurId)
@@ -330,7 +331,7 @@ router.get('/', async (req, res) => {
         `)
         .in('statut', [STATUT_OFFRE.ACTIVE, 'publiee'])
         .order('date_publication', { ascending: false })
-        .limit(4),
+        .limit(6),
     ]);
 
     if (errRecent && !isMissingTableError(errRecent)) throw errRecent;
@@ -344,6 +345,7 @@ router.get('/', async (req, res) => {
       en_cours: all.filter((c) => c.statut === 'en_cours').length,
       acceptees: all.filter((c) => c.statut === 'acceptee').length,
       entretiens: all.filter((c) => c.statut === 'entretien').length,
+      refusees: all.filter((c) => c.statut === 'refusee').length,
     };
 
     const { data: chercheurLite } = await supabase
@@ -374,12 +376,13 @@ router.get('/', async (req, res) => {
       const titre = offre?.titre || 'Offre';
       const ent = offre?.entreprise;
       const company = ent?.nom_entreprise || 'Entreprise';
+      const logoUrl = ent?.logo_url || null;
       return {
         id: row.id,
         statut: row.statut,
         statut_label: statutLabel(row.statut),
         date_candidature: row.date_candidature,
-        offre: { titre, entreprise: { nom_entreprise: company } },
+        offre: { titre, entreprise: { nom_entreprise: company, logo_url: logoUrl } },
       };
     });
 

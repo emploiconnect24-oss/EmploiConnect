@@ -44,6 +44,7 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
   bool _loading = false;
   bool _loadExisting = false;
   bool _isSavingDraft = false;
+  bool _isAmeliorantDesc = false;
 
   static const _sectors = [
     'Technologie',
@@ -303,6 +304,236 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
     });
   }
 
+  Future<void> _ameliorerDescriptionIA() async {
+    if (_descriptionCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('💡 Écrivez d\'abord quelques mots sur le poste'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isAmeliorantDesc = true);
+    try {
+      final res = await _service.ameliorerDescription(
+        descriptionOriginale: _descriptionCtrl.text.trim(),
+        titrePoste: _titreCtrl.text.trim(),
+        competencesRequises: _skills,
+        typeContrat: _contractType ?? '',
+      );
+
+      if (res['success'] == true) {
+        final descAmelioree = (res['data']?['description_amelioree'] ?? '').toString();
+        if (!mounted || descAmelioree.isEmpty) return;
+
+        await showDialog<void>(
+          context: context,
+          builder: (_) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Container(
+              width: 500,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: Color(0xFF7C3AED),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Description améliorée par l\'IA',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F3FF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      descAmelioree,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(
+                            'Garder l\'original',
+                            style: GoogleFonts.inter(
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.check_rounded, size: 16),
+                          label: const Text('Utiliser ce texte'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF7C3AED),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          onPressed: () {
+                            setState(() => _descriptionCtrl.text = descAmelioree);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur IA: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isAmeliorantDesc = false);
+    }
+  }
+
+  Widget _buildDescriptionField() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Description du poste *',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF374151),
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _ameliorerDescriptionIA,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1A56DB), Color(0xFF7C3AED)],
+                    ),
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _isAmeliorantDesc
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.auto_awesome_rounded,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _isAmeliorantDesc ? 'IA en cours...' : '✨ Rédiger avec l\'IA',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _descriptionCtrl,
+            maxLines: 12,
+            minLines: 8,
+            maxLength: 5000,
+            decoration: InputDecoration(
+              hintText: 'Décrivez le poste en détail (missions, contexte, objectifs, environnement, outils, organisation, livrables...)',
+              hintStyle: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFFCBD5E1),
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              contentPadding: const EdgeInsets.all(14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF1A56DB), width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      );
+
   Widget _buildGradientHeader() {
     final isNew = widget.offreId == null;
     return Container(
@@ -508,14 +739,7 @@ class _OffreFormScreenState extends State<OffreFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextFormField(
-              controller: _descriptionCtrl,
-              maxLines: 7,
-              decoration: const InputDecoration(
-                labelText: 'Description du poste * (min 100 caractères)',
-                alignLabelWithHint: true,
-              ),
-            ),
+            _buildDescriptionField(),
             const SizedBox(height: 12),
             Row(
               children: [

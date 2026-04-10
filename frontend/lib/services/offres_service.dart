@@ -123,6 +123,28 @@ class OffresService {
     return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
   }
 
+  Future<Map<String, dynamic>> ameliorerDescription({
+    required String descriptionOriginale,
+    required String titrePoste,
+    required List<String> competencesRequises,
+    required String typeContrat,
+  }) async {
+    final res = await _api.post(
+      '/recruteur/offres/ameliorer-description',
+      body: {
+        'description_originale': descriptionOriginale,
+        'titre_poste': titrePoste,
+        'competences_requises': competencesRequises,
+        'type_contrat': typeContrat,
+      },
+      useAuth: true,
+    );
+    if (res.statusCode != 200) {
+      throw Exception(ApiService.errorMessage(res) ?? 'Erreur amélioration IA');
+    }
+    return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+  }
+
   Future<void> deleteOffre(String id) async {
     final res = await _api.delete('/offres/$id', useAuth: true);
     if (res.statusCode != 204 && res.statusCode != 200) {

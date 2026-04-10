@@ -472,6 +472,9 @@ class _CandidaturesPageState extends State<CandidaturesPage> {
     String? dateEntretien,
     String? lienVisio,
     String? raisonRefus,
+    String? typeEntretien,
+    String? lieuEntretien,
+    String? notesEntretien,
   }) async {
     try {
       final token = context.read<AuthProvider>().token ?? '';
@@ -482,6 +485,9 @@ class _CandidaturesPageState extends State<CandidaturesPage> {
         dateEntretien: dateEntretien,
         lienVisio: lienVisio,
         raisonRefus: raisonRefus,
+        typeEntretien: typeEntretien,
+        lieuEntretien: lieuEntretien,
+        notesEntretien: notesEntretien,
       );
       if (res['success'] == true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -843,6 +849,9 @@ class _CandidatureListCard extends StatelessWidget {
     String? dateEntretien,
     String? lienVisio,
     String? raisonRefus,
+    String? typeEntretien,
+    String? lieuEntretien,
+    String? notesEntretien,
   })
   onAction;
   final VoidCallback onOpenDetail;
@@ -1125,53 +1134,219 @@ class _CandidatureListCard extends StatelessWidget {
   }
 
   void _showEntretienDialog(BuildContext ctx, String id) {
-    final dateCtrl = TextEditingController();
+    var day = DateTime.now().add(const Duration(days: 2));
+    TimeOfDay time = TimeOfDay.now();
+    String type = 'visio';
     final lienCtrl = TextEditingController();
+    final lieuCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    final stepRef = <int>[0];
+    final errorRef = <String?>[null];
+
+    String? validate({
+      required DateTime dateTime,
+      required String type,
+      required String? lienVisio,
+      required String? lieuOuNumero,
+    }) {
+      if (dateTime.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
+        return 'La date/heure doit être dans le futur.';
+      }
+      if (type == 'visio') {
+        final v = (lienVisio ?? '').trim();
+        if (v.isEmpty) return 'Le lien visio est requis.';
+        final uri = Uri.tryParse(v);
+        if (uri == null || !(uri.hasScheme && uri.host.isNotEmpty)) {
+          return 'Le lien visio doit être une URL valide.';
+        }
+      } else {
+        final v = (lieuOuNumero ?? '').trim();
+        if (v.isEmpty) {
+          return type == 'presentiel'
+              ? 'Le lieu de l’entretien est requis.'
+              : 'Le numéro à appeler est requis.';
+        }
+      }
+      return null;
+    }
+
     showDialog<void>(
       context: ctx,
-      builder: (dCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Planifier un entretien',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: dateCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Date / heure',
-                hintText: 'AAAA-MM-JJThh:mm',
+      builder: (dCtx) => StatefulBuilder(
+        builder: (dCtx, setDlg) {
+          final step = stepRef[0];
+          final dt = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+          final isoPreview = dt.toIso8601String();
+          final lv = type == 'visio' ? lienCtrl.text.trim() : null;
+          final lu = (type == 'presentiel' || type == 'telephone') ? lieuCtrl.text.trim() : null;
+          final notesPreview = notesCtrl.text.trim();
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              step == 0 ? 'Planifier un entretien' : 'Confirmer l\'entretien',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: 420,
+                child: step == 0
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: dCtx,
+                                initialDate: day,
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) setDlg(() => day = picked);
+                            },
+                            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                            label: Text(
+                              '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year}',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await showTimePicker(context: dCtx, initialTime: time);
+                              if (picked != null) setDlg(() => time = picked);
+                            },
+                            icon: const Icon(Icons.schedule, size: 18),
+                            label: Text(time.format(dCtx)),
+                          ),
+                          const SizedBox(height: 12),
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'visio', label: Text('Visio'), icon: Icon(Icons.videocam_outlined, size: 16)),
+                              ButtonSegment(value: 'presentiel', label: Text('Sur place'), icon: Icon(Icons.place_outlined, size: 16)),
+                              ButtonSegment(value: 'telephone', label: Text('Tél.'), icon: Icon(Icons.phone_outlined, size: 16)),
+                            ],
+                            selected: {type},
+                            onSelectionChanged: (s) => setDlg(() => type = s.first),
+                          ),
+                          const SizedBox(height: 10),
+                          if (type == 'visio')
+                            TextField(
+                              controller: lienCtrl,
+                              decoration: const InputDecoration(labelText: 'Lien visio (Meet, Teams…)', isDense: true),
+                            )
+                          else if (type == 'presentiel')
+                            TextField(
+                              controller: lieuCtrl,
+                              decoration: const InputDecoration(labelText: 'Adresse ou salle', isDense: true),
+                            )
+                          else
+                            TextField(
+                              controller: lieuCtrl,
+                              decoration: const InputDecoration(labelText: 'Numéro ou indicatif', isDense: true),
+                            ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: notesCtrl,
+                            maxLines: 3,
+                            decoration: const InputDecoration(labelText: 'Notes', alignLabelWithHint: true, isDense: true),
+                          ),
+                          if (errorRef[0] != null) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              errorRef[0]!,
+                              style: GoogleFonts.inter(
+                                color: const Color(0xFFDC2626),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      )
+                    : Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Date et heure : ${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year} · ${time.format(dCtx)}'),
+                            const SizedBox(height: 6),
+                            Text('Type : ${type == 'visio' ? 'Visioconférence' : type == 'presentiel' ? 'Sur place' : 'Téléphone'}'),
+                            if ((lv ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text('Lien visio : $lv'),
+                            ],
+                            if ((lu ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(type == 'presentiel' ? 'Lieu : $lu' : 'Coordonnées : $lu'),
+                            ],
+                            if (notesPreview.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text('Notes : $notesPreview'),
+                            ],
+                          ],
+                        ),
+                      ),
               ),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: lienCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Lien visio (optionnel)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(dCtx);
-              onAction(
-                id,
-                'planifier_entretien',
-                dateEntretien: dateCtrl.text.isNotEmpty ? dateCtrl.text : null,
-                lienVisio: lienCtrl.text.isNotEmpty ? lienCtrl.text : null,
-              );
-            },
-            child: const Text('Planifier'),
-          ),
-        ],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Annuler')),
+              if (step == 0)
+                FilledButton(
+                  onPressed: () {
+                    final msg = validate(
+                      dateTime: dt,
+                      type: type,
+                      lienVisio: lv,
+                      lieuOuNumero: lu,
+                    );
+                    setDlg(() {
+                      errorRef[0] = msg;
+                      if (msg == null) stepRef[0] = 1;
+                    });
+                  },
+                  child: const Text('Voir le récapitulatif'),
+                )
+              else ...[
+                TextButton(onPressed: () => setDlg(() => stepRef[0] = 0), child: const Text('Modifier')),
+                FilledButton(
+                  onPressed: () {
+                    final msg = validate(
+                      dateTime: dt,
+                      type: type,
+                      lienVisio: lv,
+                      lieuOuNumero: lu,
+                    );
+                    if (msg != null) {
+                      setDlg(() {
+                        errorRef[0] = msg;
+                        stepRef[0] = 0;
+                      });
+                      return;
+                    }
+                    Navigator.pop(dCtx);
+                    onAction(
+                      id,
+                      'planifier_entretien',
+                      dateEntretien: isoPreview,
+                      lienVisio: lv,
+                      typeEntretien: type,
+                      lieuEntretien: lu,
+                      notesEntretien: notesPreview.isEmpty ? null : notesPreview,
+                    );
+                  },
+                  child: const Text('Confirmer et envoyer'),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

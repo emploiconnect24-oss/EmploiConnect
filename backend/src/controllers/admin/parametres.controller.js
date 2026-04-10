@@ -6,6 +6,7 @@ import { supabase } from '../../config/supabase.js';
 import { getRapidApiKeys, invalidateKeysCache } from '../../config/rapidApi.js';
 import { invalidateMailSettingsCache } from '../../config/mailSettings.js';
 import { verifySmtpConnection, sendPlatformEmail } from '../../services/mail.service.js';
+import { ameliorerAproposAvecConfig } from '../../services/ameliorerAproposIa.service.js';
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '';
 
@@ -44,7 +45,24 @@ function decrypt(text) {
   }
 }
 
-const SENSITIVE_KEYS = ['rapidapi_key', 'openai_api_key', 'email_smtp_password'];
+const SENSITIVE_KEYS = [
+  'rapidapi_key',
+  'openai_api_key',
+  'anthropic_api_key',
+  'email_smtp_password',
+];
+
+/** Clés secrètes envoyées telles quelles aux APIs / SMTP : ne pas chiffrer à l’enregistrement (compat lecture + moins d’erreurs). */
+const CLES_STOCKEES_EN_CLAIR = new Set([
+  'anthropic_api_key',
+  'openai_api_key',
+  'rapidapi_key',
+  'email_smtp_password',
+  'smtp_password',
+  'smtp_user',
+  'email_smtp_user',
+  'email_from',
+]);
 
 /** Invalider le cache RapidAPI dès qu’un paramètre IA est enregistré (sinon jusqu’à 5 min d’ancienneté). */
 const RAPIDAPI_CACHE_KEYS = new Set([
@@ -61,6 +79,12 @@ const MAIL_SETTINGS_CACHE_KEYS = new Set([
   'email_smtp_port',
   'email_smtp_user',
   'email_smtp_password',
+  'smtp_host',
+  'smtp_port',
+  'smtp_user',
+  'smtp_password',
+  'email_from',
+  'email_nom',
   'email_nom_expediteur',
   'template_bienvenue_sujet',
   'template_bienvenue_corps',
@@ -182,7 +206,10 @@ export async function updateParametres(req, res) {
           ? JSON.stringify(param.valeur)
           : String(param.valeur);
 
-      if (SENSITIVE_KEYS.includes(param.cle) && valeurString.trim() !== '') {
+      const doitChiffrer = SENSITIVE_KEYS.includes(param.cle)
+        && !CLES_STOCKEES_EN_CLAIR.has(param.cle)
+        && valeurString.trim() !== '';
+      if (doitChiffrer) {
         valeurString = encrypt(valeurString);
       }
 
@@ -340,6 +367,32 @@ export async function testerConnexionIA(req, res) {
       : 'Certaines APIs nécessitent une configuration',
     data: resultats,
   });
+}
+
+/** Test amélioration « À propos » (clés lues dans parametres_plateforme + .env fallback). */
+export async function testIaApropos(req, res) {
+  try {
+    const body =
+      req.body && typeof req.body === 'object' && Object.keys(req.body).length
+        ? req.body
+        : {
+            texte_original:
+              'Développeur passionné avec expérience en mobile.',
+            titre_poste: 'Développeur Flutter',
+            competences: ['Flutter', 'Dart', 'Firebase'],
+          };
+    const out = await ameliorerAproposAvecConfig(body);
+    if (out.error) {
+      return res.status(400).json({ success: false, message: out.error });
+    }
+    return res.json({ success: true, data: out.data });
+  } catch (err) {
+    console.error('[testIaApropos]', err);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Erreur serveur',
+    });
+  }
 }
 
 /** Usage interne backend uniquement (ne pas exposer au navigateur). */

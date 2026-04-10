@@ -10,6 +10,12 @@ let cache = null;
 let cacheTime = 0;
 
 const KEYS = [
+  'email_from',
+  'email_nom',
+  'smtp_host',
+  'smtp_port',
+  'smtp_user',
+  'smtp_password',
   'email_service_actif',
   'email_smtp_host',
   'email_smtp_port',
@@ -129,7 +135,9 @@ export async function getMailSettings() {
       map[p.cle] = p.valeur;
     });
 
-    const rawPass = String(map.email_smtp_password || '').trim();
+    const rawPass = String(
+      map.smtp_password || map.email_smtp_password || '',
+    ).trim();
     let password = '';
     if (rawPass) {
       password = rawPass.includes(':')
@@ -143,12 +151,26 @@ export async function getMailSettings() {
     }
 
     cache = {
-      enabled: boolFromDb(map.email_service_actif),
-      host: String(map.email_smtp_host || '').trim(),
-      port: Number.parseInt(String(map.email_smtp_port || '587'), 10) || 587,
-      user: String(map.email_smtp_user || '').trim(),
+      enabled: ('email_service_actif' in map)
+        ? boolFromDb(map.email_service_actif)
+        : true,
+      host: String(
+        map.smtp_host || map.email_smtp_host || 'smtp.gmail.com',
+      ).trim(),
+      port: Number.parseInt(
+        String(map.smtp_port || map.email_smtp_port || '587'),
+        10,
+      ) || 587,
+      user: String(
+        map.smtp_user || map.email_smtp_user || '',
+      ).trim(),
       password,
-      fromName: String(map.email_nom_expediteur || 'EmploiConnect').trim() || 'EmploiConnect',
+      from: String(
+        map.email_from || '',
+      ).trim(),
+      fromName: String(
+        map.email_nom || map.email_nom_expediteur || 'EmploiConnect',
+      ).trim() || 'EmploiConnect',
       platformName: String(map.nom_plateforme || 'EmploiConnect').trim() || 'EmploiConnect',
       tplWelcomeSubject: String(map.template_bienvenue_sujet || '').trim(),
       tplWelcomeBody: String(map.template_bienvenue_corps || '').trim(),
@@ -189,10 +211,11 @@ export async function getMailSettings() {
     console.error('[getMailSettings]', err?.message || err);
     cache = {
       enabled: false,
-      host: '',
+      host: 'smtp.gmail.com',
       port: 587,
       user: '',
       password: '',
+      from: '',
       fromName: 'EmploiConnect',
       platformName: 'EmploiConnect',
       tplWelcomeSubject: '',

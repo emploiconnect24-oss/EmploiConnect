@@ -9,7 +9,7 @@ const DEFAULTS = {
   similarityHost: process.env.RAPIDAPI_SIMILARITY_HOST
     || 'twinword-text-similarity-v1.p.rapidapi.com',
   parserHost: process.env.RAPIDAPI_RESUME_PARSER_HOST
-    || 'resume-parser3.p.rapidapi.com',
+    || 'cv-resume-parser.p.rapidapi.com',
   taggingHost: process.env.RAPIDAPI_TOPIC_TAGGING_HOST
     || 'twinword-topic-tagging1.p.rapidapi.com',
   seuilMatching: Number.parseInt(process.env.IA_SEUIL_MATCHING || '40', 10) || 40,
@@ -57,6 +57,7 @@ export async function getRapidApiKeys() {
     (data || []).forEach((p) => {
       map[p.cle] = p.valeur;
     });
+    const rows = data || [];
 
     // Clé en base : si chiffrée (forme iv:hex), on n'utilise JAMAIS le texte brut comme clé API.
     const rawKey = String(map.rapidapi_key || '').trim();
@@ -84,6 +85,23 @@ export async function getRapidApiKeys() {
       seuilMatching: Number.parseInt(map.seuil_matching_minimum || '', 10)
         || DEFAULTS.seuilMatching,
     };
+    console.log('═══ DEBUG CLÉS API ═══');
+    console.log('Lignes BDD trouvées:', rows?.length || 0);
+    console.log('Toutes les lignes:', JSON.stringify(rows));
+    console.log('apiKey extraite:', map.rapidapi_key
+      ? `${String(map.rapidapi_key).substring(0, 20)}...`
+      : '❌ VIDE');
+    console.log('process.env.RAPIDAPI_KEY:',
+      process.env.RAPIDAPI_KEY
+        ? `${String(process.env.RAPIDAPI_KEY).substring(0, 20)}...`
+        : '❌ VIDE');
+    console.log('═══════════════════════');
+    console.log(
+      '[getRapidApiKeys] apiKey trouvée:',
+      keysCache.apiKey
+        ? `${keysCache.apiKey.substring(0, 15)}...`
+        : '❌ VIDE',
+    );
     keysCacheTime = now;
     return keysCache;
   } catch (err) {

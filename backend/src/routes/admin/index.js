@@ -18,6 +18,7 @@ import * as bannieres from '../../controllers/admin/bannieres.controller.js';
 import * as profil from '../../controllers/admin/profil.controller.js';
 import * as search from '../../controllers/admin/search.controller.js';
 import * as temoignages from '../../controllers/admin/temoignages.controller.js';
+import ressourcesParcoursRoutes from './ressourcesParcours.routes.js';
 import { uploadAdminPhoto } from '../../middleware/uploadAdminPhoto.js';
 import { auditLog } from '../../middleware/auditLog.js';
 
@@ -108,6 +109,8 @@ router.delete(
   auditLog('SUPPRESSION_TEMOIGNAGE', 'temoignage'),
   temoignages.deleteTemoignage,
 );
+
+router.use('/ressources', ressourcesParcoursRoutes);
 
 router.post(
   '/notifications',

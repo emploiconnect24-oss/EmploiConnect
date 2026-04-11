@@ -14,8 +14,15 @@ import { checkMaintenance } from './middleware/maintenance.middleware.js';
 import { supabase } from './config/supabase.js';
 import { getRapidApiKeys } from './config/rapidApi.js';
 import { startScheduledJobs } from './services/scheduledJobs.service.js';
+import { closeRedisClient } from './config/redis.js';
 
 const PORT = process.env.PORT || 3000;
+
+['SIGINT', 'SIGTERM'].forEach((sig) => {
+  process.on(sig, () => {
+    void closeRedisClient();
+  });
+});
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:8080';
 
 /**

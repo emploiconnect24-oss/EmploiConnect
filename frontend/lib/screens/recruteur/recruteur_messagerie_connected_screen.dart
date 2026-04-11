@@ -5,13 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/recruteur_provider.dart';
 import '../../services/download_service.dart';
 import '../../services/recruteur_service.dart';
+import '../../widgets/messaging_media_widgets.dart';
+import '../../widgets/messaging_typing_indicator.dart';
 
 /// Messagerie recruteur — conversations groupées + bulles envoyées / reçues.
 class RecruteurMessagerieConnectedScreen extends StatefulWidget {
@@ -63,23 +64,30 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
   String? _downloadingPjUrl;
   double? _downloadingPjProgress;
   Timer? _pollTimer;
+  bool _autreEcrit = false;
+  Timer? _typingPollTimer;
+  Timer? _typingEmitDebounce;
+  DateTime? _lastTypingPingAt;
 
   @override
   void initState() {
     super.initState();
-    _loadConversations();
+    _loadConversations(silentPoll: false);
     _pollTimer = Timer.periodic(const Duration(seconds: 12), (_) async {
       if (!mounted) return;
-      await _loadConversations();
-      if (_activeUserId != null && (_activePeerName ?? '').isNotEmpty) {
-        await _open(_activeUserId!, _activePeerName ?? '');
-      }
+      try {
+        await _loadConversations(silentPoll: true);
+        if (_activeUserId != null && (_activePeerName ?? '').isNotEmpty) {
+          await _open(_activeUserId!, _activePeerName ?? '', silentPoll: true);
+        }
+      } catch (_) {}
     });
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _stopTypingPresence(notify: false);
     _msgCtrl.dispose();
     _searchCtrl.dispose();
     _newPeerSearchCtrl.dispose();
@@ -93,34 +101,61 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
     return int.tryParse(v?.toString() ?? '') ?? 0;
   }
 
-  Future<void> _loadConversations() async {
-    final token = context.read<AuthProvider>().token ?? '';
-    if (token.isEmpty) return;
-    final res = await _svc.getConversations(token);
-    final data = (res['data'] as Map?)?.cast<String, dynamic>();
-    final convRows = data?['conversations'] ?? res['data'] ?? const [];
-    final convs = List<Map<String, dynamic>>.from(convRows);
-    final unreadSum = _asInt(data?['total_non_lus']) > 0
-        ? _asInt(data?['total_non_lus'])
-        : convs.fold<int>(0, (s, c) => s + _asInt(c['nb_non_lus']));
-    if (!mounted) return;
-    context.read<RecruteurProvider>().updateNbMessages(unreadSum);
-    setState(() {
-      _convs = convs;
-      _loading = false;
-    });
+  String _friendlyMessagesApiError(Object e) {
+    final s = e.toString();
+    if (s.contains('Failed to fetch') ||
+        s.contains('ClientException') ||
+        s.contains('SocketException') ||
+        s.contains('Connection refused')) {
+      return 'Serveur injoignable. Lancez le backend (npm run dev, port 3000). '
+          'Sur émulateur Android, api_config utilise 10.0.2.2 — sur le web, localhost.';
+    }
+    return s;
+  }
 
-    // Auto-open conversation if requested (best effort).
-    final targetId = widget.initialPeerId;
-    if (targetId != null && targetId.isNotEmpty && _activeUserId == null) {
-      final match = convs.cast<Map>().where((c) {
-        final peer = (c['peer'] as Map?)?.cast<String, dynamic>();
-        return peer?['id']?.toString() == targetId;
-      }).toList();
-      final name = match.isNotEmpty
-          ? ((match.first['peer'] as Map?)?['nom']?.toString() ?? widget.initialPeerName ?? '')
-          : (widget.initialPeerName ?? '');
-      await _open(targetId, name);
+  Future<void> _loadConversations({bool silentPoll = false}) async {
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) {
+      if (!silentPoll && mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      final res = await _svc.getConversations(token);
+      final data = (res['data'] as Map?)?.cast<String, dynamic>();
+      final convRows = data?['conversations'] ?? res['data'] ?? const [];
+      final convs = List<Map<String, dynamic>>.from(convRows);
+      final unreadSum = _asInt(data?['total_non_lus']) > 0
+          ? _asInt(data?['total_non_lus'])
+          : convs.fold<int>(0, (s, c) => s + _asInt(c['nb_non_lus']));
+      if (!mounted) return;
+      context.read<RecruteurProvider>().updateNbMessages(unreadSum);
+      setState(() {
+        _convs = convs;
+        _loading = false;
+      });
+
+      final targetId = widget.initialPeerId;
+      if (targetId != null && targetId.isNotEmpty && _activeUserId == null) {
+        final match = convs.cast<Map>().where((c) {
+          final peer = (c['peer'] as Map?)?.cast<String, dynamic>();
+          return peer?['id']?.toString() == targetId;
+        }).toList();
+        final name = match.isNotEmpty
+            ? ((match.first['peer'] as Map?)?['nom']?.toString() ?? widget.initialPeerName ?? '')
+            : (widget.initialPeerName ?? '');
+        await _open(targetId, name, silentPoll: false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (!silentPoll) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_friendlyMessagesApiError(e)),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
     }
   }
 
@@ -135,32 +170,95 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
     }).toList();
   }
 
-  Future<void> _open(String userId, String name) async {
+  Future<void> _open(String userId, String name, {bool silentPoll = false}) async {
     final token = context.read<AuthProvider>().token ?? '';
-    final res = await _svc.getMessages(token, userId);
-    final data = (res['data'] as Map?)?.cast<String, dynamic>() ?? {};
-    final interlocuteur = (data['interlocuteur'] as Map?)?.cast<String, dynamic>();
-    String? photo = interlocuteur?['photo_url']?.toString();
-    if (photo == null || photo.isEmpty) {
-      final conv = _convs.cast<Map<String, dynamic>?>().firstWhere(
-            (c) => (c?['peer'] as Map?)?['id']?.toString() == userId,
-            orElse: () => null,
-          );
-      final peer = (conv?['peer'] as Map?)?.cast<String, dynamic>();
-      photo = peer?['photo_url']?.toString();
-    }
-    if (!mounted) return;
-    setState(() {
-      _activeUserId = userId;
-      _activePeerName = name;
-      _activePeerPhotoUrl = (photo != null && photo.isNotEmpty) ? photo : null;
-      _messages = List<Map<String, dynamic>>.from(data['messages'] ?? const []);
-    });
-    await _loadConversations();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+    if (token.isEmpty) return;
+    try {
+      final res = await _svc.getMessages(token, userId);
+      final data = (res['data'] as Map?)?.cast<String, dynamic>() ?? {};
+      final interlocuteur = (data['interlocuteur'] as Map?)?.cast<String, dynamic>();
+      String? photo = interlocuteur?['photo_url']?.toString();
+      if (photo == null || photo.isEmpty) {
+        final conv = _convs.cast<Map<String, dynamic>?>().firstWhere(
+              (c) => (c?['peer'] as Map?)?['id']?.toString() == userId,
+              orElse: () => null,
+            );
+        final peer = (conv?['peer'] as Map?)?.cast<String, dynamic>();
+        photo = peer?['photo_url']?.toString();
       }
+      if (!mounted) return;
+      setState(() {
+        _activeUserId = userId;
+        _activePeerName = name;
+        _activePeerPhotoUrl = (photo != null && photo.isNotEmpty) ? photo : null;
+        _messages = List<Map<String, dynamic>>.from(data['messages'] ?? const []);
+      });
+      _startTypingPresence(userId);
+      await _loadConversations(silentPoll: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollCtrl.hasClients) {
+          _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      if (!silentPoll) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_friendlyMessagesApiError(e)),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    }
+  }
+
+  void _startTypingPresence(String peerId) {
+    _stopTypingPresence(notify: false);
+    if (peerId.isEmpty) return;
+    _typingPollTimer = Timer.periodic(const Duration(milliseconds: 1800), (_) async {
+      if (!mounted) return;
+      final active = _activeUserId;
+      final token = context.read<AuthProvider>().token ?? '';
+      if (active == null || active != peerId || token.isEmpty) return;
+      try {
+        final typing = await _svc.getPeerTyping(token, active);
+        if (!mounted || _activeUserId != active) return;
+        if (_autreEcrit != typing) setState(() => _autreEcrit = typing);
+      } catch (_) {}
+    });
+  }
+
+  void _stopTypingPresence({bool notify = true}) {
+    _typingPollTimer?.cancel();
+    _typingPollTimer = null;
+    _typingEmitDebounce?.cancel();
+    _typingEmitDebounce = null;
+    _lastTypingPingAt = null;
+    if (!notify) {
+      _autreEcrit = false;
+      return;
+    }
+    if (mounted && _autreEcrit) setState(() => _autreEcrit = false);
+  }
+
+  void _onDraftTextChanged(String _) {
+    if (_activeUserId == null) return;
+    final peer = _activeUserId!;
+    final token = context.read<AuthProvider>().token ?? '';
+    if (token.isEmpty) return;
+    _typingEmitDebounce?.cancel();
+    _typingEmitDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted || _activeUserId != peer) return;
+      final now = DateTime.now();
+      if (_lastTypingPingAt != null &&
+          now.difference(_lastTypingPingAt!) < const Duration(seconds: 2)) {
+        return;
+      }
+      _lastTypingPingAt = now;
+      try {
+        await _svc.sendTypingPing(token, peer);
+      } catch (_) {}
     });
   }
 
@@ -466,26 +564,6 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
     return imageExt.contains(e1) || imageExt.contains(e2);
   }
 
-  IconData _fileIconForExt(String ext) {
-    switch (ext) {
-      case 'pdf':
-        return Icons.picture_as_pdf_rounded;
-      case 'doc':
-      case 'docx':
-        return Icons.description_rounded;
-      case 'xls':
-      case 'xlsx':
-      case 'csv':
-        return Icons.table_chart_rounded;
-      case 'zip':
-      case 'rar':
-      case '7z':
-        return Icons.folder_zip_rounded;
-      default:
-        return Icons.insert_drive_file_rounded;
-    }
-  }
-
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes o';
     final kb = bytes / 1024;
@@ -519,7 +597,7 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
     }
   }
 
-  Future<void> _downloadAttachment(String url, String? name) async {
+  Future<void> _downloadAttachment(String url, String? name, {String? messageId}) async {
     if (_downloadingPjUrl != null) return;
     final fileName = (name != null && name.trim().isNotEmpty)
         ? name.trim()
@@ -529,40 +607,56 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
         _downloadingPjUrl = url;
         _downloadingPjProgress = 0;
       });
-      final urlsToTry = <String>{
-        url,
-        ..._bucketFallbackUrls(url),
-      }.toList();
       DioException? lastDioErr;
       Exception? lastErr;
       var downloaded = false;
-      for (final candidate in urlsToTry) {
+
+      void onProgress(int received, int total) {
+        if (!mounted) return;
+        if (total <= 0) return;
+        setState(() {
+          _downloadingPjProgress = received / total;
+        });
+      }
+
+      if (messageId != null && messageId.isNotEmpty) {
         try {
-          await DownloadService.downloadFileFromUrl(
-            url: candidate,
+          await DownloadService.downloadFileFromAuthenticatedApi(
+            apiPath: '/recruteur/messages/file/$messageId',
             fileName: fileName,
-            mimeType: _mimeFromNameOrUrl(name ?? candidate),
+            mimeType: _mimeFromNameOrUrl(name ?? url),
             context: context,
-            onProgress: (received, total) {
-              if (!mounted) return;
-              if (total <= 0) return;
-              setState(() {
-                _downloadingPjProgress = received / total;
-              });
-            },
+            onProgress: onProgress,
           );
           lastDioErr = null;
           lastErr = null;
           downloaded = true;
-          break;
         } on DioException catch (e) {
           lastDioErr = e;
-          continue;
         } catch (e) {
           lastErr = Exception('$e');
-          continue;
         }
       }
+
+      if (!downloaded) {
+        try {
+          await DownloadService.downloadFileFromUrl(
+            url: url,
+            fileName: fileName,
+            mimeType: _mimeFromNameOrUrl(name ?? url),
+            context: context,
+            onProgress: onProgress,
+          );
+          lastDioErr = null;
+          lastErr = null;
+          downloaded = true;
+        } on DioException catch (e) {
+          lastDioErr = e;
+        } catch (e) {
+          lastErr = Exception('$e');
+        }
+      }
+
       if (lastDioErr != null) throw lastDioErr;
       if (lastErr != null) throw lastErr;
       if (!downloaded) {
@@ -582,25 +676,6 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
           _downloadingPjProgress = null;
         });
       }
-    }
-  }
-
-  List<String> _bucketFallbackUrls(String url) {
-    try {
-      final u = Uri.parse(url);
-      final seg = u.pathSegments;
-      final i = seg.indexOf('public');
-      if (i < 0 || i + 2 >= seg.length) return const [];
-      final objectBase = seg.sublist(0, i + 1);
-      final currentBucket = seg[i + 1];
-      final filePathSeg = seg.sublist(i + 2);
-      const buckets = ['logos', 'cv-files', 'avatars', 'messages'];
-      return buckets
-          .where((b) => b != currentBucket)
-          .map((b) => u.replace(pathSegments: [...objectBase, b, ...filePathSeg]).toString())
-          .toList();
-    } catch (_) {
-      return const [];
     }
   }
 
@@ -663,10 +738,13 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
                     child: ListTile(
                       leading: IconButton(
                         icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: () => setState(() {
-                          _activeUserId = null;
-                          _messages = [];
-                        }),
+                        onPressed: () {
+                          _stopTypingPresence();
+                          setState(() {
+                            _activeUserId = null;
+                            _messages = [];
+                          });
+                        },
                       ),
                       title: Text(_activePeerName ?? 'Conversation', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                     ),
@@ -973,11 +1051,16 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
             ),
           ),
         Expanded(
-          child: ListView.builder(
-            controller: _scrollCtrl,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            itemCount: _messages.length,
-            itemBuilder: (ctx, i) {
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_autreEcrit) const MessagingTypingIndicatorBar(),
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  itemCount: _messages.length,
+                  itemBuilder: (ctx, i) {
               final m = _messages[i];
               final mine = m['is_mine'] == true || m['expediteur_id']?.toString() == myId;
               final text = m['contenu']?.toString() ?? '';
@@ -991,8 +1074,8 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
 
               bool isImageOnlyMessage(Map<String, dynamic> row) {
                 final rowText = row['contenu']?.toString() ?? '';
-                final rowUrl = row['piece_jointe_url']?.toString();
-                final rowNom = row['piece_jointe_nom']?.toString();
+                final rowUrl = (row['fichier_url'] ?? row['piece_jointe_url'])?.toString();
+                final rowNom = (row['fichier_nom'] ?? row['piece_jointe_nom'])?.toString();
                 final rowHasPj = rowUrl != null && rowUrl.isNotEmpty;
                 final rowIsImage = rowHasPj && _isImageAttachment(name: rowNom, url: rowUrl);
                 final rowAuto = rowText.startsWith('📎 ');
@@ -1007,10 +1090,10 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
                   if (prevMine != mine || !isImageOnlyMessage(prev)) break;
                   before++;
                 }
-                if (before % 4 != 0) return const SizedBox.shrink();
+                if (before % 6 != 0) return const SizedBox.shrink();
 
                 final group = <Map<String, dynamic>>[];
-                for (int k = i; k < _messages.length && group.length < 4; k++) {
+                for (int k = i; k < _messages.length && group.length < 6; k++) {
                   final row = _messages[k];
                   final rowMine = row['is_mine'] == true || row['expediteur_id']?.toString() == myId;
                   if (rowMine != mine || !isImageOnlyMessage(row)) break;
@@ -1018,287 +1101,160 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
                 }
 
                 final groupTime = _fmtTime(group.last['date_envoi']?.toString());
+                final thumbSide = group.length <= 2
+                    ? 152.0
+                    : group.length <= 4
+                        ? 124.0
+                        : 108.0;
                 return Align(
                   alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: mine ? _primary : Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(mine ? 16 : 4),
-                        bottomRight: Radius.circular(mine ? 4 : 16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                      border: mine ? null : Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: group.map((row) {
-                            final rowUrl = row['piece_jointe_url']?.toString() ?? '';
-                            final rowId = row['id']?.toString() ?? '';
-                            return Stack(
-                              children: [
-                                InkWell(
-                                  onTap: () async {
-                                    final u = Uri.tryParse(rowUrl);
-                                    if (u != null && await canLaunchUrl(u)) {
-                                      await launchUrl(u, mode: LaunchMode.externalApplication);
-                                    }
-                                  },
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: SizedBox(
-                                      width: 134,
-                                      height: 134,
-                                      child: Image.network(
-                                        rowUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: mine ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFEFF6FF),
-                                          alignment: Alignment.center,
-                                          child: Icon(Icons.broken_image_outlined, color: mine ? Colors.white70 : const Color(0xFF64748B)),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (mine && rowId.isNotEmpty)
-                                  Positioned(
-                                    top: 2,
-                                    right: 2,
-                                    child: PopupMenuButton<String>(
-                                      tooltip: 'Actions',
-                                      color: Colors.white,
-                                      icon: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.35),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(Icons.more_horiz_rounded, size: 14, color: Colors.white),
-                                      ),
-                                      onSelected: (v) async {
-                                        if (v == 'delete') await _deleteMessage(rowId);
-                                      },
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem<String>(
-                                          value: 'delete',
-                                          child: Text('Supprimer l’image'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          groupTime,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: mine ? Colors.white70 : const Color(0xFF94A3B8),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+                      child: Column(
+                        crossAxisAlignment:
+                            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: mine ? WrapAlignment.end : WrapAlignment.start,
+                            children: group.map((row) {
+                              final rowUrl =
+                                  (row['fichier_url'] ?? row['piece_jointe_url'])?.toString() ?? '';
+                              final rowId = row['id']?.toString() ?? '';
+                              return MessagingStandaloneImage(
+                                imageUrl: rowUrl,
+                                isMine: mine,
+                                messageId: rowId.isNotEmpty ? rowId : null,
+                                onDelete:
+                                    mine && rowId.isNotEmpty ? () => _deleteMessage(rowId) : null,
+                                side: thumbSide,
+                              );
+                            }).toList(),
                           ),
-                        ),
-                      ],
+                          messagingMetaFooter(
+                            timeLabel: groupTime,
+                            isMine: mine,
+                            showReadReceipt: mine,
+                            isRead: group.last['est_lu'] == true,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               }
 
               final t = _fmtTime(m['date_envoi']?.toString());
+              final showTextBubble = text.isNotEmpty && !(hasPj && isAutoAttachmentLabel);
               return Align(
                 alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: mine ? _primary : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(mine ? 16 : 4),
-                      bottomRight: Radius.circular(mine ? 4 : 16),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                    border: mine ? null : Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (pjUrl != null && pjUrl.isNotEmpty) ...[
-                        if (isImagePj)
-                          Stack(
-                            children: [
-                              InkWell(
-                                onTap: () async {
-                                  final u = Uri.tryParse(pjUrl);
-                                  if (u != null && await canLaunchUrl(u)) {
-                                    await launchUrl(u, mode: LaunchMode.externalApplication);
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(12),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(maxHeight: 260, maxWidth: 320),
-                                    child: Image.network(
-                                      pjUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        height: 120,
-                                        width: 220,
-                                        color: mine ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFEFF6FF),
-                                        alignment: Alignment.center,
-                                        child: Icon(Icons.broken_image_outlined, color: mine ? Colors.white70 : const Color(0xFF64748B)),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (mine && msgId.isNotEmpty)
-                                Positioned(
-                                  top: 6,
-                                  right: 6,
-                                  child: PopupMenuButton<String>(
-                                    tooltip: 'Actions',
-                                    color: Colors.white,
-                                    icon: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.35),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.more_horiz_rounded, size: 16, color: Colors.white),
-                                    ),
-                                    onSelected: (v) async {
-                                      if (v == 'delete') await _deleteMessage(msgId);
-                                    },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem<String>(
-                                        value: 'delete',
-                                        child: Text('Supprimer l’image'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              color: mine ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(10),
-                              border: mine ? null : Border.all(color: const Color(0xFFBFDBFE)),
-                            ),
-                            child: ListTile(
-                              dense: true,
-                              leading: Icon(_fileIconForExt(ext.toLowerCase()), color: mine ? Colors.white : _primary),
-                              title: Text(
-                                (pjNom != null && pjNom.isNotEmpty) ? pjNom : 'Pièce jointe',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: mine ? Colors.white : const Color(0xFF0F172A),
-                                ),
-                              ),
-                              subtitle: Text(
-                                ext.isNotEmpty ? ext : 'Fichier',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  color: mine ? Colors.white70 : const Color(0xFF64748B),
-                                ),
-                              ),
-                              trailing: IconButton(
-                                tooltip: 'Télécharger',
-                                icon: Icon(Icons.download_rounded, color: mine ? Colors.white : _primary),
-                                onPressed: () async {
-                                  await _downloadAttachment(pjUrl, pjNom);
-                                },
-                              ),
-                              onTap: () async {
-                                final u = Uri.tryParse(pjUrl);
-                                if (u != null && await canLaunchUrl(u)) {
-                                  await launchUrl(u, mode: LaunchMode.externalApplication);
-                                }
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+                    child: Column(
+                      crossAxisAlignment:
+                          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasPj) ...[
+                          if (isImagePj)
+                            MessagingStandaloneImage(
+                              imageUrl: pjUrl,
+                              isMine: mine,
+                              messageId: msgId.isNotEmpty ? msgId : null,
+                              onDelete: mine && msgId.isNotEmpty
+                                  ? () => _deleteMessage(msgId)
+                                  : null,
+                              side: 240,
+                            )
+                          else
+                            MessagingFileSquareTile(
+                              ext: ext.toLowerCase(),
+                              displayName:
+                                  (pjNom != null && pjNom.isNotEmpty) ? pjNom : 'Pièce jointe',
+                              isMine: mine,
+                              onDownload: () {
+                                unawaited(_downloadAttachment(
+                                  pjUrl,
+                                  pjNom,
+                                  messageId: msgId.isNotEmpty ? msgId : null,
+                                ));
                               },
+                              messageId: msgId.isNotEmpty ? msgId : null,
+                              onDelete: mine && msgId.isNotEmpty
+                                  ? () => _deleteMessage(msgId)
+                                  : null,
+                            ),
+                          if (showTextBubble) const SizedBox(height: 8),
+                        ],
+                        if (showTextBubble)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: mine ? _primary : Colors.white,
+                              borderRadius: BorderRadius.only(
+                                topLeft: const Radius.circular(16),
+                                topRight: const Radius.circular(16),
+                                bottomLeft: Radius.circular(mine ? 16 : 4),
+                                bottomRight: Radius.circular(mine ? 4 : 16),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                              border: mine ? null : Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Text(
+                              text,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                height: 1.35,
+                                color: mine ? Colors.white : const Color(0xFF0F172A),
+                              ),
                             ),
                           ),
-                        const SizedBox(height: 8),
-                      ],
-                      if (text.isNotEmpty && !(hasPj && isAutoAttachmentLabel))
-                        Text(
-                          text,
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            height: 1.35,
-                            color: mine ? Colors.white : const Color(0xFF0F172A),
+                        if (hasPj &&
+                            _downloadingPjUrl == pjUrl &&
+                            _downloadingPjProgress != null) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: LinearProgressIndicator(
+                              value: _downloadingPjProgress!.clamp(0, 1),
+                              minHeight: 5,
+                              backgroundColor: const Color(0xFFE2E8F0),
+                              valueColor: AlwaysStoppedAnimation<Color>(_primary),
+                            ),
                           ),
-                        ),
-                      if (mine && msgId.isNotEmpty)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: PopupMenuButton<String>(
-                            icon: Icon(Icons.more_horiz_rounded, size: 18, color: mine ? Colors.white70 : const Color(0xFF94A3B8)),
-                            onSelected: (v) async {
-                              if (v == 'delete') await _deleteMessage(msgId);
-                            },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem<String>(
-                                value: 'delete',
-                                child: Text('Supprimer le message'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (hasPj && _downloadingPjUrl == pjUrl && _downloadingPjProgress != null) ...[
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: _downloadingPjProgress!.clamp(0, 1),
-                          minHeight: 5,
-                          backgroundColor: mine ? Colors.white24 : const Color(0xFFE2E8F0),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            mine ? Colors.white : _primary,
-                          ),
+                        ],
+                        messagingMetaFooter(
+                          timeLabel: t,
+                          isMine: mine,
+                          showReadReceipt: mine,
+                          isRead: m['est_lu'] == true,
+                          onDeleteForMine: mine &&
+                                  msgId.isNotEmpty &&
+                                  (!hasPj || showTextBubble)
+                              ? () => _deleteMessage(msgId)
+                              : null,
                         ),
                       ],
-                      const SizedBox(height: 4),
-                      Text(
-                        t,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: mine ? Colors.white70 : const Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );
             },
+                ),
+              ),
+            ],
           ),
         ),
         Container(
@@ -1396,6 +1352,7 @@ class _RecruteurMessagerieConnectedScreenState extends State<RecruteurMessagerie
                           ),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
+                        onChanged: _onDraftTextChanged,
                         onSubmitted: (_) => _send(),
                       ),
                     ),

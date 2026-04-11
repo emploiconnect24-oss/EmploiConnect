@@ -117,6 +117,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   String _iaAmeliorationProvider = 'anthropic';
   String _anthropicModel = 'claude-haiku-4-5-20251001';
   bool _iaMatchingActif = true;
+  bool _iaSimulateurParcoursActif = true;
+  bool _iaCalculateurParcoursActif = true;
 
   static const Set<String> _iaAmeliorationProvidersAllowed = {
     'anthropic',
@@ -344,6 +346,10 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _iaAmeliorationProvidersAllowed.contains(normalizedProv) ? normalizedProv : 'anthropic';
         _iaMatchingActif =
             _boolNotifDefaultTrue(_param(grouped, 'ia_matching_actif'));
+        _iaSimulateurParcoursActif =
+            _boolNotifDefaultTrue(_param(grouped, 'ia_simulateur_actif'));
+        _iaCalculateurParcoursActif =
+            _boolNotifDefaultTrue(_param(grouped, 'ia_calculateur_actif'));
         final am =
             _param(grouped, 'anthropic_model')?.toString().trim() ?? '';
         _anthropicModel = am.isNotEmpty ? am : 'claude-haiku-4-5-20251001';
@@ -708,6 +714,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         {'cle': 'ia_amelioration_provider', 'valeur': _iaAmeliorationProvider},
         {'cle': 'ia_matching_provider', 'valeur': _iaAmeliorationProvider},
         {'cle': 'ia_matching_actif', 'valeur': _iaMatchingActif},
+        {'cle': 'ia_simulateur_actif', 'valeur': _iaSimulateurParcoursActif},
+        {'cle': 'ia_calculateur_actif', 'valeur': _iaCalculateurParcoursActif},
         {'cle': 'mode_maintenance', 'valeur': _maintenanceMode},
         {
           'cle': 'message_maintenance',
@@ -2579,6 +2587,86 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   onChanged: (v) {
                     setState(() {
                       _iaMatchingActif = v;
+                      _markChanged();
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.psychology_rounded, color: Color(0xFF8B5CF6), size: 16),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Simulateur d\'entretien (Parcours Carrière)',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        'Génération et évaluation des questions via Claude',
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _iaSimulateurParcoursActif,
+                  activeThumbColor: const Color(0xFF8B5CF6),
+                  onChanged: (v) {
+                    setState(() {
+                      _iaSimulateurParcoursActif = v;
+                      _markChanged();
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.calculate_rounded, color: Color(0xFF10B981), size: 16),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Calculateur de salaire (Parcours Carrière)',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        'Estimation salariale indicative (GNF) via Claude',
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _iaCalculateurParcoursActif,
+                  activeThumbColor: const Color(0xFF10B981),
+                  onChanged: (v) {
+                    setState(() {
+                      _iaCalculateurParcoursActif = v;
                       _markChanged();
                     });
                   },

@@ -96,4 +96,30 @@ class CandidatMessagesService {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur suppression');
     }
   }
+
+  /// Indique au serveur que l’utilisateur tape (rafraîchit la présence ~6 s côté API).
+  Future<void> sendTypingPing(String destinataireId) async {
+    try {
+      await _api.post(
+        '/candidat/messages/typing',
+        useAuth: true,
+        body: {'destinataire_id': destinataireId},
+      );
+    } catch (_) {}
+  }
+
+  Future<bool> getPeerTyping(String destinataireId) async {
+    try {
+      final res = await _api.get(
+        '/candidat/messages/peer-typing/${Uri.encodeComponent(destinataireId)}',
+        useAuth: true,
+      );
+      if (res.statusCode != 200) return false;
+      final map = Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+      final data = map['data'] as Map?;
+      return data?['peer_typing'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

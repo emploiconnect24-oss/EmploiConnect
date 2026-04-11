@@ -102,6 +102,31 @@ class RecruteurService {
   Future<Map<String, dynamic>> deleteMessage(String token, String messageId) async =>
       _handle(await http.delete(Uri.parse('$_base/messages/$messageId'), headers: _headers(token)));
 
+  Future<void> sendTypingPing(String token, String destinataireId) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/messages/typing'),
+        headers: _headers(token),
+        body: jsonEncode({'destinataire_id': destinataireId}),
+      );
+    } catch (_) {}
+  }
+
+  Future<bool> getPeerTyping(String token, String destinataireId) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_base/messages/peer-typing/${Uri.encodeComponent(destinataireId)}'),
+        headers: _headers(token),
+      );
+      if (res.statusCode != 200) return false;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final data = body['data'] as Map?;
+      return data?['peer_typing'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> envoyerMessage(
     String token,
     String destinataireId,

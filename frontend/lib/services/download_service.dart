@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import 'auth_service.dart';
 import 'download_io_stub.dart' if (dart.library.io) 'download_io.dart' as io_save;
 import 'download_stub.dart' if (dart.library.html) 'download_web.dart';
 
@@ -119,6 +120,52 @@ class DownloadService {
       options: Options(responseType: ResponseType.bytes, followRedirects: true),
       onReceiveProgress: onProgress,
     );
+    final bytes = Uint8List.fromList(response.data ?? const <int>[]);
+    if (bytes.isEmpty) {
+      throw Exception('Téléchargement vide.');
+    }
+    await saveBytes(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+      context: context,
+    );
+  }
+
+  /// GET binaire authentifié (ex. pièce jointe messagerie, URL signée expirée côté stockage).
+  static Future<void> downloadFileFromAuthenticatedApi({
+    required String apiPath,
+    required String fileName,
+    String mimeType = 'application/octet-stream',
+    BuildContext? context,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final token = await AuthService().getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Connectez-vous pour télécharger le fichier.');
+    }
+    final base =
+        apiBaseUrl.endsWith('/') ? apiBaseUrl.substring(0, apiBaseUrl.length - 1) : apiBaseUrl;
+    final prefix = apiPrefix.startsWith('/') ? apiPrefix : '/$apiPrefix';
+    final path = apiPath.startsWith('/') ? apiPath : '/$apiPath';
+    final uri = '$base$prefix$path';
+
+    final dio = Dio();
+    final response = await dio.get<List<int>>(
+      uri,
+      options: Options(
+        responseType: ResponseType.bytes,
+        followRedirects: true,
+        headers: <String, dynamic>{
+          'Authorization': 'Bearer $token',
+          'Accept': '*/*',
+        },
+      ),
+      onReceiveProgress: onProgress,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur serveur (${response.statusCode}).');
+    }
     final bytes = Uint8List.fromList(response.data ?? const <int>[]);
     if (bytes.isEmpty) {
       throw Exception('Téléchargement vide.');

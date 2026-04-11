@@ -6,6 +6,8 @@ import { attachProfileIds } from '../../helpers/userProfile.js';
 import { supabase } from '../../config/supabase.js';
 import { ROLES } from '../../config/constants.js';
 import { sendNewMessageEmail } from '../../services/mail.service.js';
+import { handleMessageAttachmentDownload } from '../../helpers/messageAttachmentDownload.js';
+import { recordTyping, isPeerTyping, clearTypingForUser } from '../../services/messageTypingPresence.js';
 
 const router = Router();
 router.use(authenticate, requireRole(ROLES.CHERCHEUR), attachProfileIds);
@@ -123,7 +125,7 @@ async function handleUploadMessageFile(req, res) {
     } else {
       const { data: signed, error: signedErr } = await supabase.storage
         .from(bucket)
-        .createSignedUrl(path, 60 * 60 * 24);
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
       if (!signedErr && signed?.signedUrl) {
         finalUrl = signed.signedUrl;
       }
@@ -254,6 +256,38 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/attachment', uploadPj.single('file'), handleUploadMessageFile);
+
+router.post('/typing', async (req, res) => {
+  try {
+    const destinataireId = req.body?.destinataire_id;
+    if (!destinataireId || String(destinataireId).trim() === '') {
+      return res.status(400).json({ success: false, message: 'destinataire_id requis' });
+    }
+    const cid = conversationId(req.user.id, String(destinataireId));
+    await recordTyping(cid, req.user.id);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[candidat/messages POST /typing]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.get('/peer-typing/:destinataireId', async (req, res) => {
+  try {
+    const { destinataireId } = req.params;
+    if (!destinataireId || String(destinataireId).trim() === '') {
+      return res.status(400).json({ success: false, message: 'destinataire_id requis' });
+    }
+    const cid = conversationId(req.user.id, destinataireId);
+    const peerTyping = await isPeerTyping(cid, req.user.id);
+    return res.json({ success: true, data: { peer_typing: peerTyping } });
+  } catch (err) {
+    console.error('[candidat/messages GET /peer-typing]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.get('/file/:messageId', handleMessageAttachmentDownload);
 
 router.delete('/:messageId', async (req, res) => {
   try {
@@ -432,6 +466,8 @@ router.post('/', async (req, res) => {
       }
       throw error;
     }
+
+    await clearTypingForUser(cid, req.user.id);
 
     const notifExcerpt = (rawContenu || pjNom || '📎 Fichier').slice(0, 140);
 

@@ -628,4 +628,76 @@ class AdminService {
     final res = await http.Response.fromStream(streamed);
     return _parseJsonOk(res);
   }
+
+  // ── PARCOURS CARRIÈRE (RESSOURCES) ─────────────────────────
+
+  Future<Map<String, dynamic>> getRessourcesParcoursAdmin() async {
+    final res = await _api.get('/admin/ressources', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> getRessourceParcoursAdmin(String id) async {
+    final res = await _api.get('/admin/ressources/$id', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> createRessourceParcoursAdmin({
+    required Map<String, String> fields,
+    List<int>? fichierBytes,
+    String? fichierFilename,
+    String? fichierMime,
+    List<int>? couvertureBytes,
+    String? couvertureFilename,
+    String? couvertureMime,
+  }) async {
+    MediaType? ctFichier;
+    if (fichierMime != null) {
+      try {
+        ctFichier = MediaType.parse(fichierMime);
+      } catch (_) {
+        ctFichier = null;
+      }
+    }
+    MediaType? ctCouv;
+    if (couvertureMime != null) {
+      try {
+        ctCouv = MediaType.parse(couvertureMime);
+      } catch (_) {
+        ctCouv = null;
+      }
+    }
+    final files = <String, ({List<int> bytes, String filename, MediaType? contentType})>{};
+    if (fichierBytes != null && fichierFilename != null && fichierFilename.isNotEmpty) {
+      files['fichier'] = (bytes: fichierBytes, filename: fichierFilename, contentType: ctFichier);
+    }
+    if (couvertureBytes != null && couvertureFilename != null && couvertureFilename.isNotEmpty) {
+      files['couverture'] = (bytes: couvertureBytes, filename: couvertureFilename, contentType: ctCouv);
+    }
+    final streamed = await _api.postMultipartFormMulti(
+      '/admin/ressources',
+      fields: fields,
+      files: files.isEmpty ? null : files,
+    );
+    final res = await http.Response.fromStream(streamed);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> patchPublierRessourceParcoursAdmin(String id, bool estPublie) async {
+    final res = await _api.patch(
+      '/admin/ressources/$id/publier',
+      body: {'est_publie': estPublie},
+      useAuth: true,
+    );
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> patchRessourceParcoursAdmin(String id, Map<String, dynamic> body) async {
+    final res = await _api.patch('/admin/ressources/$id', body: body, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> deleteRessourceParcoursAdmin(String id) async {
+    final res = await _api.delete('/admin/ressources/$id');
+    return _parseJsonOk(res);
+  }
 }

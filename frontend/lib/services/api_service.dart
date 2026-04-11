@@ -137,6 +137,33 @@ class ApiService {
     return request.send();
   }
 
+  /// Multipart avec plusieurs fichiers optionnels (ex. ressources Parcours Carrière).
+  Future<http.StreamedResponse> postMultipartFormMulti(
+    String path, {
+    required Map<String, String> fields,
+    Map<String, ({List<int> bytes, String filename, MediaType? contentType})>? files,
+    bool useAuth = true,
+  }) async {
+    final uri = Uri.parse(_base + path);
+    final request = http.MultipartRequest('POST', uri);
+    final token = await AuthService().getToken();
+    if (useAuth && token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    request.fields.addAll(fields);
+    for (final e in (files ?? {}).entries) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          e.key,
+          e.value.bytes,
+          filename: e.value.filename,
+          contentType: e.value.contentType,
+        ),
+      );
+    }
+    return request.send();
+  }
+
   static String? errorMessage(http.Response response) {
     try {
       final map = jsonDecode(response.body) as Map<String, dynamic>?;

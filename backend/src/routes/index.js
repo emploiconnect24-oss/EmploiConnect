@@ -28,6 +28,7 @@ import candidatParametresRoutes from './candidat/parametres.js';
 import candidatCvCreatorRoutes from './candidat/cvCreator.js';
 import candidatProfilRoutes from './candidat/profil.js';
 import candidatRecommandationsRoutes from './candidat/recommandations.js';
+import candidatParcoursRoutes from './candidat/parcoursCarriere.js';
 import { listBannieresPubliques } from '../controllers/admin/bannieres.controller.js';
 import { getFooterConfig, getGeneralConfig } from '../controllers/public/siteConfig.controller.js';
 import { getTopEntreprisesPublic } from '../controllers/public/entreprisesPublic.controller.js';
@@ -71,6 +72,7 @@ router.use('/candidat/parametres', candidatParametresRoutes);
 router.use('/candidat/cv', candidatCvCreatorRoutes);
 router.use('/candidat', candidatProfilRoutes);
 router.use('/candidat', candidatRecommandationsRoutes);
+router.use('/candidat', candidatParcoursRoutes);
 router.use('/admin', adminRoutes);
 
 // Santé de l'API (sans auth)

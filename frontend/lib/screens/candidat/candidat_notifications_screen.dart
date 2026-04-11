@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/candidat_provider.dart';
 import '../../services/notifications_service.dart';
 import 'candidat_temoignage_screen.dart';
+import 'pages/parcours_ressource_detail_page.dart';
 
 class CandidatNotificationsScreen extends StatefulWidget {
   const CandidatNotificationsScreen({super.key});
@@ -236,6 +237,17 @@ class _CandidatNotificationsScreenState
 
   Future<void> _onTapNotif(Map<String, dynamic> item) async {
     final lien = item['lien']?.toString() ?? '';
+    if (lien.contains('parcours') && lien.contains('ressource=')) {
+      final q = lien.contains('?') ? lien.substring(lien.indexOf('?') + 1) : '';
+      final rid = Uri.splitQueryString(q)['ressource']?.trim();
+      if (rid != null && rid.isNotEmpty && mounted) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => ParcoursRessourceDetailPage(id: rid),
+          ),
+        );
+      }
+    }
     if (lien.contains('temoignage')) {
       final q = lien.indexOf('?');
       final cid = q >= 0

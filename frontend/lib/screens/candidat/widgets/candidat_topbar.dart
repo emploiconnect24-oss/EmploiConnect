@@ -40,6 +40,7 @@ class CandidatTopBar extends StatelessWidget {
     '/dashboard/sauvegardes': 'Offres sauvegardées',
     '/dashboard/messages': 'Messagerie',
     '/dashboard/conseils': 'Conseils & Ressources',
+    '/dashboard/parcours': 'Parcours Carrière',
     '/dashboard/alertes': 'Alertes emploi',
     '/dashboard/notifications': 'Notifications',
     '/dashboard/parametres': 'Paramètres',

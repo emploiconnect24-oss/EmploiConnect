@@ -5,6 +5,8 @@ import { authenticate } from '../../middleware/auth.js';
 import { requireRecruteur } from '../../middleware/recruteurAuth.js';
 import { supabase, BUCKET_CV, BUCKET_ADMIN_AVATARS } from '../../config/supabase.js';
 import { sendNewMessageEmail } from '../../services/mail.service.js';
+import { handleMessageAttachmentDownload } from '../../helpers/messageAttachmentDownload.js';
+import { recordTyping, isPeerTyping, clearTypingForUser } from '../../services/messageTypingPresence.js';
 
 const router = Router();
 router.use(authenticate, requireRecruteur);
@@ -153,7 +155,7 @@ router.get('/', async (req, res) => {
       seenCid.add(m.conversation_id);
       const peerId = m.expediteur_id === userId ? m.destinataire_id : m.expediteur_id;
       const hasAttachment = !!(m.piece_jointe_url);
-      const preview = (String(m.contenu || '').trim().isNotEmpty)
+      const preview = String(m.contenu || '').trim().length > 0
         ? m.contenu
         : (hasAttachment
             ? `📎 ${m.piece_jointe_nom || m.fichier_nom || 'Pièce jointe'}`
@@ -365,7 +367,7 @@ async function handleUploadMessageFile(req, res) {
     } else {
       const { data: signed, error: signedErr } = await supabase.storage
         .from(bucket)
-        .createSignedUrl(path, 60 * 60 * 24); // 24h
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
       if (!signedErr && signed?.signedUrl) {
         finalUrl = signed.signedUrl;
       }
@@ -395,6 +397,38 @@ async function handleUploadMessageFile(req, res) {
 
 router.post('/upload-fichier', uploadPj.single('fichier'), handleUploadMessageFile);
 router.post('/attachment', uploadPj.single('file'), handleUploadMessageFile);
+
+router.get('/file/:messageId', handleMessageAttachmentDownload);
+
+router.post('/typing', async (req, res) => {
+  try {
+    const destinataireId = req.body?.destinataire_id;
+    if (!destinataireId || String(destinataireId).trim() === '') {
+      return res.status(400).json({ success: false, message: 'destinataire_id requis' });
+    }
+    const cid = conversationId(req.user.id, String(destinataireId));
+    await recordTyping(cid, req.user.id);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[recruteur/messages POST /typing]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.get('/peer-typing/:destinataireId', async (req, res) => {
+  try {
+    const { destinataireId } = req.params;
+    if (!destinataireId || String(destinataireId).trim() === '') {
+      return res.status(400).json({ success: false, message: 'destinataire_id requis' });
+    }
+    const cid = conversationId(req.user.id, destinataireId);
+    const peerTyping = await isPeerTyping(cid, req.user.id);
+    return res.json({ success: true, data: { peer_typing: peerTyping } });
+  } catch (err) {
+    console.error('[recruteur/messages GET /peer-typing]', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
 
 router.get('/:destinataireId', async (req, res) => {
   try {
@@ -513,6 +547,8 @@ router.post('/', async (req, res) => {
       }
       throw error;
     }
+
+    await clearTypingForUser(cid, req.user.id);
 
     try {
       await supabase.from('notifications').insert({

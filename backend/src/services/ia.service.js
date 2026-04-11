@@ -270,6 +270,8 @@ function _tryExtractJsonObject(text) {
 
 export async function _appellerIA(prompt, cles, role = 'matching') {
   const provider = role === 'texte' ? cles.providerTexte : cles.providerMatching;
+  const maxTokens =
+    role === 'texte' ? 300 : role === 'parcours' ? 4096 : 250;
   console.log(`[IA] Provider: ${provider} | Rôle: ${role}`);
 
   if (provider === 'anthropic' && cles.anthropicKey) {
@@ -287,7 +289,7 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
         },
         body: JSON.stringify({
           model: cles.anthropicModel || 'claude-haiku-4-5-20251001',
-          max_tokens: role === 'texte' ? 300 : 250,
+          max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         }),
       });
@@ -343,7 +345,7 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
         },
         body: JSON.stringify({
           model: 'gpt-3.5-turbo',
-          max_tokens: role === 'texte' ? 300 : 250,
+          max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         }),
       });

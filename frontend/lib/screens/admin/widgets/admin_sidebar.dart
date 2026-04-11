@@ -79,6 +79,12 @@ class AdminSidebar extends StatelessWidget {
           badgeKey: 'pending_testimonials',
           badgeColor: Color(0xFFF59E0B),
         ),
+        _SidebarItem(
+          label: 'Parcours Carrière',
+          icon: Icons.school_outlined,
+          activeIcon: Icons.school_rounded,
+          route: '/admin/parcours-carriere',
+        ),
       ],
     ),
     _SidebarSection(

@@ -14,6 +14,7 @@ import 'admin_settings_screen.dart';
 import 'admin_applications_screen.dart';
 import 'admin_statistics_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_ressources_parcours_screen.dart';
 import 'admin_profil_screen.dart';
 import 'pages/admin_recherche_globale_page.dart';
 import 'widgets/admin_sidebar.dart';
@@ -41,6 +42,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   static const String _routeSettings = '/admin/parametres';
   static const String _routeProfil = '/admin/profil';
   static const String _routeRecherche = '/admin/recherche';
+  static const String _routeParcoursCarriere = '/admin/parcours-carriere';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _sidebarCollapsed = false;
@@ -67,6 +69,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     _routeNotifications: 'Notifications',
     _routeSettings: 'Paramètres plateforme',
     _routeRecherche: 'Recherche globale',
+    _routeParcoursCarriere: 'Parcours Carrière (ressources)',
   };
 
   @override
@@ -113,6 +116,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         return const AdminProfilScreen();
       case _routeRecherche:
         return const AdminRechercheGlobalePage();
+      case _routeParcoursCarriere:
+        return const AdminRessourcesParcoursScreen();
       default:
         return const AdminDashboardScreen();
     }

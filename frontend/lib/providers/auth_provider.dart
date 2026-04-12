@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -32,6 +32,21 @@ class AuthProvider with ChangeNotifier {
     final (ok, msg) = await _auth.login(email: email, motDePasse: motDePasse);
     if (ok) await loadSession();
     return (ok, msg);
+  }
+
+  /// [role] : uniquement à l’inscription (register). À la connexion (login), laisser `null` : le rôle vient de la BDD.
+  Future<(bool ok, String? message, bool pendingValidation)> loginWithGoogle({
+    String? role,
+  }) async {
+    final (ok, msg, pending) = await _auth.loginWithGoogle(role: role);
+    if (ok) await loadSession();
+    return (ok, msg, pending);
+  }
+
+  /// Après login / register réussi : [HomeShellScreen] lit le rôle en session et affiche candidat, recruteur ou admin.
+  void navigateToAuthenticatedHome(BuildContext context) {
+    if (!context.mounted) return;
+    Navigator.of(context).pushReplacementNamed('/home');
   }
 
   Future<(bool, String?)> register({

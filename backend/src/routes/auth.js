@@ -12,6 +12,11 @@ import { notifNouvelleInscription } from '../services/auto_notification.service.
 import { sendWelcomeEmailOnRegister } from '../services/mail.service.js';
 import { getSecurityParamsCached, loginAttemptsGuard } from '../middleware/security.middleware.js';
 import { requestPasswordReset, completePasswordReset } from '../services/passwordReset.service.js';
+import {
+  verifierTokenGoogle,
+  verifierAccessTokenGoogle,
+  getGoogleAuthConfig,
+} from '../services/googleAuth.service.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -41,6 +46,226 @@ const resetPasswordLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Trop de tentatives, réessayez plus tard.' },
+});
+
+function normalizeGoogleSignupRole(roleParam, roleDefaut) {
+  const r = String(roleParam || '').trim().toLowerCase();
+  if (r === 'entreprise' || r === 'recruteur') return ROLES.ENTREPRISE;
+  if (r === 'chercheur' || r === 'candidat') return ROLES.CHERCHEUR;
+  return roleDefaut === ROLES.ENTREPRISE ? ROLES.ENTREPRISE : ROLES.CHERCHEUR;
+}
+
+/**
+ * GET /auth/google-config — Client ID public + flag (sans secret)
+ */
+router.get('/google-config', async (req, res) => {
+  try {
+    const cfg = await getGoogleAuthConfig(supabase);
+    return res.json({
+      success: true,
+      data: {
+        actif: cfg.actif,
+        client_id: cfg.clientId,
+      },
+    });
+  } catch (err) {
+    logError('google-config', err);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * POST /auth/google — id_token (JWT) **ou** access_token (popup Web) → JWT EmploiConnect
+ * Body: { id_token?: string, access_token?: string, role?: 'chercheur'|'entreprise'|... }
+ */
+router.post('/google', async (req, res) => {
+  try {
+    const idToken = req.body?.id_token || req.body?.idToken;
+    const accessToken = req.body?.access_token || req.body?.accessToken;
+    if (!idToken && !accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token Google manquant (id_token ou access_token)',
+      });
+    }
+
+    const googleUser = idToken
+      ? await verifierTokenGoogle(String(idToken), supabase)
+      : await verifierAccessTokenGoogle(String(accessToken), supabase);
+
+    const sel = 'id, nom, email, role, photo_url, google_id, est_actif, est_valide, mot_de_passe';
+
+    let { data: utilisateur } = await supabase
+      .from('utilisateurs')
+      .select(sel)
+      .eq('google_id', googleUser.googleId)
+      .maybeSingle();
+
+    if (!utilisateur) {
+      const { data: byEmail } = await supabase
+        .from('utilisateurs')
+        .select(sel)
+        .eq('email', googleUser.email)
+        .maybeSingle();
+      utilisateur = byEmail;
+    }
+
+    if (utilisateur) {
+      if (!utilisateur.est_actif) {
+        return res.status(403).json({ success: false, message: 'Compte désactivé' });
+      }
+      if (utilisateur.role !== ROLES.ADMIN && !utilisateur.est_valide) {
+        return res.status(403).json({
+          success: false,
+          message: 'Compte en attente de validation par un administrateur',
+        });
+      }
+
+      const updates = {};
+      if (!utilisateur.google_id) updates.google_id = googleUser.googleId;
+      updates.google_email = googleUser.email;
+      if (googleUser.photo) updates.google_photo = googleUser.photo;
+      if (!utilisateur.photo_url && googleUser.photo) updates.photo_url = googleUser.photo;
+      if (Object.keys(updates).length > 0) {
+        if (updates.google_id != null) {
+          updates.auth_provider = utilisateur.mot_de_passe ? 'both' : 'google';
+        }
+        await supabase.from('utilisateurs').update(updates).eq('id', utilisateur.id);
+      }
+    } else {
+      const { data: params } = await supabase
+        .from('parametres_plateforme')
+        .select('cle, valeur')
+        .in('cle', ['inscription_libre', 'validation_manuelle_comptes']);
+
+      const map = {};
+      (params || []).forEach((p) => {
+        map[p.cle] = p.valeur;
+      });
+      const inscriptionLibre = (map.inscription_libre ?? 'true') === 'true';
+      const validationManuelle = (map.validation_manuelle_comptes ?? 'false') === 'true';
+
+      if (!inscriptionLibre) {
+        return res.status(403).json({
+          success: false,
+          message: 'Les inscriptions sont temporairement désactivées. Veuillez réessayer plus tard.',
+        });
+      }
+
+      const roleChoisi = normalizeGoogleSignupRole(req.body?.role, googleUser.roleDefaut);
+
+      const { data: newUser, error: errUser } = await supabase
+        .from('utilisateurs')
+        .insert({
+          nom: googleUser.nom || googleUser.email.split('@')[0],
+          email: googleUser.email,
+          mot_de_passe: null,
+          role: roleChoisi,
+          google_id: googleUser.googleId,
+          google_email: googleUser.email,
+          google_photo: googleUser.photo,
+          photo_url: googleUser.photo || null,
+          auth_provider: 'google',
+          est_actif: true,
+          est_valide: !validationManuelle,
+        })
+        .select('id, nom, email, role, photo_url, google_id, est_actif, est_valide, mot_de_passe')
+        .single();
+
+      if (errUser) {
+        logError('[auth/google] insert utilisateur', errUser);
+        return res.status(500).json({ success: false, message: 'Erreur lors de la création du compte' });
+      }
+
+      utilisateur = newUser;
+
+      if (roleChoisi === ROLES.CHERCHEUR) {
+        await supabase.from('chercheurs_emploi').insert({ utilisateur_id: newUser.id });
+      } else if (roleChoisi === ROLES.ENTREPRISE) {
+        await supabase.from('entreprises').insert({
+          utilisateur_id: newUser.id,
+          nom_entreprise: googleUser.nom || 'Mon entreprise',
+        });
+      }
+
+      if (validationManuelle) {
+        void notifNouvelleInscription(newUser);
+      }
+      void sendWelcomeEmailOnRegister(newUser, validationManuelle);
+
+      if (validationManuelle) {
+        return res.status(201).json({
+          success: true,
+          message: 'Compte créé. En attente de validation par un administrateur.',
+          data: {
+            pending_validation: true,
+            user: {
+              id: newUser.id,
+              email: newUser.email,
+              nom: newUser.nom,
+              role: newUser.role,
+            },
+          },
+        });
+      }
+    }
+
+    const secParams = await getSecurityParamsCached();
+    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
+    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
+
+    const token = jwt.sign(
+      { userId: utilisateur.id, email: utilisateur.email, role: utilisateur.role },
+      JWT_SECRET,
+      { expiresIn },
+    );
+
+    const { data: userFinal, error: uErr } = await supabase
+      .from('utilisateurs')
+      .select('id, nom, email, role, photo_url, est_actif, est_valide')
+      .eq('id', utilisateur.id)
+      .single();
+
+    if (uErr || !userFinal) {
+      return res.status(500).json({ success: false, message: 'Erreur lecture profil' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error: lcErr } = await supabase
+      .from('utilisateurs')
+      .update({ derniere_connexion: nowIso })
+      .eq('id', userFinal.id);
+    if (lcErr) logError('[auth/google] derniere_connexion', lcErr);
+
+    return res.json({
+      success: true,
+      message: 'Connexion Google réussie',
+      data: {
+        token,
+        expiresIn,
+        user: {
+          id: userFinal.id,
+          nom: userFinal.nom,
+          email: userFinal.email,
+          role: userFinal.role,
+          photo_url: userFinal.photo_url,
+        },
+      },
+    });
+  } catch (err) {
+    logError('[auth/google]', err);
+    const msg = err?.message || 'Erreur serveur';
+    if (msg.includes('Token used too late') || msg.includes('expired')) {
+      return res.status(401).json({ success: false, message: 'Session Google expirée. Reconnectez-vous.' });
+    }
+    if (msg.includes('Invalid') && msg.toLowerCase().includes('token')) {
+      return res.status(401).json({ success: false, message: 'Token Google invalide.' });
+    }
+    if (msg.includes('désactivée') || msg.includes('Client ID')) {
+      return res.status(503).json({ success: false, message: msg });
+    }
+    return res.status(500).json({ success: false, message: msg });
+  }
 });
 
 /**
@@ -218,6 +443,12 @@ router.post('/login', loginAttemptsGuard, loginLimiter, async (req, res) => {
 
     if (error || !user) {
       return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
+    }
+
+    if (!user.mot_de_passe) {
+      return res.status(401).json({
+        message: 'Ce compte utilise la connexion Google. Utilisez « Continuer avec Google ».',
+      });
     }
 
     const match = await bcrypt.compare(mot_de_passe, user.mot_de_passe);

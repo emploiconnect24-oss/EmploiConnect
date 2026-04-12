@@ -5,7 +5,10 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../../../core/theme/theme_extension.dart';
 
 class SolutionsSectionWidget extends StatelessWidget {
-  const SolutionsSectionWidget({super.key});
+  const SolutionsSectionWidget({super.key, this.backgroundColor});
+
+  /// Si non null, remplace le fond `scheme.surface` (ex. accueil bleu très clair).
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +64,7 @@ class SolutionsSectionWidget extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: scheme.surface,
+      color: backgroundColor ?? scheme.surface,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
         child: Column(

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/theme_extension.dart';
 
 import '../../../../services/offres_service.dart';
 import '../../../app/public_routes.dart';
 import '../../../../shared/widgets/job_card_widget.dart';
-import '../../../../shared/widgets/section_header.dart';
+import 'home_design_tokens.dart';
 
 Map<String, dynamic> _mapOffreToJobCard(Map<String, dynamic> o) {
   dynamic ent = o['entreprises'];
@@ -33,7 +35,15 @@ Map<String, dynamic> _mapOffreToJobCard(Map<String, dynamic> o) {
 }
 
 class RecentJobsSectionWidget extends StatefulWidget {
-  const RecentJobsSectionWidget({super.key});
+  const RecentJobsSectionWidget({
+    super.key,
+    this.backgroundColor,
+    this.homepageV2Gradient = false,
+  });
+
+  final Color? backgroundColor;
+  /// PRD v2 §4 — bandeau blanc → bleu très clair → blanc.
+  final bool homepageV2Gradient;
 
   @override
   State<RecentJobsSectionWidget> createState() => _RecentJobsSectionWidgetState();
@@ -78,19 +88,56 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
       cols = 2;
     }
 
+    final flatBg = widget.backgroundColor ?? context.themeExt.sectionBg;
     return Container(
       width: double.infinity,
-      color: context.themeExt.sectionBg,
+      decoration: widget.homepageV2Gradient
+          ? const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFF0F7FF),
+                  Color(0xFFFFFFFF),
+                ],
+              ),
+            )
+          : BoxDecoration(
+              color: flatBg,
+              border: Border(
+                top: BorderSide(color: Colors.black.withValues(alpha: 0.04)),
+              ),
+            ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 80, vertical: isMobile ? 36 : 64),
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 48, vertical: isMobile ? 28 : 48),
         child: Column(
           children: [
-            const SectionHeader(
-              title: "Dernières Offres d'Emploi",
-              subtitle:
-                  'Aperçu des offres les plus récentes (deux lignes sur l’accueil). Consultez la liste complète via le bouton ci-dessous.',
-            ),
-            const SizedBox(height: 24),
+            Text(
+              "Dernières offres",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: w < 600 ? 24 : 28,
+                fontWeight: FontWeight.w800,
+                color: HomeDesign.dark,
+              ),
+            )
+                .animate()
+                .fadeIn(duration: 450.ms, curve: Curves.easeOutCubic)
+                .slideY(begin: 0.05, duration: 450.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 8),
+            Text(
+              'Les publications les plus récentes — parcourez toute la liste en un clic.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: const Color(0xFF64748B),
+                height: 1.5,
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 80.ms, duration: 450.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 22),
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _future,
               builder: (context, snap) {
@@ -109,21 +156,46 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
                 return _JobsGrid(columns: cols, jobs: visible);
               },
             ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pushNamed(PublicRoutes.listPath);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1A56DB),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
+            const SizedBox(height: 22),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: HomeDesign.gradientBrand,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: HomeDesign.primary.withValues(alpha: 0.28),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('Voir toutes les offres'),
-            ),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pushNamed(PublicRoutes.listPath);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                label: Text(
+                  'Voir toutes les offres',
+                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 180.ms, duration: 500.ms, curve: Curves.easeOutCubic)
+                .scale(
+                  begin: const Offset(0.94, 0.94),
+                  delay: 180.ms,
+                  duration: 500.ms,
+                  curve: Curves.easeOutCubic,
+                ),
           ],
         ),
       ),
@@ -147,18 +219,36 @@ class _JobsGrid extends StatelessWidget {
           spacing: spacing,
           runSpacing: spacing,
           children: [
-            for (final j in jobs)
+            for (var i = 0; i < jobs.length; i++)
               SizedBox(
                 width: itemW,
                 height: 252,
                 child: JobCardWidget(
-                  job: j,
+                  job: jobs[i],
                   onTap: () {
-                    final id = j['offre_id']?.toString();
+                    final id = jobs[i]['offre_id']?.toString();
                     if (id == null || id.isEmpty) return;
                     Navigator.of(context).pushNamed(PublicRoutes.offre(id));
                   },
-                ),
+                )
+                    .animate()
+                    .fadeIn(
+                      delay: (60 * i).ms,
+                      duration: 420.ms,
+                      curve: Curves.easeOutCubic,
+                    )
+                    .slideY(
+                      begin: 0.07,
+                      delay: (60 * i).ms,
+                      duration: 420.ms,
+                      curve: Curves.easeOutCubic,
+                    )
+                    .scale(
+                      begin: const Offset(0.97, 0.97),
+                      delay: (60 * i).ms,
+                      duration: 420.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
               ),
           ],
         );

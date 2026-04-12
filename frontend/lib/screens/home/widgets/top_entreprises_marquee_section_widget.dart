@@ -29,7 +29,7 @@ class _TopEntreprisesMarqueeSectionWidgetState extends State<TopEntreprisesMarqu
   void initState() {
     super.initState();
     _future = _svc.getTopEntreprises(limit: 16);
-    _marquee = AnimationController(vsync: this, duration: const Duration(seconds: 20));
+    _marquee = AnimationController(vsync: this, duration: const Duration(seconds: 11));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (!MediaQuery.disableAnimationsOf(context)) {
@@ -52,21 +52,11 @@ class _TopEntreprisesMarqueeSectionWidgetState extends State<TopEntreprisesMarqu
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFF8FAFC),
-            Color(0xFFEFF6FF),
-          ],
-        ),
-      ),
+      color: Colors.white,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: isMobile ? 20 : 80,
-          vertical: isMobile ? 36 : 52,
+          horizontal: isMobile ? 16 : 48,
+          vertical: isMobile ? 28 : 40,
         ),
         child: LayoutBuilder(
           builder: (context, outer) {

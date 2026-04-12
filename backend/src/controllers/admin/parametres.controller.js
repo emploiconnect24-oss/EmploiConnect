@@ -50,6 +50,7 @@ const SENSITIVE_KEYS = [
   'openai_api_key',
   'anthropic_api_key',
   'email_smtp_password',
+  'google_client_secret',
 ];
 
 /** Clés secrètes envoyées telles quelles aux APIs / SMTP : ne pas chiffrer à l’enregistrement (compat lecture + moins d’erreurs). */
@@ -72,6 +73,50 @@ const RAPIDAPI_CACHE_KEYS = new Set([
   'rapidapi_topic_tagging_host',
   'seuil_matching_minimum',
 ]);
+
+/** INSERT / upsert si la ligne n’existe pas (migrations partielles). */
+const PARAM_INSERT_DEFAULTS = {
+  google_client_id: {
+    categorie: 'auth',
+    type_valeur: 'string',
+    description: 'Google OAuth Client ID (xxx.apps.googleusercontent.com)',
+  },
+  google_client_secret: {
+    categorie: 'auth',
+    type_valeur: 'string',
+    description: 'Google OAuth Client Secret (GOCSPX-xxx)',
+  },
+  google_oauth_actif: {
+    categorie: 'auth',
+    type_valeur: 'boolean',
+    description: 'Activer la connexion avec Google',
+  },
+  google_roles_defaut: {
+    categorie: 'auth',
+    type_valeur: 'string',
+    description: 'Rôle par défaut pour les nouveaux comptes Google',
+  },
+  illustration_ia_actif: {
+    categorie: 'ia',
+    type_valeur: 'boolean',
+    description: 'Activer la génération IA quotidienne (DALL-E)',
+  },
+  illustration_nb_par_jour: {
+    categorie: 'ia',
+    type_valeur: 'string',
+    description: 'Nombre d’images générées par jour (max 10)',
+  },
+  illustration_heure_generation: {
+    categorie: 'ia',
+    type_valeur: 'string',
+    description: 'Heure cron génération (0-23) — redémarrer le backend pour appliquer',
+  },
+  illustration_url_manuelle: {
+    categorie: 'ia',
+    type_valeur: 'string',
+    description: 'URL image manuelle (fallback homepage)',
+  },
+};
 
 const MAIL_SETTINGS_CACHE_KEYS = new Set([
   'email_service_actif',
@@ -213,7 +258,24 @@ export async function updateParametres(req, res) {
         valeurString = encrypt(valeurString);
       }
 
-      const { data, error } = await supabase
+      console.log('[updateParametres]', param.cle, '| valeur len:', valeurString?.length ?? 0);
+
+      const { data: metaRow, error: metaErr } = await supabase
+        .from('parametres_plateforme')
+        .select('modifiable_admin')
+        .eq('cle', param.cle)
+        .maybeSingle();
+
+      if (metaErr) {
+        erreurs.push(`Lecture '${param.cle}': ${metaErr.message}`);
+        continue;
+      }
+      if (metaRow && metaRow.modifiable_admin === false) {
+        erreurs.push(`Paramètre '${param.cle}' non modifiable`);
+        continue;
+      }
+
+      const { data: updatedRows, error: updateError } = await supabase
         .from('parametres_plateforme')
         .update({
           valeur: valeurString,
@@ -222,16 +284,64 @@ export async function updateParametres(req, res) {
         })
         .eq('cle', param.cle)
         .eq('modifiable_admin', true)
-        .select('cle, type_valeur, date_modification')
-        .single();
+        .select('cle, type_valeur, date_modification');
 
-      if (error) {
-        erreurs.push(`Erreur pour '${param.cle}': ${error.message}`);
-      } else {
-        resultats.push(data);
+      if (updateError) {
+        erreurs.push(`Erreur pour '${param.cle}': ${updateError.message}`);
+        continue;
+      }
+
+      if (updatedRows && updatedRows.length > 0) {
+        resultats.push(updatedRows[0]);
         if (RAPIDAPI_CACHE_KEYS.has(param.cle)) rapidApiCacheShouldInvalidate = true;
         if (MAIL_SETTINGS_CACHE_KEYS.has(param.cle)) mailCacheShouldInvalidate = true;
+        continue;
       }
+
+      const def = PARAM_INSERT_DEFAULTS[param.cle] || {
+        categorie: 'general',
+        type_valeur: 'string',
+        description: '',
+      };
+
+      let insPayload = {
+        cle: param.cle,
+        valeur: valeurString,
+        type_valeur: def.type_valeur,
+        description: def.description,
+        categorie: def.categorie,
+        modifiable_admin: true,
+        modifie_par: req.user.id,
+        date_modification: new Date().toISOString(),
+      };
+
+      let { data: insRow, error: insErr } = await supabase
+        .from('parametres_plateforme')
+        .upsert(insPayload, { onConflict: 'cle' })
+        .select('cle, type_valeur, date_modification')
+        .maybeSingle();
+
+      if (insErr && /categor/i.test(String(insErr.message))) {
+        insPayload = { ...insPayload, categorie: 'general' };
+        ({ data: insRow, error: insErr } = await supabase
+          .from('parametres_plateforme')
+          .upsert(insPayload, { onConflict: 'cle' })
+          .select('cle, type_valeur, date_modification')
+          .maybeSingle());
+      }
+
+      if (insErr) {
+        console.error('[updateParametres] upsert', param.cle, insErr.message);
+        erreurs.push(`Upsert '${param.cle}': ${insErr.message}`);
+        continue;
+      }
+      if (!insRow) {
+        erreurs.push(`Upsert '${param.cle}': aucune ligne retournée`);
+        continue;
+      }
+      resultats.push(insRow);
+      if (RAPIDAPI_CACHE_KEYS.has(param.cle)) rapidApiCacheShouldInvalidate = true;
+      if (MAIL_SETTINGS_CACHE_KEYS.has(param.cle)) mailCacheShouldInvalidate = true;
     }
 
     if (rapidApiCacheShouldInvalidate) {

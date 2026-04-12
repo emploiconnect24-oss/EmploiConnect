@@ -123,10 +123,13 @@ app.listen(PORT, () => {
   logInfo(`EmploiConnect API écoute sur http://localhost:${PORT}`);
   logInfo('Routes principales disponibles :');
   logInfo('  - Health:        GET /api/health');
-  logInfo('  - Auth:          POST /api/auth/register, POST /api/auth/login, POST /api/auth/forgot-password, POST /api/auth/reset-password');
+  logInfo('  - Auth:          POST /api/auth/register, POST /api/auth/login, POST /api/auth/google (id_token ou access_token), GET /api/auth/google-config, POST /api/auth/forgot-password, POST /api/auth/reset-password');
   logInfo('  - Profil:        GET/PATCH /api/users/me (Bearer)');
   logInfo('  - Offres:        GET/POST /api/offres (?entreprise_id, q, …), GET/PATCH/DELETE /api/offres/:id');
   logInfo('  - Vitrine:       GET /api/entreprises/top-public');
+  logInfo('  - Stats accueil: GET /api/stats/homepage');
+  logInfo('  - Illustration:  GET /api/illustration/active (public), admin: liste / generer / upload-manuel / activer');
+  logInfo('  - Admin tests IA: POST /api/admin/test-ia { provider }, POST /api/admin/test-dalle');
   logInfo('  - Candidatures:  GET/POST /api/candidatures, GET/PATCH /api/candidatures/:id');
   logInfo('  - CV:            POST /api/cv/upload, GET /api/cv/me, GET /api/cv/download-url');
   logInfo('  - Signalements:  POST /api/signalements');

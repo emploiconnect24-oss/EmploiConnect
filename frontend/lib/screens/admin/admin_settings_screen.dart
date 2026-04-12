@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/api_config.dart';
 import '../../providers/admin_provider.dart';
@@ -14,6 +15,7 @@ import '../../shared/widgets/image_upload_widget.dart';
 import '../../shared/widgets/theme_selector_tile.dart';
 import '../../widgets/responsive_container.dart';
 import 'widgets/admin_page_shimmer.dart';
+import 'widgets/illustration_ia_settings_widget.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -120,6 +122,22 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _iaSimulateurParcoursActif = true;
   bool _iaCalculateurParcoursActif = true;
 
+  bool _apiTestClaudeEnCours = false;
+  bool _apiTestOpenaiEnCours = false;
+  bool _apiTestDalleEnCours = false;
+  String? _apiTestClaudeMsg;
+  String? _apiTestOpenaiMsg;
+  String? _apiTestDalleMsg;
+  bool _apiTestClaudeOk = false;
+  bool _apiTestOpenaiOk = false;
+  bool _apiTestDalleOk = false;
+
+  String _loadedGoogleClientId = '';
+  String _loadedGoogleSecretDisplay = '';
+  int _googleCredentialsEpoch = 0;
+  bool _googleOauthActif = true;
+  String _googleRolesDefaut = 'chercheur';
+
   static const Set<String> _iaAmeliorationProvidersAllowed = {
     'anthropic',
     'openai',
@@ -163,6 +181,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _SettingsSection('Logo', Icons.image_outlined),
     _SettingsSection('Bannières', Icons.view_carousel_outlined),
     _SettingsSection('Comptes', Icons.people_alt_outlined),
+    _SettingsSection('Authentification', Icons.login_rounded),
     _SettingsSection('Notifications', Icons.notifications_active_outlined),
     _SettingsSection('IA & Matching', Icons.auto_awesome_outlined),
     _SettingsSection('Sécurité', Icons.shield_outlined),
@@ -350,6 +369,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _boolNotifDefaultTrue(_param(grouped, 'ia_simulateur_actif'));
         _iaCalculateurParcoursActif =
             _boolNotifDefaultTrue(_param(grouped, 'ia_calculateur_actif'));
+        _loadedGoogleClientId =
+            _param(grouped, 'google_client_id')?.toString() ?? '';
+        _loadedGoogleSecretDisplay =
+            _param(grouped, 'google_client_secret')?.toString() ?? '';
+        _googleOauthActif = _boolNotifDefaultTrue(_param(grouped, 'google_oauth_actif'));
+        final grd =
+            _param(grouped, 'google_roles_defaut')?.toString().trim().toLowerCase() ??
+            'chercheur';
+        _googleRolesDefaut = grd == 'entreprise' ? 'entreprise' : 'chercheur';
         final am =
             _param(grouped, 'anthropic_model')?.toString().trim() ?? '';
         _anthropicModel = am.isNotEmpty ? am : 'claude-haiku-4-5-20251001';
@@ -562,7 +590,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _tplResetMdpSubjectCtrl.dispose();
     _tplAlerteOffreSubjectCtrl.dispose();
     _tplResumeHebdoMailSubjectCtrl.dispose();
-    _tplAnalyseCvSubjectCtrl.dispose();
+        _tplAnalyseCvSubjectCtrl.dispose();
     super.dispose();
   }
 
@@ -716,6 +744,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         {'cle': 'ia_matching_actif', 'valeur': _iaMatchingActif},
         {'cle': 'ia_simulateur_actif', 'valeur': _iaSimulateurParcoursActif},
         {'cle': 'ia_calculateur_actif', 'valeur': _iaCalculateurParcoursActif},
+        {'cle': 'google_oauth_actif', 'valeur': _googleOauthActif},
+        {'cle': 'google_roles_defaut', 'valeur': _googleRolesDefaut},
         {'cle': 'mode_maintenance', 'valeur': _maintenanceMode},
         {
           'cle': 'message_maintenance',
@@ -784,6 +814,201 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         _iaTestResult = null;
       });
     }
+  }
+
+  Future<void> _testApiClaudeIsole() async {
+    setState(() {
+      _apiTestClaudeEnCours = true;
+      _apiTestClaudeMsg = null;
+    });
+    try {
+      final m = await _admin.postAdminTestIa('anthropic');
+      if (!mounted) return;
+      setState(() {
+        _apiTestClaudeOk = m['success'] == true;
+        _apiTestClaudeMsg = _apiTestClaudeOk
+            ? (m['message']?.toString() ?? 'Claude OK')
+            : (m['message']?.toString() ?? 'Échec');
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _apiTestClaudeOk = false;
+          _apiTestClaudeMsg = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _apiTestClaudeEnCours = false);
+    }
+  }
+
+  Future<void> _testApiOpenaiIsole() async {
+    setState(() {
+      _apiTestOpenaiEnCours = true;
+      _apiTestOpenaiMsg = null;
+    });
+    try {
+      final m = await _admin.postAdminTestIa('openai');
+      if (!mounted) return;
+      setState(() {
+        _apiTestOpenaiOk = m['success'] == true;
+        _apiTestOpenaiMsg = _apiTestOpenaiOk
+            ? (m['message']?.toString() ?? 'OpenAI OK')
+            : (m['message']?.toString() ?? 'Échec');
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _apiTestOpenaiOk = false;
+          _apiTestOpenaiMsg = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _apiTestOpenaiEnCours = false);
+    }
+  }
+
+  Future<void> _testApiDalleIsole() async {
+    setState(() {
+      _apiTestDalleEnCours = true;
+      _apiTestDalleMsg = null;
+    });
+    try {
+      final m = await _admin.postAdminTestDalle();
+      if (!mounted) return;
+      setState(() {
+        _apiTestDalleOk = m['success'] == true;
+        _apiTestDalleMsg = _apiTestDalleOk
+            ? (m['message']?.toString() ?? 'DALL-E OK')
+            : (m['message']?.toString() ?? 'Échec');
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _apiTestDalleOk = false;
+          _apiTestDalleMsg = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _apiTestDalleEnCours = false);
+    }
+  }
+
+  Widget _iaStatusBadgeRow({
+    required String label,
+    required bool actif,
+    required bool cleConfigure,
+  }) {
+    final bg = actif
+        ? const Color(0xFFECFDF5)
+        : cleConfigure
+            ? const Color(0xFFFEF3C7)
+            : const Color(0xFFF8FAFC);
+    final border = actif
+        ? const Color(0xFF10B981)
+        : cleConfigure
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFFE2E8F0);
+    final icon = actif
+        ? Icons.check_circle_rounded
+        : cleConfigure
+            ? Icons.warning_rounded
+            : Icons.cancel_rounded;
+    final iconColor = actif
+        ? const Color(0xFF10B981)
+        : cleConfigure
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF94A3B8);
+    final subtitle = actif
+        ? 'Actif'
+        : cleConfigure
+            ? 'Clé présente'
+            : 'Non configuré';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
+                ),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: actif
+                        ? const Color(0xFF10B981)
+                        : cleConfigure
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _boutonTestApi({
+    required String label,
+    required Color couleur,
+    required bool enCours,
+    required VoidCallback onTap,
+    String? resultat,
+    required bool resultatOk,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          icon: enCours
+              ? SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: couleur))
+              : Icon(Icons.play_arrow_rounded, size: 14, color: couleur),
+          label: Text(
+            enCours ? 'Test…' : label,
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: couleur),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: couleur.withValues(alpha: 0.5)),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: enCours ? null : onTap,
+        ),
+        if (resultat != null) ...[
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: resultatOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              resultat,
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: resultatOk ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _testerIaTexteApropos() async {
@@ -1282,14 +1507,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       case 3:
         return _buildAccountsSection();
       case 4:
-        return _buildNotificationsSection();
+        return _buildAuthSection();
       case 5:
-        return _buildAiSection();
+        return _buildNotificationsSection();
       case 6:
-        return _buildSecuritySection();
+        return _buildAiSection();
       case 7:
-        return _buildFooterSection();
+        return _buildSecuritySection();
       case 8:
+        return _buildFooterSection();
+      case 9:
         return _buildMaintenanceSection();
       default:
         return _buildGeneralSection();
@@ -1306,6 +1533,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -1789,6 +2017,295 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  Future<bool> _persistGoogleCle(String cle, String valeur) async {
+    if (valeur.isEmpty) return false;
+    try {
+      final r = await _admin.updateParametres([
+        {'cle': cle, 'valeur': valeur},
+      ]);
+      final data = r['data'];
+      final errs = data is Map ? data['erreurs'] as List<dynamic>? : null;
+      final success = r['success'] == true;
+      if (!mounted) return false;
+      if (!success || (errs != null && errs.isNotEmpty)) {
+        final msg = (errs != null && errs.isNotEmpty)
+            ? errs.map((e) => e.toString()).join('\n')
+            : (r['message']?.toString() ?? 'Sauvegarde impossible');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return false;
+      }
+      await _loadParametres();
+      if (!mounted) return false;
+      setState(() => _googleCredentialsEpoch++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Clé enregistrée'),
+          backgroundColor: Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<void> _verifierConfigGoogle() async {
+    final clientId = _loadedGoogleClientId.trim();
+    if (clientId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Client ID non configuré. Saisissez la clé puis Enregistrer.'),
+          backgroundColor: Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!clientId.contains('apps.googleusercontent.com')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Format invalide : doit contenir « apps.googleusercontent.com »'),
+          backgroundColor: Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!clientId.contains('-')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Format invalide : vérifiez votre Client ID.'),
+          backgroundColor: Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final preview = clientId.length > 40
+        ? '${clientId.substring(0, 20)}…${clientId.substring(clientId.length - 30)}'
+        : clientId;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: double.infinity),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Client ID valide',
+                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Format correct',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF10B981),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    preview,
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF374151)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Vous pouvez tester la connexion Google sur la page de connexion.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: const Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthSection() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionCard(
+          title: 'Connexion Google (OAuth 2.0)',
+          children: [
+            SwitchListTile(
+              value: _googleOauthActif,
+              onChanged: (v) => setState(() {
+                _googleOauthActif = v;
+                _markChanged();
+              }),
+              title: const Text('Activer « Continuer avec Google »'),
+              subtitle: Text(
+                'Les utilisateurs peuvent se connecter ou s’inscrire avec un compte Google.',
+                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.28)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Configuration Google Cloud',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1E40AF),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Console → APIs & Services → Credentials → OAuth 2.0 Client IDs (type « Application Web »). '
+                    'Origines autorisées : URL de votre app et backend.',
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF1E40AF), height: 1.35),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse('https://console.cloud.google.com/apis/credentials');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('Ouvrir Google Cloud Console'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _AdminGoogleCleTile(
+              key: ValueKey<String>('gci_${_googleCredentialsEpoch}_$_loadedGoogleClientId'),
+              cle: 'google_client_id',
+              label: 'Google Client ID',
+              hint: 'xxx.apps.googleusercontent.com',
+              isSecret: false,
+              loadedValue: _loadedGoogleClientId,
+              onSave: _persistGoogleCle,
+            ),
+            const SizedBox(height: 12),
+            _AdminGoogleCleTile(
+              key: ValueKey<String>('gcs_${_googleCredentialsEpoch}_$_loadedGoogleSecretDisplay'),
+              cle: 'google_client_secret',
+              label: 'Google Client Secret',
+              hint: 'GOCSPX-…',
+              isSecret: true,
+              loadedValue: _loadedGoogleSecretDisplay,
+              onSave: _persistGoogleCle,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Rôle par défaut (nouveaux comptes Google uniquement)',
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF374151)),
+            ),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              key: ValueKey<String>('google_role_$_googleRolesDefaut'),
+              initialValue: _googleRolesDefaut,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'chercheur', child: Text('Chercheur d’emploi')),
+                DropdownMenuItem(value: 'entreprise', child: Text('Entreprise / recruteur')),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() {
+                  _googleRolesDefaut = v;
+                  _markChanged();
+                });
+              },
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _verifierConfigGoogle,
+                icon: const Icon(Icons.verified_outlined, size: 18),
+                label: const Text('Vérifier le format du Client ID'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF4285F4),
+                  side: const BorderSide(color: Color(0xFF4285F4)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildNotificationsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2236,9 +2753,106 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   }
 
   Widget _buildAiSection() {
+    final hasAnthropicKey = _anthropicApiKeyCtrl.text.trim().isNotEmpty;
+    final hasOpenaiKey = _openaiKeyCtrl.text.trim().isNotEmpty;
+    final claudeActifBadge =
+        hasAnthropicKey && (_iaMatchingActif || _iaAmeliorationProvider == 'anthropic');
+    final openaiActifBadge = hasOpenaiKey;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _sectionCard(
+          title: 'Statut des APIs IA',
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _iaStatusBadgeRow(
+                    label: 'Claude (Anthropic)',
+                    actif: claudeActifBadge,
+                    cleConfigure: hasAnthropicKey,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _iaStatusBadgeRow(
+                    label: 'OpenAI',
+                    actif: openaiActifBadge,
+                    cleConfigure: hasOpenaiKey,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFF1A56DB), size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Si les deux clés sont renseignées, le backend utilise le provider choisi pour le texte/matching, '
+                      'puis bascule automatiquement sur l’autre en cas d’échec.',
+                      style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF1E40AF), height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Tests rapides (clés réelles en base — enregistrez d’abord si besoin)',
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF374151)),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: 220,
+                  child: _boutonTestApi(
+                    label: 'Tester Claude',
+                    couleur: const Color(0xFF7C3AED),
+                    enCours: _apiTestClaudeEnCours,
+                    onTap: _testApiClaudeIsole,
+                    resultat: _apiTestClaudeMsg,
+                    resultatOk: _apiTestClaudeOk,
+                  ),
+                ),
+                SizedBox(
+                  width: 220,
+                  child: _boutonTestApi(
+                    label: 'Tester OpenAI',
+                    couleur: const Color(0xFF10B981),
+                    enCours: _apiTestOpenaiEnCours,
+                    onTap: _testApiOpenaiIsole,
+                    resultat: _apiTestOpenaiMsg,
+                    resultatOk: _apiTestOpenaiOk,
+                  ),
+                ),
+                SizedBox(
+                  width: 220,
+                  child: _boutonTestApi(
+                    label: 'Tester DALL-E',
+                    couleur: const Color(0xFFF59E0B),
+                    enCours: _apiTestDalleEnCours,
+                    onTap: _testApiDalleIsole,
+                    resultat: _apiTestDalleMsg,
+                    resultatOk: _apiTestDalleOk,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         _sectionCard(
           title: 'Guide RapidAPI (3 APIs)',
           children: [
@@ -2509,12 +3123,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   children: [
                     const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 16),
                     const SizedBox(width: 8),
-                    Text(
-                      'Modèle utilisé : GPT-3.5-turbo',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF065F46),
+                    Expanded(
+                      child: Text(
+                        'Modèle utilisé : GPT-3.5-turbo. La même clé OpenAI sert aussi pour DALL-E '
+                        '(section Illustration homepage ci-dessous).',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF065F46),
+                          height: 1.35,
+                        ),
                       ),
                     ),
                   ],
@@ -2743,6 +3361,17 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 ),
               ),
             ],
+          ],
+        ),
+        _sectionCard(
+          title: 'Illustration de la homepage',
+          children: [
+            Text(
+              'Image affichée dans la section « Ils ont réussi grâce à nous » (page d’accueil publique).',
+              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            const IllustrationIaSettingsWidget(),
           ],
         ),
         _sectionCard(
@@ -3069,6 +3698,224 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   }
 }
 
+/// Client ID / Secret Google : affichage masqué si déjà en base, sinon saisie + [Enregistrer] (un paramètre à la fois).
+class _AdminGoogleCleTile extends StatefulWidget {
+  const _AdminGoogleCleTile({
+    super.key,
+    required this.cle,
+    required this.label,
+    required this.hint,
+    required this.isSecret,
+    required this.loadedValue,
+    required this.onSave,
+  });
+
+  final String cle;
+  final String label;
+  final String hint;
+  final bool isSecret;
+  final String loadedValue;
+  final Future<bool> Function(String cle, String valeur) onSave;
+
+  @override
+  State<_AdminGoogleCleTile> createState() => _AdminGoogleCleTileState();
+}
+
+class _AdminGoogleCleTileState extends State<_AdminGoogleCleTile> {
+  final TextEditingController _ctrl = TextEditingController();
+  bool _editing = false;
+  bool _saving = false;
+
+  bool get _configured {
+    final v = widget.loadedValue.trim();
+    if (v.isEmpty) return false;
+    if (widget.isSecret) return true;
+    return v.contains('apps.googleusercontent.com');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdminGoogleCleTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loadedValue != widget.loadedValue) {
+      _ctrl.clear();
+    }
+  }
+
+  void _startEdit() {
+    setState(() {
+      _editing = true;
+      if (!widget.isSecret) {
+        _ctrl.text = widget.loadedValue.trim();
+      } else {
+        _ctrl.clear();
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    final v = _ctrl.text.trim();
+    if (v.isEmpty) return;
+    setState(() => _saving = true);
+    final ok = await widget.onSave(widget.cle, v);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (ok) {
+      setState(() {
+        _editing = false;
+        _ctrl.clear();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_configured && !_editing) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFECFDF5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: double.infinity),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.label,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF065F46),
+                      ),
+                    ),
+                    Text(
+                      '••••••••••••••••••••',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF10B981),
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    Text(
+                      'Clé configurée',
+                      style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF10B981)),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: _saving ? null : _startEdit,
+                child: Text(
+                  'Modifier',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A56DB),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF374151),
+          ),
+        ),
+        const SizedBox(height: 6),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: double.infinity),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  obscureText: widget.isSecret,
+                  decoration: InputDecoration(
+                    hintText: widget.hint,
+                    hintStyle: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFCBD5E1)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A56DB),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Enregistrer'),
+              ),
+            ],
+          ),
+        ),
+        if (_editing && _configured)
+          TextButton(
+            onPressed: _saving
+                ? null
+                : () => setState(() {
+                      _editing = false;
+                      _ctrl.clear();
+                    }),
+            child: Text(
+              'Annuler',
+              style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _SettingsSection {
   const _SettingsSection(this.title, this.icon);
   final String title;
@@ -3117,8 +3964,13 @@ class _BanniereDialogState extends State<_BanniereDialog> {
   final _lienCta1Ctrl = TextEditingController();
   final _labelCta2Ctrl = TextEditingController();
   final _lienCta2Ctrl = TextEditingController();
+  final _largeurPxCtrl = TextEditingController(text: '320');
+  final _hauteurPxCtrl = TextEditingController(text: '180');
+  final _lienExterneCtrl = TextEditingController();
+  final _ordrePubCtrl = TextEditingController(text: '0');
   String? _imageUrl;
   bool _isSaving = false;
+  String _typeBanniere = 'hero';
 
   @override
   void initState() {
@@ -3133,6 +3985,14 @@ class _BanniereDialogState extends State<_BanniereDialog> {
       _labelCta2Ctrl.text = b['label_cta_2']?.toString() ?? '';
       _lienCta2Ctrl.text = b['lien_cta_2']?.toString() ?? '';
       _imageUrl = b['image_url']?.toString();
+      _largeurPxCtrl.text = '${b['largeur_px'] ?? 320}';
+      _hauteurPxCtrl.text = '${b['hauteur_px'] ?? 180}';
+      _lienExterneCtrl.text = b['lien_externe']?.toString() ?? '';
+      _ordrePubCtrl.text = '${b['ordre_pub'] ?? 0}';
+      final t = b['type_banniere']?.toString().toLowerCase().trim();
+      if (t != null && (t == 'ticker' || t == 'pub' || t == 'hero')) {
+        _typeBanniere = t;
+      }
     }
   }
 
@@ -3145,6 +4005,10 @@ class _BanniereDialogState extends State<_BanniereDialog> {
     _lienCta1Ctrl.dispose();
     _labelCta2Ctrl.dispose();
     _lienCta2Ctrl.dispose();
+    _largeurPxCtrl.dispose();
+    _hauteurPxCtrl.dispose();
+    _lienExterneCtrl.dispose();
+    _ordrePubCtrl.dispose();
     super.dispose();
   }
 
@@ -3188,6 +4052,81 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _dialogLabel('Type d\'emplacement'),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _typeBanniere,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'hero', child: Text('Hero (carrousel accueil)')),
+                        DropdownMenuItem(value: 'ticker', child: Text('Ticker (bandeau défilant)')),
+                        DropdownMenuItem(value: 'pub', child: Text('Publicité (réserve)')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _typeBanniere = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Le ticker affiche surtout le titre ; une image reste requise côté serveur.',
+                      style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
+                    ),
+                    if (_typeBanniere == 'pub') ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('Dimensions recommandées (carrousel pub)'),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(_largeurPxCtrl, 'Largeur (px)', keyboard: TextInputType.number),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _dialogField(_hauteurPxCtrl, 'Hauteur (px)', keyboard: TextInputType.number),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: Color(0xFF92400E), size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Format recommandé : 320×180 px (ratio 16:9). Max 2 Mo. JPG, PNG ou WebP.',
+                                style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF92400E)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _dialogLabel('Lien de redirection (prioritaire sur CTA 1 pour la pub)'),
+                      const SizedBox(height: 6),
+                      _dialogField(
+                        _lienExterneCtrl,
+                        'https://… ou /public/offres',
+                      ),
+                      const SizedBox(height: 12),
+                      _dialogLabel('Ordre dans le carrousel pub'),
+                      const SizedBox(height: 6),
+                      _dialogField(_ordrePubCtrl, '0 = premier', keyboard: TextInputType.number),
+                    ],
+                    const SizedBox(height: 16),
                     _dialogLabel('Image de fond *'),
                     const SizedBox(height: 8),
                     ImageUploadWidget(
@@ -3280,6 +4219,7 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                               setState(() => _isSaving = true);
                               await widget.onSave({
                                 'image_url': _imageUrl,
+                                'type_banniere': _typeBanniere,
                                 'texte_badge': _badgeCtrl.text.trim(),
                                 'titre': _titreCtrl.text.trim(),
                                 'sous_titre': _sousTitreCtrl.text.trim(),
@@ -3287,6 +4227,10 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                                 'lien_cta_1': _lienCta1Ctrl.text.trim(),
                                 'label_cta_2': _labelCta2Ctrl.text.trim(),
                                 'lien_cta_2': _lienCta2Ctrl.text.trim(),
+                                'largeur_px': _largeurPxCtrl.text.trim(),
+                                'hauteur_px': _hauteurPxCtrl.text.trim(),
+                                'lien_externe': _lienExterneCtrl.text.trim(),
+                                'ordre_pub': _ordrePubCtrl.text.trim(),
                               });
                               if (!mounted) return;
                               Navigator.pop(context);
@@ -3320,9 +4264,11 @@ class _BanniereDialogState extends State<_BanniereDialog> {
     TextEditingController ctrl,
     String hint, {
     int maxLines = 1,
+    TextInputType? keyboard,
   }) => TextFormField(
     controller: ctrl,
     maxLines: maxLines,
+    keyboardType: keyboard,
     decoration: InputDecoration(
       hintText: hint,
       filled: true,

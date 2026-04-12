@@ -94,7 +94,7 @@ export async function listBannieresPubliques(req, res) {
     const { data, error } = await supabase
       .from(TABLE)
       .select(
-        'id, titre, sous_titre, texte_badge, image_url, label_cta_1, lien_cta_1, label_cta_2, lien_cta_2, ordre',
+        'id, titre, sous_titre, texte_badge, image_url, label_cta_1, lien_cta_1, label_cta_2, lien_cta_2, ordre, type_banniere, largeur_px, hauteur_px, lien_externe, ordre_pub',
       )
       .eq('est_actif', true)
       .order('ordre', { ascending: true });
@@ -124,6 +124,11 @@ export async function createBanniere(req, res) {
       lien_cta_1,
       label_cta_2,
       lien_cta_2,
+      type_banniere,
+      largeur_px,
+      hauteur_px,
+      lien_externe,
+      ordre_pub,
     } = req.body;
 
     let image_url = req.body.image_url || '';
@@ -161,6 +166,15 @@ export async function createBanniere(req, res) {
 
     const nextOrdre = (lastBan?.ordre ?? 0) + 1;
 
+    const typeBan = ['hero', 'ticker', 'pub'].includes(String(type_banniere || '').trim())
+      ? String(type_banniere).trim()
+      : 'hero';
+
+    const wPx = Math.min(Math.max(parseInt(String(largeur_px ?? ''), 10) || 320, 120), 1200);
+    const hPx = Math.min(Math.max(parseInt(String(hauteur_px ?? ''), 10) || 180, 80), 800);
+    const ordPub = Math.max(parseInt(String(ordre_pub ?? ''), 10) || 0, 0);
+    const lienExt = lien_externe != null ? String(lien_externe).trim() : '';
+
     const { data, error } = await supabase
       .from(TABLE)
       .insert({
@@ -174,6 +188,11 @@ export async function createBanniere(req, res) {
         lien_cta_2,
         ordre: nextOrdre,
         est_actif: true,
+        type_banniere: typeBan,
+        largeur_px: wPx,
+        hauteur_px: hPx,
+        lien_externe: lienExt || null,
+        ordre_pub: ordPub,
       })
       .select()
       .single();
@@ -204,10 +223,24 @@ export async function updateBanniere(req, res) {
       'label_cta_2',
       'ordre',
       'est_actif',
+      'type_banniere',
+      'largeur_px',
+      'hauteur_px',
+      'lien_externe',
+      'ordre_pub',
     ];
     const updates = { date_modification: new Date().toISOString() };
     for (const k of allowed) {
-      if (req.body[k] !== undefined) updates[k] = req.body[k];
+      if (req.body[k] === undefined) continue;
+      if (k === 'largeur_px' || k === 'hauteur_px') {
+        const n = parseInt(String(req.body[k]), 10);
+        updates[k] = Number.isFinite(n) ? n : k === 'largeur_px' ? 320 : 180;
+      } else if (k === 'ordre_pub') {
+        const n = parseInt(String(req.body[k]), 10);
+        updates[k] = Number.isFinite(n) ? Math.max(0, n) : 0;
+      } else {
+        updates[k] = req.body[k];
+      }
     }
 
     const { data, error } = await supabase

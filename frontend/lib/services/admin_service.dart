@@ -700,4 +700,38 @@ class AdminService {
     final res = await _api.delete('/admin/ressources/$id');
     return _parseJsonOk(res);
   }
+
+  // ── ILLUSTRATIONS IA (homepage, DALL-E) ───────────────────
+
+  Future<Map<String, dynamic>> getIllustrationsIaListe() async {
+    final res = await _api.get('/illustration/liste', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  /// Réponse brute (success peut être false avec HTTP 200).
+  Future<Map<String, dynamic>> postIllustrationGenerer() async {
+    final res = await _api.post('/illustration/generer', body: {}, useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> patchIllustrationActiver(String id) async {
+    final res = await _api.patch('/illustration/$id/activer', body: {}, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  /// Test isolé Anthropic ou OpenAI (texte) — réponse JSON même si `success: false`.
+  Future<Map<String, dynamic>> postAdminTestIa(String provider) async {
+    final res = await _api.post(
+      '/admin/test-ia',
+      body: {'provider': provider},
+      useAuth: true,
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Test DALL-E (image 256×256, dall-e-2).
+  Future<Map<String, dynamic>> postAdminTestDalle() async {
+    final res = await _api.post('/admin/test-dalle', body: {}, useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 }

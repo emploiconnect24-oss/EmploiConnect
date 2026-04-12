@@ -5,6 +5,7 @@ import '../core/constants/app_animations.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_text_styles.dart';
 import '../providers/auth_provider.dart';
+import '../services/google_auth_service.dart';
 import 'auth/widgets/mobile_auth_header.dart';
 import '../shared/widgets/logo_widget.dart';
 import '../widgets/responsive_container.dart';
@@ -22,8 +23,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
+  bool _googleLoading = false;
   String? _errorMessage;
   bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      GoogleAuthService.prefetchConfig();
+    });
+  }
 
   @override
   void dispose() {
@@ -37,14 +47,41 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _googleSignIn() async {
-    // UI prête. L’intégration technique nécessite un endpoint backend du type:
-    // POST /auth/google (échange idToken → JWT EmploiConnect).
+    if (_loading || _googleLoading) return;
+    debugPrint('[BoutonGoogle] login: clic');
+    setState(() {
+      _googleLoading = true;
+      _errorMessage = null;
+    });
+    final auth = context.read<AuthProvider>();
+    debugPrint('[BoutonGoogle] login: loginWithGoogle…');
+    final (ok, msg, pending) = await auth.loginWithGoogle();
+    debugPrint('[BoutonGoogle] login: ok=$ok pending=$pending msg=$msg');
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Connexion Google : à brancher côté backend (OAuth).'),
-      ),
-    );
+    setState(() => _googleLoading = false);
+    if (ok) {
+      auth.navigateToAuthenticatedHome(context);
+      return;
+    }
+    if (msg == null) return;
+    if (pending) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Compte créé'),
+          content: Text(msg),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    setState(() => _errorMessage = msg);
   }
 
   Future<void> _submit() async {
@@ -60,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).pushReplacementNamed('/home');
+      auth.navigateToAuthenticatedHome(context);
     } else {
       setState(() => _errorMessage = msg ?? 'Erreur de connexion');
     }
@@ -155,7 +192,43 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
               FadeInUp(
                 duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 250),
+                delay: const Duration(milliseconds: 240),
+                child: OutlinedButton.icon(
+                  onPressed: (_loading || _googleLoading) ? null : _googleSignIn,
+                  icon: _googleLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.g_mobiledata, size: 28),
+                  label: Text(
+                    _googleLoading ? 'Connexion Google…' : 'Continuer avec Google',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 260),
+                child: Row(
+                  children: [
+                    Expanded(child: Divider(color: scheme.outlineVariant)),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'ou se connecter avec e-mail',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: scheme.outlineVariant)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              FadeInUp(
+                duration: AppAnimations.medium,
+                delay: const Duration(milliseconds: 280),
                 child: TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
@@ -244,32 +317,11 @@ class _LoginScreenState extends State<LoginScreen> {
               FadeInUp(
                 duration: AppAnimations.medium,
                 delay: const Duration(milliseconds: 500),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: Divider(color: scheme.outlineVariant)),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 10),
-                          child: Text('ou'),
-                        ),
-                        Expanded(child: Divider(color: scheme.outlineVariant)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _loading ? null : _googleSignIn,
-                      icon: const Icon(Icons.g_mobiledata, size: 28),
-                      label: const Text('Continuer avec Google'),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => Navigator.of(
-                        context,
-                      ).pushReplacementNamed('/register'),
-                      child: const Text('Pas de compte ? S’inscrire'),
-                    ),
-                  ],
+                child: TextButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pushReplacementNamed('/register'),
+                  child: const Text('Pas de compte ? S’inscrire'),
                 ),
               ),
             ],

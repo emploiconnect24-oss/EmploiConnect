@@ -20,8 +20,23 @@ export async function startScheduledJobs() {
       },
       { timezone: 'Africa/Conakry' },
     );
+
+    const { getIllustrationCronHour, genererIllustrationsJour } = await import(
+      './illustrationIa.service.js'
+    );
+    const hourIllus = await getIllustrationCronHour();
+    cron.schedule(
+      `0 ${hourIllus} * * *`,
+      () => {
+        console.log('[cron] Génération illustrations IA…');
+        void genererIllustrationsJour().then((r) => console.log('[cron] Illustration IA:', r));
+      },
+      { timezone: 'Africa/Conakry' },
+    );
+
     started = true;
     console.log('[cron] Résumé hebdomadaire : chaque lundi 8h (Africa/Conakry)');
+    console.log(`[cron] Illustration IA : chaque jour ${hourIllus}h (Africa/Conakry)`);
   } catch (e) {
     console.warn('[cron] node-cron indisponible — installez la dépendance :', e.message);
   }

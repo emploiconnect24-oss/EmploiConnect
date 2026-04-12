@@ -268,17 +268,18 @@ function _tryExtractJsonObject(text) {
   return t.slice(start, end + 1);
 }
 
-export async function _appellerIA(prompt, cles, role = 'matching') {
-  const provider = role === 'texte' ? cles.providerTexte : cles.providerMatching;
+/**
+ * Appelle un seul provider (sans fallback) — tests admin et usage interne.
+ */
+export async function _appellerProviderSpecifique(prompt, cles, provider, role = 'matching') {
+  const p = String(provider || '').toLowerCase();
   const maxTokens =
     role === 'texte' ? 300 : role === 'parcours' ? 4096 : 250;
-  console.log(`[IA] Provider: ${provider} | Rôle: ${role}`);
 
-  if (provider === 'anthropic' && cles.anthropicKey) {
+  if (p === 'anthropic' && cles.anthropicKey) {
     try {
       console.log('[appellerIA] Envoi requête à Anthropic...');
       console.log('[appellerIA] Modèle:', cles.anthropicModel || 'claude-haiku-4-5-20251001');
-      console.log('[appellerIA] Clé:', `${cles.anthropicKey.substring(0, 15)}...`);
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -306,8 +307,6 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
         return null;
       }
 
-      console.log('[appellerIA] Réponse (extrait):', JSON.stringify(data).substring(0, 500));
-
       if (data?.error) {
         console.error(
           '[appellerIA] ❌ Erreur Anthropic:',
@@ -319,7 +318,7 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
       }
 
       if (!response.ok) {
-        console.error('[appellerIA] ❌ HTTP non OK sans champ error standard, status:', response.status);
+        console.error('[appellerIA] ❌ HTTP non OK Anthropic, status:', response.status);
         return null;
       }
 
@@ -332,10 +331,9 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
     }
   }
 
-  if (provider === 'openai' && cles.openaiKey) {
+  if (p === 'openai' && cles.openaiKey) {
     try {
       console.log('[appellerIA] Envoi requête à OpenAI...');
-      console.log('[appellerIA] Clé:', `${cles.openaiKey.substring(0, 10)}...`);
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -362,8 +360,6 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
         return null;
       }
 
-      console.log('[appellerIA] Réponse OpenAI (extrait):', JSON.stringify(data).substring(0, 500));
-
       if (data?.error) {
         console.error(
           '[appellerIA] ❌ Erreur OpenAI:',
@@ -371,6 +367,11 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
           '-',
           data.error?.message || JSON.stringify(data.error),
         );
+        return null;
+      }
+
+      if (!response.ok) {
+        console.error('[appellerIA] ❌ HTTP non OK OpenAI, status:', response.status);
         return null;
       }
 
@@ -383,7 +384,46 @@ export async function _appellerIA(prompt, cles, role = 'matching') {
     }
   }
 
-  console.warn('[IA] Aucun appel API (provider=', provider, ', clés manquantes ou mode local/aucun)');
+  return null;
+}
+
+/**
+ * Provider principal (paramètres) puis fallback automatique sur l’autre clé si disponible.
+ */
+export async function _appellerIA(prompt, cles, role = 'matching') {
+  const primary = role === 'texte' ? cles.providerTexte : cles.providerMatching;
+  const prim = String(primary || '').toLowerCase();
+  console.log(`[IA] Provider principal: ${prim} | Rôle: ${role}`);
+
+  if (prim === 'local' || prim === 'aucun' || !prim) {
+    console.warn('[IA] Mode local / aucun provider — pas d’appel API');
+    return null;
+  }
+
+  try {
+    const r1 = await _appellerProviderSpecifique(prompt, cles, prim, role);
+    if (r1) return r1;
+  } catch (e) {
+    console.warn(`[IA] ${prim} échoué:`, e?.message || e);
+  }
+
+  const fallback = prim === 'anthropic' ? 'openai' : 'anthropic';
+  const fallbackKey = fallback === 'anthropic' ? cles.anthropicKey : cles.openaiKey;
+
+  if (fallbackKey) {
+    console.log(`[IA] Fallback sur: ${fallback}`);
+    try {
+      const r2 = await _appellerProviderSpecifique(prompt, cles, fallback, role);
+      if (r2) {
+        console.log(`[IA] Fallback ${fallback} réussi`);
+        return r2;
+      }
+    } catch (e) {
+      console.warn(`[IA] Fallback ${fallback} échoué:`, e?.message || e);
+    }
+  }
+
+  console.warn('[IA] Aucun provider disponible (principal + fallback)');
   return null;
 }
 

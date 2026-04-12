@@ -1,9 +1,25 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
+import 'google_auth_service.dart';
 
 const _keyToken = 'emploiconnect_token';
 const _keyUser = 'emploiconnect_user';
+
+String _messageErreurGoogleSignIn(Object e) {
+  final s = e.toString();
+  if (s.contains('people.googleapis.com') ||
+      s.contains('People API') ||
+      (s.contains('PERMISSION_DENIED') && s.contains('SERVICE_DISABLED'))) {
+    return 'L’API Google « People » n’est pas activée sur le projet Cloud utilisé par '
+        'votre Client ID. Dans Google Cloud Console : Bibliothèque → « People API » → '
+        'Activer, puis attendez quelques minutes. '
+        'Lien direct : https://console.cloud.google.com/apis/library/people.googleapis.com';
+  }
+  return s;
+}
 
 class AuthService {
   static final AuthService _instance = AuthService._();
@@ -108,6 +124,65 @@ class AuthService {
     }
     final msg = ApiService.errorMessage(res) ?? 'Email ou mot de passe incorrect';
     return (false, msg);
+  }
+
+  /// Connexion / inscription via Google.
+  /// Annulation → `(false, null, false)` ; validation manuelle (201) → `(false, message, true)`.
+  Future<(bool ok, String? message, bool pendingValidation)> loginWithGoogle({
+    String? role,
+  }) async {
+    ({String? idToken, String? accessToken}) tokens;
+    try {
+      tokens = await GoogleAuthService.obtainGoogleTokens();
+    } catch (e, st) {
+      debugPrint('[AuthService] loginWithGoogle obtainGoogleTokens: $e\n$st');
+      return (false, _messageErreurGoogleSignIn(e), false);
+    }
+    final hasId = tokens.idToken != null && tokens.idToken!.isNotEmpty;
+    final hasAt = tokens.accessToken != null && tokens.accessToken!.isNotEmpty;
+    if (!hasId && !hasAt) {
+      if (kIsWeb) {
+        return (
+          false,
+          'Connexion Google : aucun jeton après la fenêtre Google. Vérifiez que la popup '
+          "n'est pas bloquée, la navigation non privée, et les origines OAuth pour localhost.",
+          false,
+        );
+      }
+      return (false, null, false);
+    }
+    final body = <String, dynamic>{};
+    if (hasId) {
+      body['id_token'] = tokens.idToken;
+    }
+    if (hasAt) {
+      body['access_token'] = tokens.accessToken;
+    }
+    if (role != null && role.isNotEmpty) {
+      body['role'] = role;
+    }
+    final res = await ApiService().post('/auth/google', body: body);
+    Map<String, dynamic>? data;
+    try {
+      data = jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      data = null;
+    }
+    if (res.statusCode == 201) {
+      final msg = data?['message'] as String? ?? 'Compte créé. En attente de validation.';
+      return (false, msg, true);
+    }
+    if (res.statusCode == 200 && data?['success'] == true) {
+      final inner = data!['data'] as Map<String, dynamic>?;
+      final token = inner?['token'] as String?;
+      final user = inner?['user'] as Map<String, dynamic>?;
+      if (token != null && user != null) {
+        await saveSession(token, user);
+        return (true, null, false);
+      }
+    }
+    final msg = ApiService.errorMessage(res) ?? 'Connexion Google impossible';
+    return (false, msg, false);
   }
 
   /// Demande de lien de réinitialisation (réponse générique côté API).

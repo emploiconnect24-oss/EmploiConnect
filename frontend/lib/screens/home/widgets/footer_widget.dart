@@ -49,11 +49,11 @@ class _FooterWidgetState extends State<FooterWidget> {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final isMobile = w < 980;
-    final hPad = isMobile ? 24.0 : 80.0;
+    final isMobile = w < 768;
+    final hPad = isMobile ? 20.0 : 40.0;
 
     return Container(
-      color: const Color(0xFF0F172A),
+      color: const Color(0xFF0D1B3E),
       width: double.infinity,
       child: Column(
         children: [
@@ -67,14 +67,14 @@ class _FooterWidgetState extends State<FooterWidget> {
             ),
           ),
           Padding(
-            padding: EdgeInsets.symmetric(vertical: 64, horizontal: hPad),
+            padding: EdgeInsets.fromLTRB(hPad, 36, hPad, isMobile ? 24 : 32),
             child: isMobile
                 ? _FooterMobile(footer: _footer)
                 : _FooterDesktop(footer: _footer),
           ),
           const Divider(color: Color(0x14FFFFFF), height: 1),
           Padding(
-            padding: EdgeInsets.symmetric(vertical: 24, horizontal: hPad),
+            padding: EdgeInsets.symmetric(vertical: isMobile ? 16 : 20, horizontal: hPad),
             child: isMobile
                 ? const _FooterBottomMobile()
                 : const _FooterBottomDesktop(),
@@ -94,12 +94,12 @@ class _FooterDesktop extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 3, child: _BrandCol(footer: footer)),
-        SizedBox(width: 28),
+        Expanded(flex: 3, child: _BrandCol(footer: footer, compact: false)),
+        SizedBox(width: 24),
         Expanded(flex: 2, child: _LinksColCandidat()),
-        SizedBox(width: 28),
+        SizedBox(width: 24),
         Expanded(flex: 2, child: _LinksColEntreprise()),
-        SizedBox(width: 28),
+        SizedBox(width: 24),
         Expanded(flex: 3, child: _ConnectCol(footer: footer)),
       ],
     );
@@ -115,12 +115,17 @@ class _FooterMobile extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _BrandCol(footer: footer),
-        SizedBox(height: 26),
-        _LinksColCandidat(),
-        SizedBox(height: 26),
-        _LinksColEntreprise(),
-        SizedBox(height: 26),
+        _BrandCol(footer: footer, compact: true),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _LinksColCandidat(compact: true)),
+            const SizedBox(width: 16),
+            Expanded(child: _LinksColEntreprise(compact: true)),
+          ],
+        ),
+        const SizedBox(height: 20),
         _ConnectCol(footer: footer),
       ],
     );
@@ -128,40 +133,43 @@ class _FooterMobile extends StatelessWidget {
 }
 
 class _BrandCol extends StatelessWidget {
-  const _BrandCol({required this.footer});
+  const _BrandCol({required this.footer, this.compact = false});
   final Map<String, String> footer;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const LogoWidget(
-          height: 40,
+        LogoWidget(
+          height: compact ? 32 : 40,
           fallbackTextColor: Colors.white,
-          fallbackAccentColor: Color(0xFF60A5FA),
+          fallbackAccentColor: const Color(0xFF60A5FA),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: compact ? 10 : 14),
         Text(
           (footer['footer_tagline']?.trim().isNotEmpty ?? false)
               ? footer['footer_tagline']!
               : "La plateforme intelligente de l'emploi en Guinée.",
           style: GoogleFonts.inter(
-            fontSize: 14,
+            fontSize: compact ? 12 : 14,
             color: const Color(0xCCFFFFFF),
-            height: 1.6,
+            height: 1.5,
           ),
         ),
-        const SizedBox(height: 14),
-        Text(
-          "Mettez en relation les talents et les entreprises avec une expérience moderne, fluide et sécurisée.",
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: const Color(0x99FFFFFF),
-            height: 1.6,
+        if (!compact) ...[
+          const SizedBox(height: 14),
+          Text(
+            "Mettez en relation les talents et les entreprises avec une expérience moderne, fluide et sécurisée.",
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: const Color(0x99FFFFFF),
+              height: 1.6,
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
+        ],
+        SizedBox(height: compact ? 12 : 16),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -190,11 +198,13 @@ class _BrandCol extends StatelessWidget {
 }
 
 class _LinksColCandidat extends StatelessWidget {
-  const _LinksColCandidat();
+  const _LinksColCandidat({this.compact = false});
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return _LinksCol(
+      compact: compact,
       title: 'Pour les Candidats',
       accent: const Color(0xFF3B82F6),
       entries: [
@@ -222,11 +232,13 @@ class _LinksColCandidat extends StatelessWidget {
 }
 
 class _LinksColEntreprise extends StatelessWidget {
-  const _LinksColEntreprise();
+  const _LinksColEntreprise({this.compact = false});
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return _LinksCol(
+      compact: compact,
       title: 'Pour les Entreprises',
       accent: const Color(0xFF10B981),
       entries: [
@@ -259,38 +271,46 @@ class _LinksCol extends StatelessWidget {
     required this.title,
     required this.accent,
     required this.entries,
+    this.compact = false,
   });
 
   final String title;
   final Color accent;
   final List<_FooterLinkEntry> entries;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final titleSize = compact ? 12.0 : 16.0;
+    final barW = compact ? 24.0 : 30.0;
+    final gapAfterTitle = compact ? 6.0 : 8.0;
+    final gapAfterBar = compact ? 8.0 : 12.0;
+    final gapBetweenLinks = compact ? 6.0 : 8.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: titleSize,
             fontWeight: FontWeight.w600,
             color: Colors.white,
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: gapAfterTitle),
         Container(
-          width: 30,
-          height: 3,
+          width: barW,
+          height: compact ? 2 : 3,
           decoration: BoxDecoration(
             color: accent,
             borderRadius: BorderRadius.circular(100),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: gapAfterBar),
         for (final e in entries) ...[
-          _FooterLink(label: e.label, onTap: e.onTap),
-          const SizedBox(height: 8),
+          _FooterLink(label: e.label, onTap: e.onTap, compact: compact),
+          SizedBox(height: gapBetweenLinks),
         ],
       ],
     );
@@ -505,10 +525,11 @@ class _SocialBtnState extends State<_SocialBtn> {
 }
 
 class _FooterLink extends StatefulWidget {
-  const _FooterLink({required this.label, this.onTap});
+  const _FooterLink({required this.label, this.onTap, this.compact = false});
 
   final String label;
   final VoidCallback? onTap;
+  final bool compact;
 
   @override
   State<_FooterLink> createState() => _FooterLinkState();
@@ -537,19 +558,25 @@ class _FooterLinkState extends State<_FooterLink> {
           children: [
             Icon(
               Icons.chevron_right,
-              size: 16,
+              size: widget.compact ? 14 : 16,
               color: _hover ? const Color(0xFF3B82F6) : const Color(0xAAFFFFFF),
             ),
-            const SizedBox(width: 6),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                color: _hover
-                    ? const Color(0xFF3B82F6)
-                    : const Color(0xAAFFFFFF),
+            SizedBox(width: widget.compact ? 4 : 6),
+            Expanded(
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: GoogleFonts.inter(
+                  fontSize: widget.compact ? 11 : 14,
+                  color: _hover
+                      ? const Color(0xFF3B82F6)
+                      : const Color(0xAAFFFFFF),
+                ),
+                child: Text(
+                  widget.label,
+                  maxLines: widget.compact ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              child: Text(widget.label),
             ),
           ],
         ),

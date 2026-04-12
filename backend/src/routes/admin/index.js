@@ -21,6 +21,7 @@ import * as temoignages from '../../controllers/admin/temoignages.controller.js'
 import ressourcesParcoursRoutes from './ressourcesParcours.routes.js';
 import { uploadAdminPhoto } from '../../middleware/uploadAdminPhoto.js';
 import { auditLog } from '../../middleware/auditLog.js';
+import * as testIaApi from '../../controllers/admin/testIaApi.controller.js';
 
 const router = Router();
 
@@ -127,6 +128,8 @@ router.post(
 );
 router.post('/parametres/tester-ia', parametres.testerConnexionIA);
 router.post('/parametres/test-ia-apropos', parametres.testIaApropos);
+router.post('/test-ia', testIaApi.postTestIa);
+router.post('/test-dalle', testIaApi.postTestDalle);
 router.post('/parametres/tester-smtp', parametres.testerSMTP);
 router.post('/tester-email', parametres.testerSMTP);
 router.post(

@@ -2,7 +2,7 @@
  * Agrégation des routes API
  */
 import { Router } from 'express';
-import authRoutes from './auth.js';
+import authRoutes from './auth.routes.js';
 import usersRoutes from './users.js';
 import offresRoutes from './offres.js';
 import candidaturesRoutes from './candidatures.js';
@@ -34,10 +34,14 @@ import { getFooterConfig, getGeneralConfig } from '../controllers/public/siteCon
 import { getTopEntreprisesPublic } from '../controllers/public/entreprisesPublic.controller.js';
 import { getTemoignagesPublic } from '../controllers/public/temoignagesPublic.controller.js';
 import candidatTemoignagesRoutes from './candidat/temoignages.js';
+import statsRoutes from './stats.routes.js';
+import illustrationRoutes from './illustration.routes.js';
 
 const router = Router();
 
 router.get('/bannieres', listBannieresPubliques);
+router.use('/illustration', illustrationRoutes);
+router.use('/stats', statsRoutes);
 router.get('/config/footer', getFooterConfig);
 router.get('/config/general', getGeneralConfig);
 router.get('/entreprises/top-public', getTopEntreprisesPublic);

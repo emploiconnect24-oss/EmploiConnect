@@ -1,15 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/public_routes.dart';
-import 'widgets/footer_widget.dart';
-import 'widgets/hero_section_widget.dart';
-import 'widgets/navbar_widget.dart';
-import 'widgets/platform_section_widget.dart';
-import 'widgets/recent_jobs_section_widget.dart';
-import 'widgets/success_stories_section_widget.dart';
-import 'widgets/top_entreprises_marquee_section_widget.dart';
-import 'widgets/solutions_section_widget.dart';
-import 'widgets/tips_carousel_widget.dart';
+import 'home_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,32 +11,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ScrollController _scrollController = ScrollController();
-  bool _isScrolled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    final next = _scrollController.offset > 10;
-    if (next != _isScrolled) {
-      setState(() => _isScrolled = next);
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: Colors.white,
       extendBodyBehindAppBar: true,
       endDrawer: Drawer(
@@ -79,25 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70),
-        child: NavbarWidget(isScrolled: _isScrolled),
-      ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        child: const Column(
-          children: [
-            HeroSectionWidget(),
-            PlatformSectionWidget(),
-            TipsCarouselWidget(),
-            SolutionsSectionWidget(),
-            RecentJobsSectionWidget(),
-            TopEntreprisesMarqueeSectionWidget(),
-            SuccessStoriesSectionWidget(),
-            FooterWidget(),
-          ],
-        ),
-      ),
+      body: HomePage(onOpenMenu: () => _scaffoldKey.currentState?.openEndDrawer()),
     );
   }
 }

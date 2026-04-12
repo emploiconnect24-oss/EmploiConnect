@@ -31,6 +31,10 @@
 
   <title>frontend</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- GIS : requis par google_sign_in_web (popup). Ne pas dupliquer le client_id ici : -->
+  <!-- il est chargé depuis GET /api/auth/google-config dans l’app Flutter (admin). -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <!--

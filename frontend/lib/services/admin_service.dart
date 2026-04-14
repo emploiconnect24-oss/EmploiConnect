@@ -447,6 +447,40 @@ class AdminService {
     return _parseJsonOk(res);
   }
 
+  /// Infra Supabase (masqué) + buckets — super admin uniquement.
+  Future<Map<String, dynamic>> getInfraTest() async {
+    final res = await _api.get('/admin/infra/test', useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> get2faStatus() async {
+    final res = await _api.get('/admin/2fa/status', useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> get2faSetup() async {
+    final res = await _api.get('/admin/2fa/setup', useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> post2faActiver(String code) async {
+    final res = await _api.post(
+      '/admin/2fa/activer',
+      body: {'code': code.trim()},
+      useAuth: true,
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> post2faDesactiver(String code) async {
+    final res = await _api.post(
+      '/admin/2fa/desactiver',
+      body: {'code': code.trim()},
+      useAuth: true,
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> updateParametres(List<Map<String, dynamic>> parametres) async {
     final res = await _api.put(
       '/admin/parametres',
@@ -719,6 +753,16 @@ class AdminService {
     return _parseJsonOk(res);
   }
 
+  Future<Map<String, dynamic>> deleteIllustration(String id) async {
+    final res = await _api.delete('/illustration/$id', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> postTestGeminiImage() async {
+    final res = await _api.post('/admin/test-gemini-image', body: {}, useAuth: true);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   /// Test isolé Anthropic ou OpenAI (texte) — réponse JSON même si `success: false`.
   Future<Map<String, dynamic>> postAdminTestIa(String provider) async {
     final res = await _api.post(
@@ -733,5 +777,130 @@ class AdminService {
   Future<Map<String, dynamic>> postAdminTestDalle() async {
     final res = await _api.post('/admin/test-dalle', body: {}, useAuth: true);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ── À PROPOS + NEWSLETTER ─────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getAproposSectionsAdmin() async {
+    final res = await _api.get('/apropos', useAuth: true);
+    final body = _parseJsonOk(res);
+    final d = body['data'];
+    if (d is List) {
+      return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> putAproposSection(String id, Map<String, dynamic> body) async {
+    final res = await _api.put('/admin/apropos/$id', body: body, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> getNewsletterAbonnes({bool actifsOnly = true}) async {
+    final q = actifsOnly ? '?actifs=1' : '?actifs=0';
+    final res = await _api.get('/admin/newsletter$q', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> postNewsletterEnvoyer({
+    required String sujet,
+    required String contenu,
+  }) async {
+    final res = await _api.post(
+      '/admin/newsletter/envoyer',
+      body: {'sujet': sujet, 'contenu': contenu},
+      useAuth: true,
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> postNewsletterIaGenerer({
+    String declencheur = 'admin',
+  }) async {
+    final res = await _api.post(
+      '/admin/newsletter/ia/generer',
+      body: {'declencheur': declencheur},
+      useAuth: true,
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ── RÔLES & SOUS-ADMINS ───────────────────────────────────
+
+  Future<Map<String, dynamic>> getMesPermissionsAdmin() async {
+    final res = await _api.get('/admin/sous-admins/mes-permissions', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<List<Map<String, dynamic>>> getSousAdmins() async {
+    final res = await _api.get('/admin/sous-admins', useAuth: true);
+    final body = _parseJsonOk(res);
+    final d = body['data'];
+    if (d is List) {
+      return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getAdminRoles() async {
+    final res = await _api.get('/admin/sous-admins/roles', useAuth: true);
+    final body = _parseJsonOk(res);
+    final d = body['data'];
+    if (d is List) {
+      return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> postSousAdmin({
+    required String nom,
+    required String email,
+    required String motDePasse,
+    String? roleId,
+  }) async {
+    final res = await _api.post(
+      '/admin/sous-admins',
+      body: {
+        'nom': nom,
+        'email': email,
+        'mot_de_passe': motDePasse,
+        if (roleId != null && roleId.isNotEmpty) 'role_id': roleId,
+      },
+      useAuth: true,
+    );
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> putSousAdmin(
+    String id, {
+    String? nom,
+    String? roleId,
+    bool? estActif,
+    String? nouveauMdp,
+  }) async {
+    final body = <String, dynamic>{};
+    if (nom != null) body['nom'] = nom;
+    if (roleId != null) body['role_id'] = roleId;
+    if (estActif != null) body['est_actif'] = estActif;
+    if (nouveauMdp != null && nouveauMdp.isNotEmpty) body['nouveau_mdp'] = nouveauMdp;
+    final res = await _api.put('/admin/sous-admins/$id', body: body, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> deleteSousAdmin(String id) async {
+    final res = await _api.delete('/admin/sous-admins/$id', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> putRolePermissions(
+    String roleId,
+    List<Map<String, dynamic>> permissions,
+  ) async {
+    final res = await _api.put(
+      '/admin/sous-admins/roles/$roleId/permissions',
+      body: {'permissions': permissions},
+      useAuth: true,
+    );
+    return _parseJsonOk(res);
   }
 }

@@ -5,6 +5,7 @@ import axios from 'axios';
 import { supabase } from '../../config/supabase.js';
 import { getRapidApiKeys, invalidateKeysCache } from '../../config/rapidApi.js';
 import { invalidateMailSettingsCache } from '../../config/mailSettings.js';
+import { invalidateSecurityParamsCache } from '../../middleware/security.middleware.js';
 import { verifySmtpConnection, sendPlatformEmail } from '../../services/mail.service.js';
 import { ameliorerAproposAvecConfig } from '../../services/ameliorerAproposIa.service.js';
 
@@ -116,6 +117,11 @@ const PARAM_INSERT_DEFAULTS = {
     type_valeur: 'string',
     description: 'URL image manuelle (fallback homepage)',
   },
+  server_port: {
+    categorie: 'general',
+    type_valeur: 'string',
+    description: 'Port HTTP du backend (documentation / cohérence — redémarrage + PORT dans .env pour appliquer)',
+  },
 };
 
 const MAIL_SETTINGS_CACHE_KEYS = new Set([
@@ -159,6 +165,14 @@ const MAIL_SETTINGS_CACHE_KEYS = new Set([
   'template_analyse_cv_sujet',
 ]);
 
+const SECURITY_CACHE_KEYS = new Set([
+  'ips_bloquees',
+  'duree_session_minutes',
+  'max_tentatives_connexion',
+  'jwt_expiration_heures',
+  'twofa_admin_actif',
+]);
+
 function maskSensitiveValue(cle, valeur) {
   if (typeof valeur !== 'string') return valeur;
   if (SENSITIVE_KEYS.includes(cle) && valeur.length > 4) {
@@ -169,7 +183,7 @@ function maskSensitiveValue(cle, valeur) {
 
 function isMaskedPlaceholder(v) {
   if (typeof v !== 'string') return false;
-  return v.startsWith('•') || v.startsWith('\u2022');
+  return v.startsWith('•') || v.startsWith('\u2022') || v.startsWith('*');
 }
 
 function rowToValeur(p) {
@@ -235,6 +249,7 @@ export async function updateParametres(req, res) {
     const erreurs = [];
     let rapidApiCacheShouldInvalidate = false;
     let mailCacheShouldInvalidate = false;
+    let securityCacheShouldInvalidate = false;
 
     for (const param of parametres) {
       if (!param.cle || param.valeur === undefined) {
@@ -295,6 +310,7 @@ export async function updateParametres(req, res) {
         resultats.push(updatedRows[0]);
         if (RAPIDAPI_CACHE_KEYS.has(param.cle)) rapidApiCacheShouldInvalidate = true;
         if (MAIL_SETTINGS_CACHE_KEYS.has(param.cle)) mailCacheShouldInvalidate = true;
+        if (SECURITY_CACHE_KEYS.has(param.cle)) securityCacheShouldInvalidate = true;
         continue;
       }
 
@@ -342,6 +358,7 @@ export async function updateParametres(req, res) {
       resultats.push(insRow);
       if (RAPIDAPI_CACHE_KEYS.has(param.cle)) rapidApiCacheShouldInvalidate = true;
       if (MAIL_SETTINGS_CACHE_KEYS.has(param.cle)) mailCacheShouldInvalidate = true;
+      if (SECURITY_CACHE_KEYS.has(param.cle)) securityCacheShouldInvalidate = true;
     }
 
     if (rapidApiCacheShouldInvalidate) {
@@ -349,6 +366,9 @@ export async function updateParametres(req, res) {
     }
     if (mailCacheShouldInvalidate) {
       invalidateMailSettingsCache();
+    }
+    if (securityCacheShouldInvalidate) {
+      invalidateSecurityParamsCache();
     }
 
     return res.json({
@@ -527,6 +547,7 @@ export async function getIAKeysDecrypted(req, res) {
 export async function viderCache(req, res) {
   invalidateKeysCache();
   invalidateMailSettingsCache();
+  invalidateSecurityParamsCache();
   return res.json({
     success: true,
     message: 'Cache vidé avec succès',

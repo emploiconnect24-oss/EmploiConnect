@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../../core/theme/theme_extension.dart';
 import 'contract_badge.dart';
 
 class JobCardWidget extends StatefulWidget {
@@ -23,6 +24,9 @@ class _JobCardWidgetState extends State<JobCardWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
+    final primary = cs.primary;
     final titre = widget.job['title']?.toString() ?? 'Offre';
     final entreprise = widget.job['company']?.toString() ?? 'Entreprise';
     final localisation = widget.job['location']?.toString() ?? 'Guinée';
@@ -48,7 +52,9 @@ class _JobCardWidgetState extends State<JobCardWidget> {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: _hover ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0)),
+            side: BorderSide(
+              color: _hover ? primary.withValues(alpha: 0.45) : ext.cardBorder,
+            ),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -65,14 +71,14 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A56DB).withValues(alpha: 0.12),
+                          color: primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         alignment: Alignment.center,
                         child: Text(
                           initials.isEmpty ? 'EC' : initials,
                           style: GoogleFonts.inter(
-                            color: const Color(0xFF1A56DB),
+                            color: primary,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -86,7 +92,7 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: _hover ? const Color(0xFF1A56DB) : const Color(0xFF0F172A),
+                            color: _hover ? primary : cs.onSurface,
                           ),
                         ),
                       ),
@@ -95,14 +101,14 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.apartment_outlined, size: 15, color: Color(0xFF64748B)),
+                      Icon(Icons.apartment_outlined, size: 15, color: cs.onSurfaceVariant),
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
                           entreprise,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
+                          style: GoogleFonts.inter(fontSize: 13, color: cs.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -110,14 +116,14 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.place_outlined, size: 15, color: Color(0xFF64748B)),
+                      Icon(Icons.place_outlined, size: 15, color: cs.onSurfaceVariant),
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
                           localisation,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
+                          style: GoogleFonts.inter(fontSize: 13, color: cs.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -130,7 +136,7 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                       description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 13.5, color: const Color(0xFF64748B), height: 1.45),
+                      style: GoogleFonts.inter(fontSize: 13.5, color: cs.onSurfaceVariant, height: 1.45),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -138,7 +144,7 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                     children: [
                       Text(
                         relative,
-                        style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF94A3B8)),
+                        style: GoogleFonts.inter(fontSize: 12, color: cs.outline),
                       ),
                       const Spacer(),
                       Text(
@@ -146,7 +152,7 @@ class _JobCardWidgetState extends State<JobCardWidget> {
                         style: GoogleFonts.inter(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1A56DB),
+                          color: primary,
                         ),
                       ),
                     ],

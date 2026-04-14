@@ -31,6 +31,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.dashboard_outlined,
           activeIcon: Icons.dashboard_rounded,
           route: '/admin',
+          permissionSection: 'dashboard',
         ),
       ],
     ),
@@ -42,6 +43,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.people_outline_rounded,
           activeIcon: Icons.people_rounded,
           route: '/admin/utilisateurs',
+          permissionSection: 'utilisateurs',
           badgeKey: 'pending_users',
         ),
         _SidebarItem(
@@ -49,6 +51,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.work_outline_rounded,
           activeIcon: Icons.work_rounded,
           route: '/admin/offres',
+          permissionSection: 'offres',
           badgeKey: 'pending_jobs',
         ),
         _SidebarItem(
@@ -56,18 +59,21 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.business_outlined,
           activeIcon: Icons.business_rounded,
           route: '/admin/entreprises',
+          permissionSection: 'entreprises',
         ),
         _SidebarItem(
           label: 'Candidatures',
           icon: Icons.assignment_outlined,
           activeIcon: Icons.assignment_rounded,
           route: '/admin/candidatures',
+          permissionSection: 'candidatures',
         ),
         _SidebarItem(
           label: 'Moderation',
           icon: Icons.shield_outlined,
           activeIcon: Icons.shield_rounded,
           route: '/admin/moderation',
+          permissionSection: 'signalements',
           badgeKey: 'reports',
           badgeColor: Color(0xFFEF4444),
         ),
@@ -76,6 +82,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.format_quote_outlined,
           activeIcon: Icons.format_quote_rounded,
           route: '/admin/temoignages',
+          permissionSection: 'temoignages',
           badgeKey: 'pending_testimonials',
           badgeColor: Color(0xFFF59E0B),
         ),
@@ -84,6 +91,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.school_outlined,
           activeIcon: Icons.school_rounded,
           route: '/admin/parcours-carriere',
+          permissionSection: 'parcours',
         ),
       ],
     ),
@@ -95,6 +103,7 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.bar_chart_outlined,
           activeIcon: Icons.bar_chart_rounded,
           route: '/admin/statistiques',
+          permissionSection: 'statistiques',
         ),
       ],
     ),
@@ -106,22 +115,40 @@ class AdminSidebar extends StatelessWidget {
           icon: Icons.search_outlined,
           activeIcon: Icons.search_rounded,
           route: '/admin/recherche',
+          permissionSection: 'recherche',
         ),
         _SidebarItem(
           label: 'Notifications',
           icon: Icons.notifications_none_rounded,
           activeIcon: Icons.notifications_rounded,
           route: '/admin/notifications',
+          permissionSection: 'messages',
         ),
         _SidebarItem(
           label: 'Parametres',
           icon: Icons.settings_outlined,
           activeIcon: Icons.settings_rounded,
           route: '/admin/parametres',
+          superOnly: true,
+        ),
+        _SidebarItem(
+          label: 'Gestion des accès',
+          icon: Icons.admin_panel_settings_outlined,
+          activeIcon: Icons.admin_panel_settings_rounded,
+          route: '/admin/acces',
+          superOnly: true,
         ),
       ],
     ),
   ];
+
+  static bool _itemVisible(AdminProvider admin, _SidebarItem item) {
+    if (!admin.adminAccessLoaded) return true;
+    if (item.superOnly) return admin.adminEstSuper;
+    final key = item.permissionSection;
+    if (key == null || key.isEmpty) return true;
+    return admin.peutVoirSection(key);
+  }
 
   int _badgeFor(AdminProvider admin, String? key) {
     switch (key) {
@@ -166,17 +193,28 @@ class AdminSidebar extends StatelessWidget {
           _buildLogo(),
           const SizedBox(height: 8),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _sections
-                    .map(
-                      (section) =>
-                          _buildSection(section, collapsed && !isDrawer),
-                    )
-                    .toList(),
-              ),
+            child: Consumer<AdminProvider>(
+              builder: (context, admin, _) {
+                final visibleSections = _sections
+                    .map((sec) {
+                      final items = sec.items.where((it) => _itemVisible(admin, it)).toList();
+                      if (items.isEmpty) return null;
+                      return _SidebarSection(title: sec.title, items: items);
+                    })
+                    .whereType<_SidebarSection>()
+                    .toList();
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: visibleSections
+                        .map(
+                          (section) => _buildSection(section, collapsed && !isDrawer),
+                        )
+                        .toList(),
+                  ),
+                );
+              },
             ),
           ),
           _buildAdminProfile(collapsed && !isDrawer),
@@ -197,7 +235,7 @@ class AdminSidebar extends StatelessWidget {
       ),
       child: hideText
           ? Tooltip(
-              message: 'EmploiConnect — Administration',
+              message: 'EmploiConnect - Administration',
               child: Center(
                 child: Icon(
                   Icons.admin_panel_settings_rounded,
@@ -207,58 +245,82 @@ class AdminSidebar extends StatelessWidget {
               ),
             )
           : Row(
-        children: [
-          const LogoWidget(
-            height: 30,
-            fallbackTextColor: Colors.white,
-            fallbackAccentColor: Color(0xFF60A5FA),
-          ),
-          if (!hideText) ...[
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'EmploiConnect',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: LogoWidget(
+                      height: 30,
+                      fallbackTextColor: Colors.white,
+                      fallbackAccentColor: const Color(0xFF60A5FA),
                     ),
                   ),
-                  Text(
-                    'Administration',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: const Color(0xFF94A3B8),
+                ),
+                if (!hideText) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'EmploiConnect',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              height: 1.15,
+                            ),
+                          ),
+                          Text(
+                            'Administration',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: const Color(0xFF94A3B8),
+                              height: 1.15,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  ),
+                  Consumer<AdminProvider>(
+                    builder: (context, admin, _) {
+                      final c = admin.couleurRole;
+                      final titre = admin.libelleRoleCourt;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: c.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Text(
+                          titre,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
-              ),
+              ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A56DB).withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: const Color(0xFF1A56DB).withValues(alpha: 0.5),
-                ),
-              ),
-              child: Text(
-                'Admin',
-                style: GoogleFonts.inter(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF60A5FA),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 
@@ -424,15 +486,23 @@ class AdminSidebar extends StatelessWidget {
               builder: (context, admin, auth, _) {
                 final photo = admin.adminPhotoUrl?.trim();
                 final nomStr =
-                    (admin.adminNom ?? auth.user?['nom']?.toString() ?? 'A')
+                    (admin.adminNom ?? auth.user?['nom']?.toString() ?? '')
                         .trim();
-                final initial = nomStr.isNotEmpty ? nomStr[0].toUpperCase() : 'A';
+                final emailStr =
+                    (admin.adminEmail ?? auth.user?['email']?.toString() ?? '')
+                        .trim();
+                final initial = nomStr.isNotEmpty
+                    ? nomStr[0].toUpperCase()
+                    : (emailStr.isNotEmpty
+                        ? emailStr[0].toUpperCase()
+                        : '?');
                 final hasPhoto = photo != null && photo.isNotEmpty;
+                final c = admin.couleurRole;
                 return GestureDetector(
                   onLongPress: () => onLogout(),
                   child: CircleAvatar(
                     radius: 16,
-                    backgroundColor: const Color(0xFF1A56DB),
+                    backgroundColor: c,
                     backgroundImage: hasPhoto ? NetworkImage(photo) : null,
                     child: hasPhoto
                         ? null
@@ -458,18 +528,27 @@ class AdminSidebar extends StatelessWidget {
         border: Border(top: BorderSide(color: Color(0x20FFFFFF))),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Consumer2<AdminProvider, AuthProvider>(
             builder: (context, admin, auth, _) {
               final photo = admin.adminPhotoUrl?.trim();
               final nomStr =
-                  (admin.adminNom ?? auth.user?['nom']?.toString() ?? 'A')
+                  (admin.adminNom ?? auth.user?['nom']?.toString() ?? '')
                       .trim();
-              final initial = nomStr.isNotEmpty ? nomStr[0].toUpperCase() : 'A';
+              final emailStr =
+                  (admin.adminEmail ?? auth.user?['email']?.toString() ?? '')
+                      .trim();
+              final initial = nomStr.isNotEmpty
+                  ? nomStr[0].toUpperCase()
+                  : (emailStr.isNotEmpty
+                      ? emailStr[0].toUpperCase()
+                      : '?');
               final hasPhoto = photo != null && photo.isNotEmpty;
+              final c = admin.couleurRole;
               return CircleAvatar(
                 radius: 18,
-                backgroundColor: const Color(0xFF1A56DB),
+                backgroundColor: c,
                 backgroundImage: hasPhoto ? NetworkImage(photo) : null,
                 child: hasPhoto
                     ? null
@@ -488,31 +567,62 @@ class AdminSidebar extends StatelessWidget {
           Expanded(
             child: Consumer2<AdminProvider, AuthProvider>(
               builder: (context, admin, auth, _) {
-                final nom =
-                    (admin.adminNom ??
-                            auth.user?['nom']?.toString() ??
-                            'Administrateur')
-                        .trim();
+                final nom = (admin.adminNom ?? auth.user?['nom']?.toString() ?? '')
+                    .trim();
+                final email = (admin.adminEmail ?? auth.user?['email']?.toString() ?? '')
+                    .trim();
+                final displayNom = nom.isNotEmpty
+                    ? nom
+                    : (email.isNotEmpty ? email.split('@').first : 'Profil');
+                final titreRole = admin.libelleRoleCourt;
+                final couleurRole = admin.couleurRole;
                 return Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      nom.isEmpty ? 'Administrateur' : nom,
+                      displayNom,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
+                        height: 1.15,
                       ),
                     ),
-                    Text(
-                      'Super Admin',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: const Color(0xFF64748B),
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: couleurRole.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: Text(
+                        titreRole,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: couleurRole,
+                          height: 1.1,
+                        ),
                       ),
                     ),
+                    if (email.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          color: const Color(0xFF94A3B8),
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
@@ -588,6 +698,8 @@ class _SidebarItem {
     required this.icon,
     required this.activeIcon,
     required this.route,
+    this.permissionSection,
+    this.superOnly = false,
     this.badgeKey,
     this.badgeColor,
   });
@@ -596,6 +708,10 @@ class _SidebarItem {
   final IconData icon;
   final IconData activeIcon;
   final String route;
+  /// Section alignée sur le backend (`mes-permissions`).
+  final String? permissionSection;
+  /// Réservé au super admin (paramètres, gestion des accès).
+  final bool superOnly;
   final String? badgeKey;
   final Color? badgeColor;
 }

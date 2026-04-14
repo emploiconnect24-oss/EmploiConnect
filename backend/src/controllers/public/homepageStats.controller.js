@@ -1,7 +1,13 @@
 /**
  * GET /api/stats/homepage — agrégats publics pour la section stats de l’accueil (cache 5 min).
+ *
+ * - candidats   : lignes `chercheurs_emploi` (profils candidats)
+ * - entreprises : comptes `utilisateurs` rôle entreprise et validés (`est_valide`)
+ * - offres       : `offres_emploi` visibles (`active` ou `publiee`)
+ * - candidatures : total `candidatures` (indicateur d’activité)
  */
 import { supabase } from '../../config/supabase.js';
+import { logError } from '../../utils/logger.js';
 
 let _cache = null;
 let _cacheTime = 0;
@@ -14,40 +20,47 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+async function countExact(builder) {
+  const { count, error } = await builder;
+  if (error) {
+    logError('[getHomepageStats] count', error);
+    return 0;
+  }
+  return num(count);
+}
+
 export async function getHomepageStats(req, res) {
   try {
     if (_cache && Date.now() - _cacheTime < CACHE_TTL) {
       return res.json({ success: true, data: _cache });
     }
 
-    const [rEnt, rCand, rOff, rPost] = await Promise.all([
-      supabase.from('entreprises').select('*', { count: 'exact', head: true }),
-      supabase
-        .from('chercheurs_emploi')
-        .select('*', { count: 'exact', head: true })
-        .or('profil_visible.eq.true,profil_visible.is.null'),
-      supabase
-        .from('offres_emploi')
-        .select('*', { count: 'exact', head: true })
-        .in('statut', ['active', 'publiee']),
-      supabase.from('candidatures').select('*', { count: 'exact', head: true }),
+    const [
+      nbCandidats,
+      nbEntreprises,
+      nbOffres,
+      nbCandidatures,
+    ] = await Promise.all([
+      countExact(
+        supabase.from('chercheurs_emploi').select('*', { count: 'exact', head: true }),
+      ),
+      countExact(
+        supabase
+          .from('utilisateurs')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'entreprise')
+          .eq('est_valide', true),
+      ),
+      countExact(
+        supabase
+          .from('offres_emploi')
+          .select('*', { count: 'exact', head: true })
+          .in('statut', ['active', 'publiee']),
+      ),
+      countExact(
+        supabase.from('candidatures').select('*', { count: 'exact', head: true }),
+      ),
     ]);
-
-    const nbEntreprises = rEnt.error ? 0 : num(rEnt.count);
-    let nbCandidats = rCand.error ? 0 : num(rCand.count);
-    if (rCand.error && /column|42703/i.test(String(rCand.error.message || ''))) {
-      const fb = await supabase.from('chercheurs_emploi').select('*', { count: 'exact', head: true });
-      nbCandidats = fb.error ? 0 : num(fb.count);
-    }
-    let nbOffres = rOff.error ? 0 : num(rOff.count);
-    if (rOff.error) {
-      const fbOff = await supabase
-        .from('offres_emploi')
-        .select('*', { count: 'exact', head: true })
-        .eq('statut', 'active');
-      nbOffres = fbOff.error ? 0 : num(fbOff.count);
-    }
-    const nbCandidatures = rPost.error ? 0 : num(rPost.count);
 
     const stats = {
       entreprises: nbEntreprises,
@@ -61,16 +74,14 @@ export async function getHomepageStats(req, res) {
     _cacheTime = Date.now();
     return res.json({ success: true, data: stats });
   } catch (err) {
-    console.error('[getHomepageStats]', err);
-    return res.json({
-      success: true,
-      data: {
-        entreprises: 12,
-        candidats: 47,
-        offres: 23,
-        candidatures: 89,
-        satisfaction: 98,
-      },
-    });
+    logError('[getHomepageStats]', err);
+    const empty = {
+      entreprises: 0,
+      candidats: 0,
+      offres: 0,
+      candidatures: 0,
+      satisfaction: 98,
+    };
+    return res.json({ success: true, data: empty });
   }
 }

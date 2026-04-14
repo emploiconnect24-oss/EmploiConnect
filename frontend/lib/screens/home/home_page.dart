@@ -71,13 +71,13 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (_) {
-      // garde next null → repli 0 ci-dessous
+      // garde next null → repli zéros ci-dessous (pas de chiffres fictifs)
     }
     next ??= const HomepageStatsSnapshot(
       entreprises: 0,
       candidats: 0,
       offres: 0,
-      satisfaction: 0,
+      satisfaction: 98,
     );
     if (!mounted) return;
     setState(() => _homepageStats = next);
@@ -157,7 +157,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             Positioned.fill(
               child: ColoredBox(
-                color: Colors.white,
+                color: Theme.of(context).scaffoldBackgroundColor,
                 child: SingleChildScrollView(
                   controller: _scrollController,
                   child: Column(
@@ -171,8 +171,8 @@ class _HomePageState extends State<HomePage> {
                         expectParentStats: true,
                       ),
                       const HomeSolutionsPrdSection(),
-                      const RecentJobsSectionWidget(
-                        backgroundColor: Colors.white,
+                      RecentJobsSectionWidget(
+                        backgroundColor: Theme.of(context).colorScheme.surface,
                         homepageV2Gradient: false,
                       ),
                       const TopEntreprisesMarqueeSectionWidget(),

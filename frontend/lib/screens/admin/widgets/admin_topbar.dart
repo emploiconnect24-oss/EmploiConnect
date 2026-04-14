@@ -46,8 +46,8 @@ class AdminTopBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       decoration: BoxDecoration(
         color: isLight ? Colors.white : scheme.surface,
         border: Border(
@@ -76,15 +76,141 @@ class AdminTopBar extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurface,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Consumer2<AdminProvider, AuthProvider>(
+                  builder: (context, admin, auth, _) {
+                    final nom = (admin.adminNom ??
+                            auth.user?['nom']?.toString() ??
+                            '')
+                        .trim();
+                    final email = (admin.adminEmail ??
+                            auth.user?['email']?.toString() ??
+                            '')
+                        .trim();
+                    final displayNom = nom.isNotEmpty
+                        ? nom
+                        : (email.isNotEmpty
+                            ? email.split('@').first
+                            : 'Profil');
+                    final titreRole =
+                        isMobile ? admin.libelleRoleCourt : admin.libelleRoleLong;
+                    final desc = admin.descriptionAcces;
+                    final couleurBadge = admin.couleurRole;
+                    if (isMobile) {
+                      return Row(
+                        children: [
+                          Flexible(
+                            flex: 2,
+                            child: Text(
+                              displayNom,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            flex: 3,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: couleurBadge.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Text(
+                                  titreRole,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: couleurBadge,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayNom,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: couleurBadge.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(100),
+                              ),
+                              child: Text(
+                                titreRole,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: couleurBadge,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          desc,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           if (!isMobile)
@@ -191,7 +317,7 @@ class AdminTopBar extends StatelessWidget {
                   final hasPhoto = photo != null && photo.isNotEmpty;
                   return CircleAvatar(
                     radius: 16,
-                    backgroundColor: const Color(0xFF1A56DB),
+                    backgroundColor: admin.couleurRole,
                     backgroundImage: hasPhoto ? NetworkImage(photo) : null,
                     child: hasPhoto
                         ? null

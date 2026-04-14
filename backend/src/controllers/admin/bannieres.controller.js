@@ -91,11 +91,11 @@ export async function listBannieresAdmin(req, res) {
 
 export async function listBannieresPubliques(req, res) {
   try {
+    // `*` évite l’erreur « column couleur_badge does not exist » tant que la migration 051
+    // n’est pas appliquée ; une fois la colonne créée, elle est renvoyée automatiquement.
     const { data, error } = await supabase
       .from(TABLE)
-      .select(
-        'id, titre, sous_titre, texte_badge, image_url, label_cta_1, lien_cta_1, label_cta_2, lien_cta_2, ordre, type_banniere, largeur_px, hauteur_px, lien_externe, ordre_pub',
-      )
+      .select('*')
       .eq('est_actif', true)
       .order('ordre', { ascending: true });
 
@@ -129,9 +129,10 @@ export async function createBanniere(req, res) {
       hauteur_px,
       lien_externe,
       ordre_pub,
+      couleur_badge,
     } = req.body;
 
-    let image_url = req.body.image_url || '';
+    let image_url = req.body.image_url != null ? String(req.body.image_url).trim() : '';
 
     if (req.file) {
       const bucket = process.env.SUPABASE_BANNIERES_BUCKET || 'bannieres';
@@ -150,10 +151,14 @@ export async function createBanniere(req, res) {
       image_url = urlData.publicUrl;
     }
 
-    if (!image_url) {
+    const typeBan = ['hero', 'ticker', 'pub'].includes(String(type_banniere || '').trim())
+      ? String(type_banniere).trim()
+      : 'hero';
+
+    if (typeBan !== 'ticker' && !image_url) {
       return res.status(400).json({
         success: false,
-        message: 'Image requise (upload ou URL externe)',
+        message: 'Image requise (upload ou URL externe) pour ce type de bannière',
       });
     }
 
@@ -166,14 +171,14 @@ export async function createBanniere(req, res) {
 
     const nextOrdre = (lastBan?.ordre ?? 0) + 1;
 
-    const typeBan = ['hero', 'ticker', 'pub'].includes(String(type_banniere || '').trim())
-      ? String(type_banniere).trim()
-      : 'hero';
-
     const wPx = Math.min(Math.max(parseInt(String(largeur_px ?? ''), 10) || 320, 120), 1200);
     const hPx = Math.min(Math.max(parseInt(String(hauteur_px ?? ''), 10) || 180, 80), 800);
     const ordPub = Math.max(parseInt(String(ordre_pub ?? ''), 10) || 0, 0);
     const lienExt = lien_externe != null ? String(lien_externe).trim() : '';
+    const couleurHex =
+      couleur_badge != null && String(couleur_badge).trim()
+        ? String(couleur_badge).trim().slice(0, 32)
+        : '#1A56DB';
 
     const { data, error } = await supabase
       .from(TABLE)
@@ -181,7 +186,7 @@ export async function createBanniere(req, res) {
         titre,
         sous_titre,
         texte_badge,
-        image_url,
+        image_url: image_url || null,
         label_cta_1,
         lien_cta_1,
         label_cta_2,
@@ -193,6 +198,7 @@ export async function createBanniere(req, res) {
         hauteur_px: hPx,
         lien_externe: lienExt || null,
         ordre_pub: ordPub,
+        couleur_badge: couleurHex,
       })
       .select()
       .single();
@@ -228,6 +234,7 @@ export async function updateBanniere(req, res) {
       'hauteur_px',
       'lien_externe',
       'ordre_pub',
+      'couleur_badge',
     ];
     const updates = { date_modification: new Date().toISOString() };
     for (const k of allowed) {
@@ -238,6 +245,15 @@ export async function updateBanniere(req, res) {
       } else if (k === 'ordre_pub') {
         const n = parseInt(String(req.body[k]), 10);
         updates[k] = Number.isFinite(n) ? Math.max(0, n) : 0;
+      } else if (k === 'est_actif') {
+        const v = req.body[k];
+        updates[k] = v === true || v === 'true' || v === '1' || v === 1;
+      } else if (k === 'couleur_badge') {
+        const s = String(req.body[k] ?? '').trim();
+        updates[k] = s ? s.slice(0, 32) : '#1A56DB';
+      } else if (k === 'image_url') {
+        const s = req.body[k] != null ? String(req.body[k]).trim() : '';
+        updates[k] = s || null;
       } else {
         updates[k] = req.body[k];
       }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
 
@@ -22,6 +23,132 @@ class AdminProvider extends ChangeNotifier {
   int temoignagesEnAttente = 0;
   /// Non exposé par l’API actuelle — reste à 0.
   int messagesNonLus = 0;
+
+  /// Permissions sections (`GET /admin/sous-admins/mes-permissions`).
+  bool adminAccessLoaded = false;
+  bool adminEstSuper = false;
+  Map<String, dynamic> adminPermsBySection = {};
+  String? adminRoleLabel;
+  /// Hex API `admin_roles.couleur` (ex. `#1A56DB`).
+  String? adminRoleCouleurHex;
+
+  /// Alias pratiques (shell « accès refusé », tests).
+  bool get estSuperAdmin => adminEstSuper;
+  String? get roleNom => adminRoleLabel;
+  Map<String, dynamic> get permissions => adminPermsBySection;
+
+  String? get nomAdmin => adminNom;
+  String? get emailAdmin => adminEmail;
+
+  static const Map<String, String> _kTitresSection = {
+    'dashboard': 'Tableau de bord',
+    'utilisateurs': 'Utilisateurs',
+    'offres': 'Offres d’emploi',
+    'entreprises': 'Entreprises',
+    'candidatures': 'Candidatures',
+    'signalements': 'Modération',
+    'temoignages': 'Témoignages',
+    'parcours': 'Parcours carrière',
+    'statistiques': 'Statistiques',
+    'recherche': 'Recherche',
+    'messages': 'Messages',
+    'bannieres': 'Bannières',
+    'newsletter': 'Newsletter',
+    'newsletter_envoi': 'Envoi newsletter',
+    'illustrations': 'Illustrations',
+    'parametres': 'Paramètres',
+    'apropos': 'À propos',
+  };
+
+  /// Sections visibles (`peut_voir`) — utile si l’API n’a pas renvoyé `role.nom`.
+  List<String> get _sectionsVisibles {
+    final out = <String>[];
+    adminPermsBySection.forEach((k, v) {
+      if (v is Map && v['peut_voir'] == true) out.add(k);
+    });
+    out.sort();
+    return out;
+  }
+
+  String? get _roleNomInfereDepuisPermissions {
+    if (adminEstSuper) return null;
+    final keys = _sectionsVisibles;
+    if (keys.isEmpty) return null;
+    if (keys.length == 1) {
+      return _kTitresSection[keys.single] ?? keys.single;
+    }
+    return 'Accès ${keys.length} modules';
+  }
+
+  /// Nom de rôle affichable : API d’abord, sinon déduction depuis les permissions.
+  String get roleNomEffectif {
+    final api = (adminRoleLabel ?? '').trim();
+    if (api.isNotEmpty) return api;
+    return (_roleNomInfereDepuisPermissions ?? '').trim();
+  }
+
+  /// Libellé long (topbar, en-têtes).
+  String get libelleRoleLong {
+    if (adminEstSuper) return 'Super Administrateur';
+    final api = (adminRoleLabel ?? '').trim();
+    if (api.isNotEmpty) return api;
+    final inf = _roleNomInfereDepuisPermissions;
+    if (inf != null && inf.isNotEmpty) return inf;
+    return 'Compte d’équipe';
+  }
+
+  /// Libellé court (badge sidebar / topbar compact).
+  String get libelleRoleCourt {
+    if (adminEstSuper) return 'Super Admin';
+    final api = (adminRoleLabel ?? '').trim();
+    if (api.isNotEmpty) {
+      final s = api;
+      if (s.length <= 22) return s;
+      return '${s.substring(0, 19)}…';
+    }
+    final inf = _roleNomInfereDepuisPermissions;
+    if (inf != null && inf.isNotEmpty) {
+      if (inf.length <= 22) return inf;
+      return '${inf.substring(0, 19)}…';
+    }
+    return 'Équipe';
+  }
+
+  String get descriptionAcces {
+    if (adminEstSuper) return 'Accès complet à la plateforme';
+    final api = (adminRoleLabel ?? '').trim();
+    if (api.isNotEmpty) return 'Accès limité : $api';
+    final keys = _sectionsVisibles;
+    if (keys.isNotEmpty) {
+      final noms = keys
+          .map((k) => _kTitresSection[k] ?? k)
+          .take(4)
+          .join(', ');
+      final suffix = keys.length > 4 ? '…' : '';
+      return 'Accès limité aux modules : $noms$suffix';
+    }
+    return 'Droits définis par le super administrateur';
+  }
+
+  static const Color _kBleuRole = Color(0xFF1A56DB);
+  static const Color _kRougeSuper = Color(0xFFEF4444);
+
+  Color get couleurRole {
+    if (adminEstSuper) return _kRougeSuper;
+    return _parseCouleurHex(adminRoleCouleurHex);
+  }
+
+  static Color _parseCouleurHex(String? raw) {
+    if (raw == null) return _kBleuRole;
+    var s = raw.trim();
+    if (s.isEmpty) return _kBleuRole;
+    if (s.startsWith('#')) s = s.substring(1);
+    try {
+      if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
+      if (s.length == 8) return Color(int.parse(s, radix: 16));
+    } catch (_) {}
+    return _kBleuRole;
+  }
 
   /// Notifications non lues (GET `/notifications/mes` → `nb_non_lues`).
   int nbNotificationsNonLues = 0;
@@ -73,11 +200,71 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool peutVoirSection(String? section) {
+    if (section == null || section.isEmpty) return true;
+    if (!adminAccessLoaded) return true;
+    if (adminEstSuper) return true;
+    final p = adminPermsBySection[section];
+    if (p is Map && p['peut_voir'] == true) return true;
+    return false;
+  }
+
+  Future<void> loadAdminAccess({bool force = false}) async {
+    if (force) {
+      adminAccessLoaded = false;
+    }
+    if (adminAccessLoaded && !force) return;
+    try {
+      final res = await _service.getMesPermissionsAdmin();
+      final data = res['data'];
+      if (data is Map) {
+        adminEstSuper = data['est_super_admin'] == true;
+        final perms = data['permissions'];
+        if (perms is Map) {
+          adminPermsBySection = Map<String, dynamic>.from(perms);
+        } else {
+          adminPermsBySection = <String, dynamic>{};
+        }
+        final role = data['role'];
+        if (role is Map) {
+          adminRoleLabel = role['nom']?.toString();
+          final c = role['couleur']?.toString().trim();
+          adminRoleCouleurHex = (c == null || c.isEmpty) ? null : c;
+        } else {
+          adminRoleLabel = null;
+          adminRoleCouleurHex = null;
+        }
+      }
+    } catch (_) {
+      // Ne pas promouvoir en super admin : évite « accès complet » mensonger.
+      adminEstSuper = false;
+      adminPermsBySection = {};
+      adminRoleLabel = null;
+      adminRoleCouleurHex = null;
+    }
+    adminAccessLoaded = true;
+    notifyListeners();
+  }
+
+  void resetAdminAccess() {
+    adminAccessLoaded = false;
+    adminEstSuper = false;
+    adminPermsBySection = {};
+    adminRoleLabel = null;
+    adminRoleCouleurHex = null;
+  }
+
   Future<void> loadDashboard() async {
     isLoading = true;
     error = null;
     notifyListeners();
     try {
+      try {
+        await loadAdminAccess();
+      } catch (_) {
+        // Rôle / sections : ne pas bloquer le tableau de bord
+      }
+
       final dash = await _service.getDashboard();
       final week = await _service.getStatistiques(periode: '7d');
       final dataWeek = week['data'] as Map<String, dynamic>?;

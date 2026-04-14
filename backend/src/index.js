@@ -18,11 +18,6 @@ import { closeRedisClient } from './config/redis.js';
 
 const PORT = process.env.PORT || 3000;
 
-['SIGINT', 'SIGTERM'].forEach((sig) => {
-  process.on(sig, () => {
-    void closeRedisClient();
-  });
-});
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:8080';
 
 /**
@@ -118,9 +113,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Erreur serveur' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   void startScheduledJobs();
-  logInfo(`EmploiConnect API écoute sur http://localhost:${PORT}`);
+  logInfo(`✅ Serveur démarré sur le port ${PORT}`);
+  logInfo(`📡 URL : http://localhost:${PORT}`);
   logInfo('Routes principales disponibles :');
   logInfo('  - Health:        GET /api/health');
   logInfo('  - Auth:          POST /api/auth/register, POST /api/auth/login, POST /api/auth/google (id_token ou access_token), GET /api/auth/google-config, POST /api/auth/forgot-password, POST /api/auth/reset-password');
@@ -139,6 +135,33 @@ app.listen(PORT, () => {
   console.log('  ⚠️  Resume Parser   :', process.env.RAPIDAPI_RESUME_PARSER_HOST || 'À CONFIGURER sur rapidapi.com');
   console.log('  ⚠️  Topic Tagging   :', process.env.RAPIDAPI_TOPIC_TAGGING_HOST || 'À CONFIGURER sur rapidapi.com');
 });
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`
+╔════════════════════════════════════════╗
+║  ❌ Port ${PORT} déjà utilisé !          ║
+╠════════════════════════════════════════╣
+║  Solution :                            ║
+║  npm run start-clean                   ║
+╚════════════════════════════════════════╝
+    `);
+    process.exit(1);
+  } else {
+    console.error('Erreur serveur:', err.message);
+    process.exit(1);
+  }
+});
+
+function shutdownServer(signal) {
+  const msg = signal === 'SIGINT' ? '\nArrêt du serveur...' : 'Arrêt du serveur...';
+  console.log(msg);
+  void closeRedisClient();
+  server.close(() => process.exit(0));
+}
+
+process.on('SIGTERM', () => shutdownServer('SIGTERM'));
+process.on('SIGINT', () => shutdownServer('SIGINT'));
 
 async function checkBuckets() {
   const buckets = [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/theme/theme_extension.dart';
 import 'home_design_tokens.dart';
 
 /// PRD v2 §3 — 8 cartes max (2×4), animations d’entrée + hover.
@@ -51,8 +52,9 @@ class _HomeSolutionsPrdSectionState extends State<HomeSolutionsPrdSection> with 
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.sizeOf(context).width < 700 ? 16.0 : 40.0;
+    final cs = Theme.of(context).colorScheme;
     return ColoredBox(
-      color: Colors.white,
+      color: cs.surface,
       child: Padding(
         padding: EdgeInsets.fromLTRB(pad, 20, pad, 44),
         child: Column(
@@ -93,7 +95,7 @@ class _HomeSolutionsPrdSectionState extends State<HomeSolutionsPrdSection> with 
                     style: GoogleFonts.poppins(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
-                      color: HomeDesign.dark,
+                      color: cs.onSurface,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -102,7 +104,7 @@ class _HomeSolutionsPrdSectionState extends State<HomeSolutionsPrdSection> with 
                     'Des outils intelligents pour candidats\net recruteurs en Guinée',
                     style: GoogleFonts.inter(
                       fontSize: 15,
-                      color: const Color(0xFF64748B),
+                      color: cs.onSurfaceVariant,
                       height: 1.5,
                     ),
                     textAlign: TextAlign.center,
@@ -199,6 +201,8 @@ class _CarteSolutionState extends State<_CarteSolution> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     final s = widget.solution;
+    final cs = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     final pad = widget.compact ? 14.0 : 20.0;
     final iconBox = widget.compact ? 44.0 : 48.0;
     final emojiSize = widget.compact ? 20.0 : 22.0;
@@ -222,10 +226,10 @@ class _CarteSolutionState extends State<_CarteSolution> with SingleTickerProvide
               width: double.infinity,
               padding: EdgeInsets.all(pad),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cs.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: _hovered ? s.couleur.withValues(alpha: 0.4) : const Color(0xFFE2E8F0),
+                  color: _hovered ? s.couleur.withValues(alpha: 0.4) : ext.cardBorder,
                   width: _hovered ? 2 : 1,
                 ),
                 boxShadow: [
@@ -258,7 +262,7 @@ class _CarteSolutionState extends State<_CarteSolution> with SingleTickerProvide
                         style: GoogleFonts.poppins(
                           fontSize: titreSize,
                           fontWeight: FontWeight.w700,
-                          color: HomeDesign.dark,
+                          color: cs.onSurface,
                         ),
                       ),
                       SizedBox(height: widget.compact ? 4 : 6),
@@ -266,7 +270,7 @@ class _CarteSolutionState extends State<_CarteSolution> with SingleTickerProvide
                         s.desc,
                         style: GoogleFonts.inter(
                           fontSize: descSize,
-                          color: const Color(0xFF64748B),
+                          color: cs.onSurfaceVariant,
                           height: 1.45,
                         ),
                       ),

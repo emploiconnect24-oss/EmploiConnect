@@ -503,10 +503,135 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
+  Color _parseRoleColor(String? hex) {
+    var h = (hex ?? '#1A56DB').replaceAll('#', '').trim();
+    if (h.length == 6) h = 'FF$h';
+    return Color(int.tryParse(h, radix: 16) ?? 0xFF1A56DB);
+  }
+
+  /// Badge rôle : distinction super admin / rôle admin / candidat / recruteur.
+  Widget _badgeRoleUtilisateur(Map<String, dynamic> user) {
+    final role = user['role']?.toString() ?? '';
+    Map<String, dynamic>? roleAdmin;
+    final rawRa = user['role_admin'];
+    if (rawRa is Map) roleAdmin = Map<String, dynamic>.from(rawRa);
+    final estSuper = user['est_super_admin'] == true;
+
+    if (role == 'admin' && estSuper) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444),
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.security_rounded, color: Colors.white, size: 10),
+            const SizedBox(width: 3),
+            Text(
+              'Super Admin',
+              style: GoogleFonts.inter(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (role == 'admin' && roleAdmin != null) {
+      final nomRole = roleAdmin['nom']?.toString().trim();
+      if (nomRole != null && nomRole.isNotEmpty) {
+        final couleur = _parseRoleColor(roleAdmin['couleur']?.toString());
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: couleur.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: couleur.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.admin_panel_settings_rounded, color: couleur, size: 10),
+              const SizedBox(width: 3),
+              Text(
+                nomRole,
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  color: couleur,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    if (role == 'admin') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A56DB).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Text(
+          'Admin',
+          style: GoogleFonts.inter(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1A56DB),
+          ),
+        ),
+      );
+    }
+
+    if (role == 'chercheur') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Text(
+          'Candidat',
+          style: GoogleFonts.inter(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF10B981),
+          ),
+        ),
+      );
+    }
+
+    if (role == 'entreprise') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Text(
+          'Recruteur',
+          style: GoogleFonts.inter(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF8B5CF6),
+          ),
+        ),
+      );
+    }
+
+    return StatusChip(value: role.isEmpty ? '—' : role);
+  }
+
   DataRow _buildRow(BuildContext context, Map<String, dynamic> u) {
     final email = u['email']?.toString() ?? '';
     final nom = u['nom']?.toString() ?? '';
-    final role = u['role']?.toString() ?? '';
     final valide = u['est_valide'] == true;
     final actif = u['est_actif'] == true;
     final city = _displayCity(u);
@@ -549,7 +674,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             ),
           ),
         ),
-        DataCell(StatusChip(value: role)),
+        DataCell(_badgeRoleUtilisateur(u)),
         DataCell(StatusChip(value: actif ? (valide ? 'actif' : 'en_attente') : 'bloque')),
         DataCell(Text(city.isEmpty ? '-' : city)),
         DataCell(Text(createdAt)),

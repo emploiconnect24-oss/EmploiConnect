@@ -22,6 +22,9 @@ class _HomeIllustrationSectionState extends State<HomeIllustrationSection> with 
   String? _imageUrl;
   String? _imageSource;
   bool _loadingImage = true;
+  int _indexActuel = 1;
+  int _totalImages = 1;
+  int _heureProchain = 0;
 
   static const _bullets = <(String, String, String)>[
     ('🎯', 'Matching IA précis', 'Compatible avec votre profil'),
@@ -58,6 +61,9 @@ class _HomeIllustrationSectionState extends State<HomeIllustrationSection> with 
           setState(() {
             _imageUrl = (url != null && url.isNotEmpty) ? url : null;
             _imageSource = src;
+            _indexActuel = (data?['index_actuel'] as int?) ?? 1;
+            _totalImages = (data?['total'] as int?) ?? 1;
+            _heureProchain = (data?['heure_prochain_changement'] as int?) ?? 0;
             _loadingImage = false;
           });
         }
@@ -236,6 +242,26 @@ class _HomeIllustrationSectionState extends State<HomeIllustrationSection> with 
             ),
           ),
         ),
+        if (_totalImages > 1)
+          Positioned(
+            bottom: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Text(
+                '$_indexActuel / $_totalImages · ${_heureProchain}h',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

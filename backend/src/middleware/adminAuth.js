@@ -17,7 +17,7 @@ export async function requireAdmin(req, res, next) {
     }
     const { data: admin, error } = await supabase
       .from('administrateurs')
-      .select('id, niveau_acces')
+      .select('id, niveau_acces, role_id, est_super_admin, est_actif')
       .eq('utilisateur_id', req.user.id)
       .single();
 
@@ -25,6 +25,12 @@ export async function requireAdmin(req, res, next) {
       return res.status(403).json({
         success: false,
         message: 'Compte administrateur non trouvé',
+      });
+    }
+    if (admin.est_actif === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Compte administrateur désactivé',
       });
     }
     req.admin = admin;

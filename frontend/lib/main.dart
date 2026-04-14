@@ -11,16 +11,18 @@ import 'providers/auth_provider.dart';
 import 'providers/admin_provider.dart';
 import 'providers/candidat_provider.dart';
 import 'providers/recruteur_provider.dart';
+import 'screens/auth/auth_widgets.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
-import 'screens/forgot_password_screen.dart';
+import 'screens/auth/forgot_password_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'core/utils/reset_token.dart';
 import 'app/public_routes.dart';
 import 'screens/home_shell_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/admin/admin_shell_screen.dart';
-import 'screens/public/public_offres_screen.dart';
+import 'screens/offres/offres_page.dart';
+import 'screens/about/about_page.dart';
 import 'screens/public/public_offer_detail_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -31,8 +33,23 @@ String? _parseResetTokenFromRoute(String name) {
   return readResetPasswordTokenFromUrl();
 }
 
+/// Ancre le module `auth_widgets` pour le compilateur Web (DDC).
+const List<Type> _kAuthWidgetsModuleTypes = <Type>[
+  AuthLogoHeader,
+  AuthBoutonGoogle,
+  AuthBoutonPrincipal,
+  AuthChampFormulaire,
+  AuthChampEmail,
+  AuthChampMotDePasse,
+  AuthSeparateur,
+  AuthCarteErreur,
+  AuthCarteRole,
+  AuthForceMotDePasse,
+];
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  assert(_kAuthWidgetsModuleTypes.isNotEmpty);
   await initializeDateFormatting('fr_FR', null);
   timeago.setLocaleMessages('fr_short', timeago.FrShortMessages());
   final themeProvider = ThemeProvider();
@@ -56,21 +73,31 @@ class EmploiConnectApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RecruteurProvider()),
         ChangeNotifierProvider(create: (_) => CandidatProvider()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, theme, _) => AnimatedTheme(
+      child: Consumer2<ThemeProvider, AppConfigProvider>(
+        builder: (context, theme, appCfg, _) => AnimatedTheme(
           data: theme.isDark(context)
               ? AppTheme.darkTheme
               : AppTheme.lightTheme,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
           child: MaterialApp(
-            title: 'EmploiConnect',
+            title: appCfg.platformTitle,
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: theme.themeMode,
             builder: (context, child) => _GlobalMaintenanceBanner(
-              child: child ?? const SizedBox.shrink(),
+              child: Builder(
+                builder: (ctx) => Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: (_) {
+                    try {
+                      ctx.read<AuthProvider>().touchSessionActivity();
+                    } catch (_) {}
+                  },
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
             ),
             initialRoute: '/',
             onGenerateRoute: (settings) {
@@ -97,7 +124,7 @@ class EmploiConnectApp extends StatelessWidget {
               if (candidatRoutes.contains(path)) {
                 page = HomeShellScreen(initialRoute: path);
               } else if (path == PublicRoutes.listPath) {
-                page = PublicOffresScreen(
+                page = OffresPage(
                   initialSearch: PublicRoutes.queryParam(name, 'q'),
                   entrepriseId: PublicRoutes.queryParam(name, 'e'),
                   entrepriseNom: PublicRoutes.queryParam(name, 'n'),
@@ -133,6 +160,9 @@ class EmploiConnectApp extends StatelessWidget {
                     break;
                   case '/home':
                     page = const HomeShellScreen();
+                    break;
+                  case '/a-propos':
+                    page = const AboutPage();
                     break;
                   case '/admin':
                     page = const AdminRouteGuard();

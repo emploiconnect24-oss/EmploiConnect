@@ -7,6 +7,7 @@ import 'google_auth_service.dart';
 
 const _keyToken = 'emploiconnect_token';
 const _keyUser = 'emploiconnect_user';
+const _keySessionIdleMin = 'emploiconnect_session_idle_min';
 
 String _messageErreurGoogleSignIn(Object e) {
   final s = e.toString();
@@ -29,10 +30,25 @@ class AuthService {
   Future<SharedPreferences> get _prefs async =>
       await SharedPreferences.getInstance();
 
-  Future<void> saveSession(String token, Map<String, dynamic> user) async {
+  Future<void> saveSession(
+    String token,
+    Map<String, dynamic> user, {
+    int? sessionIdleMinutes,
+  }) async {
     final prefs = await _prefs;
     await prefs.setString(_keyToken, token);
     await prefs.setString(_keyUser, jsonEncode(user));
+    if (sessionIdleMinutes != null && sessionIdleMinutes > 0) {
+      await prefs.setInt(_keySessionIdleMin, sessionIdleMinutes);
+    } else {
+      await prefs.remove(_keySessionIdleMin);
+    }
+  }
+
+  Future<int?> getStoredSessionIdleMinutes() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_keySessionIdleMin)) return null;
+    return prefs.getInt(_keySessionIdleMin);
   }
 
   Future<String?> getToken() async {
@@ -69,6 +85,7 @@ class AuthService {
     final prefs = await _prefs;
     await prefs.remove(_keyToken);
     await prefs.remove(_keyUser);
+    await prefs.remove(_keySessionIdleMin);
   }
 
   Future<bool> get isLoggedIn async {
@@ -83,6 +100,7 @@ class AuthService {
     required String role,
     String? telephone,
     String? adresse,
+    String? nomEntreprise,
   }) async {
     final res = await ApiService().post('/auth/register', body: {
       'email': email,
@@ -91,13 +109,18 @@ class AuthService {
       'role': role,
       ...?(telephone == null ? null : {'telephone': telephone}),
       ...?(adresse == null ? null : {'adresse': adresse}),
+      ...?(nomEntreprise == null || nomEntreprise.trim().isEmpty
+          ? null
+          : {'nom_entreprise': nomEntreprise.trim()}),
     });
     if (res.statusCode == 201) {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final token = data['token'] as String?;
       final user = data['user'] as Map<String, dynamic>?;
       if (token != null && user != null) {
-        await saveSession(token, user);
+        final idle = data['session_idle_minutes'];
+        final idleM = idle is int ? idle : int.tryParse(idle?.toString() ?? '');
+        await saveSession(token, user, sessionIdleMinutes: idleM);
         return (true, null);
       }
     }
@@ -105,7 +128,15 @@ class AuthService {
     return (false, msg);
   }
 
-  Future<(bool, String?)> login({
+  /// [needsTwoFactor] : mot de passe OK, saisir le code TOTP puis appeler [completeLogin2Fa].
+  Future<
+      ({
+        bool success,
+        String? message,
+        bool needsTwoFactor,
+        String? tempToken,
+        Map<String, dynamic>? userPreview,
+      })> login({
     required String email,
     required String motDePasse,
   }) async {
@@ -115,20 +146,73 @@ class AuthService {
     });
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (data['two_factor_required'] == true) {
+        return (
+          success: false,
+          message: null,
+          needsTwoFactor: true,
+          tempToken: data['temp_token'] as String?,
+          userPreview: data['user'] is Map ? Map<String, dynamic>.from(data['user'] as Map) : null,
+        );
+      }
       final token = data['token'] as String?;
       final user = data['user'] as Map<String, dynamic>?;
       if (token != null && user != null) {
-        await saveSession(token, user);
-        return (true, null);
+        final idle = data['session_idle_minutes'];
+        final idleM = idle is int ? idle : int.tryParse(idle?.toString() ?? '');
+        await saveSession(token, user, sessionIdleMinutes: idleM);
+        return (
+          success: true,
+          message: null,
+          needsTwoFactor: false,
+          tempToken: null,
+          userPreview: null,
+        );
       }
     }
     final msg = ApiService.errorMessage(res) ?? 'Email ou mot de passe incorrect';
-    return (false, msg);
+    return (
+      success: false,
+      message: msg,
+      needsTwoFactor: false,
+      tempToken: null,
+      userPreview: null,
+    );
+  }
+
+  Future<(bool success, String? message)> completeLogin2Fa({
+    required String tempToken,
+    required String code,
+  }) async {
+    final res = await ApiService().post('/auth/login/2fa', body: {
+      'temp_token': tempToken,
+      'code': code.trim(),
+    });
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final token = data['token'] as String?;
+      final user = data['user'] as Map<String, dynamic>?;
+      if (token != null && user != null) {
+        final idle = data['session_idle_minutes'];
+        final idleM = idle is int ? idle : int.tryParse(idle?.toString() ?? '');
+        await saveSession(token, user, sessionIdleMinutes: idleM);
+        return (true, null);
+      }
+    }
+    return (false, ApiService.errorMessage(res) ?? 'Code 2FA invalide');
   }
 
   /// Connexion / inscription via Google.
-  /// Annulation → `(false, null, false)` ; validation manuelle (201) → `(false, message, true)`.
-  Future<(bool ok, String? message, bool pendingValidation)> loginWithGoogle({
+  /// Annulation → `ok: false, message: null` ; validation manuelle (201) → `pendingValidation: true`.
+  /// Admin 2FA : `ok: false`, `twoFaTempToken` renseigné.
+  Future<
+      ({
+        bool ok,
+        String? message,
+        bool pendingValidation,
+        String? twoFaTempToken,
+        Map<String, dynamic>? twoFaUser,
+      })> loginWithGoogle({
     String? role,
   }) async {
     ({String? idToken, String? accessToken}) tokens;
@@ -136,20 +220,35 @@ class AuthService {
       tokens = await GoogleAuthService.obtainGoogleTokens();
     } catch (e, st) {
       debugPrint('[AuthService] loginWithGoogle obtainGoogleTokens: $e\n$st');
-      return (false, _messageErreurGoogleSignIn(e), false);
+      return (
+        ok: false,
+        message: _messageErreurGoogleSignIn(e),
+        pendingValidation: false,
+        twoFaTempToken: null,
+        twoFaUser: null,
+      );
     }
     final hasId = tokens.idToken != null && tokens.idToken!.isNotEmpty;
     final hasAt = tokens.accessToken != null && tokens.accessToken!.isNotEmpty;
     if (!hasId && !hasAt) {
       if (kIsWeb) {
         return (
-          false,
-          'Connexion Google : aucun jeton après la fenêtre Google. Vérifiez que la popup '
-          "n'est pas bloquée, la navigation non privée, et les origines OAuth pour localhost.",
-          false,
+          ok: false,
+          message:
+              'Connexion Google : aucun jeton après la fenêtre Google. Vérifiez que la popup '
+              "n'est pas bloquée, la navigation non privée, et les origines OAuth pour localhost.",
+          pendingValidation: false,
+          twoFaTempToken: null,
+          twoFaUser: null,
         );
       }
-      return (false, null, false);
+      return (
+        ok: false,
+        message: null,
+        pendingValidation: false,
+        twoFaTempToken: null,
+        twoFaUser: null,
+      );
     }
     final body = <String, dynamic>{};
     if (hasId) {
@@ -170,19 +269,50 @@ class AuthService {
     }
     if (res.statusCode == 201) {
       final msg = data?['message'] as String? ?? 'Compte créé. En attente de validation.';
-      return (false, msg, true);
+      return (
+        ok: false,
+        message: msg,
+        pendingValidation: true,
+        twoFaTempToken: null,
+        twoFaUser: null,
+      );
     }
     if (res.statusCode == 200 && data?['success'] == true) {
       final inner = data!['data'] as Map<String, dynamic>?;
+      if (inner?['two_factor_required'] == true) {
+        final t = inner!['temp_token'] as String?;
+        final u = inner['user'] is Map ? Map<String, dynamic>.from(inner['user'] as Map) : null;
+        return (
+          ok: false,
+          message: null,
+          pendingValidation: false,
+          twoFaTempToken: t,
+          twoFaUser: u,
+        );
+      }
       final token = inner?['token'] as String?;
       final user = inner?['user'] as Map<String, dynamic>?;
       if (token != null && user != null) {
-        await saveSession(token, user);
-        return (true, null, false);
+        final idle = inner?['session_idle_minutes'];
+        final idleM = idle is int ? idle : int.tryParse(idle?.toString() ?? '');
+        await saveSession(token, user, sessionIdleMinutes: idleM);
+        return (
+          ok: true,
+          message: null,
+          pendingValidation: false,
+          twoFaTempToken: null,
+          twoFaUser: null,
+        );
       }
     }
     final msg = ApiService.errorMessage(res) ?? 'Connexion Google impossible';
-    return (false, msg, false);
+    return (
+      ok: false,
+      message: msg,
+      pendingValidation: false,
+      twoFaTempToken: null,
+      twoFaUser: null,
+    );
   }
 
   /// Demande de lien de réinitialisation (réponse générique côté API).

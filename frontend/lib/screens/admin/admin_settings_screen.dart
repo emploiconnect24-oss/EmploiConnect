@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -16,6 +18,7 @@ import '../../shared/widgets/theme_selector_tile.dart';
 import '../../widgets/responsive_container.dart';
 import 'widgets/admin_page_shimmer.dart';
 import 'widgets/illustration_ia_settings_widget.dart';
+import '../auth/admin_two_factor_code_dialog.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -75,6 +78,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _tplAlerteOffreSubjectCtrl = TextEditingController();
   final _tplResumeHebdoMailSubjectCtrl = TextEditingController();
   final _tplAnalyseCvSubjectCtrl = TextEditingController();
+  final _newsletterFeatureSemaineCtrl = TextEditingController();
+  final _newsletterPromptBaseCtrl = TextEditingController();
+  final _contexteLibreCtrl = TextEditingController();
 
   String _iaProvider = 'rapidapi';
   bool _openRegistration = false;
@@ -100,6 +106,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _emailResetMdp = true;
   bool _emailAlerteEmploiPlat = true;
   bool _emailAnalyseCvPlat = true;
+  bool _newsletterActif = true;
+  bool _newsletterIaActif = false;
+  int _newsletterIaSeuilOffres = 3;
+  String _newsletterType = 'hebdomadaire';
+  bool _isLancerIA = false;
+  String? _resultatIA;
+  bool _resultatOk = false;
+  bool _contenuLoading = false;
+  int _newsletterAbonnesActifs = 0;
+  List<Map<String, dynamic>> _aproposSections = [];
 
   bool _aiSuggestions = false;
   double _matchingThreshold = 0;
@@ -109,6 +125,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   double _sessionMinutes = 0;
   double _maxLoginAttempts = 0;
   double _jwtExpirationHours = 24;
+
+  bool _twoFaUserActif = false;
+  bool _twoFaSetupPending = false;
+  bool _twoFaStatusLoading = false;
+  bool _twoFaActionLoading = false;
 
   List<Map<String, dynamic>> _bannieres = [];
   bool _bannieresLoading = false;
@@ -132,11 +153,29 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _apiTestOpenaiOk = false;
   bool _apiTestDalleOk = false;
 
-  String _loadedGoogleClientId = '';
-  String _loadedGoogleSecretDisplay = '';
-  int _googleCredentialsEpoch = 0;
+  final _googleClientIdCtrl = TextEditingController();
+  final _googleClientSecretCtrl = TextEditingController();
+  final _googleProjetCtrl = TextEditingController();
+  final _googleDomainesCtrl = TextEditingController();
+  final _appUrlProdCtrl = TextEditingController();
   bool _googleOauthActif = true;
   String _googleRolesDefaut = 'chercheur';
+  bool _isTesting = false;
+  bool _isSavingOAuth = false;
+  String _redirectUriAuto = '';
+  Map<String, dynamic>? _testResultat;
+  bool _guideExpanded = false;
+
+  /// Infra (Super Admin) — affichage masqué + buckets.
+  Map<String, dynamic> _configServeur = {};
+  Map<String, bool> _bucketExists = {};
+  Map<String, bool> _bucketPublic = {};
+  bool _testSupabaseEnCours = false;
+  bool? _testSupabaseOk;
+  String? _testSupabaseResultat;
+  final _serverPortInfraCtrl = TextEditingController();
+  bool _savingInfra = false;
+  String _portEnvHint = '';
 
   static const Set<String> _iaAmeliorationProvidersAllowed = {
     'anthropic',
@@ -185,7 +224,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _SettingsSection('Notifications', Icons.notifications_active_outlined),
     _SettingsSection('IA & Matching', Icons.auto_awesome_outlined),
     _SettingsSection('Sécurité', Icons.shield_outlined),
+    _SettingsSection('Contenu', Icons.article_outlined),
     _SettingsSection('Pied de page', Icons.language_outlined),
+    _SettingsSection('Infrastructure', Icons.dns_rounded),
     _SettingsSection('Maintenance', Icons.build_outlined),
   ];
 
@@ -369,15 +410,19 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _boolNotifDefaultTrue(_param(grouped, 'ia_simulateur_actif'));
         _iaCalculateurParcoursActif =
             _boolNotifDefaultTrue(_param(grouped, 'ia_calculateur_actif'));
-        _loadedGoogleClientId =
+        _googleClientIdCtrl.text =
             _param(grouped, 'google_client_id')?.toString() ?? '';
-        _loadedGoogleSecretDisplay =
+        _googleClientSecretCtrl.text =
             _param(grouped, 'google_client_secret')?.toString() ?? '';
         _googleOauthActif = _boolNotifDefaultTrue(_param(grouped, 'google_oauth_actif'));
         final grd =
             _param(grouped, 'google_roles_defaut')?.toString().trim().toLowerCase() ??
             'chercheur';
         _googleRolesDefaut = grd == 'entreprise' ? 'entreprise' : 'chercheur';
+        _googleDomainesCtrl.text =
+            _param(grouped, 'google_domaines_autorises')?.toString() ?? '';
+        _googleProjetCtrl.text =
+            _param(grouped, 'google_projet_id')?.toString() ?? '';
         final am =
             _param(grouped, 'anthropic_model')?.toString().trim() ?? '';
         _anthropicModel = am.isNotEmpty ? am : 'claude-haiku-4-5-20251001';
@@ -507,6 +552,20 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           if (er != null) return _boolFromParam(er);
           return _boolFromParam(_param(grouped, 'notif_resume_hebdo'));
         }();
+        _newsletterActif = () {
+          final v = _param(grouped, 'newsletter_actif');
+          if (v == null) return true;
+          return _boolFromParam(v);
+        }();
+        _newsletterIaActif = _boolFromParam(
+          _param(grouped, 'newsletter_ia_actif'),
+        );
+        _newsletterIaSeuilOffres =
+            int.tryParse(_param(grouped, 'newsletter_ia_seuil_offres')?.toString() ?? '') ?? 3;
+        _newsletterFeatureSemaineCtrl.text =
+            _param(grouped, 'newsletter_feature_semaine')?.toString() ?? '';
+        _newsletterPromptBaseCtrl.text =
+            _param(grouped, 'newsletter_prompt_base')?.toString() ?? '';
         _emailServiceActif = _boolFromParam(
           _param(grouped, 'email_service_actif'),
         );
@@ -531,10 +590,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             ? jwtH.toDouble()
             : double.tryParse(jwtH?.toString() ?? '') ?? 24;
         _admin2fa = _boolFromParam(_param(grouped, 'twofa_admin_actif'));
+        _serverPortInfraCtrl.text =
+            _param(grouped, 'server_port')?.toString() ?? '';
 
         _loadingParams = false;
         _hasUnsavedChanges = false;
       });
+      await _loadOAuthConfig();
+      await _refreshContentSectionData();
       await _refreshBannieres();
     } catch (e) {
       if (mounted) {
@@ -590,7 +653,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _tplResetMdpSubjectCtrl.dispose();
     _tplAlerteOffreSubjectCtrl.dispose();
     _tplResumeHebdoMailSubjectCtrl.dispose();
-        _tplAnalyseCvSubjectCtrl.dispose();
+    _tplAnalyseCvSubjectCtrl.dispose();
+    _googleClientIdCtrl.dispose();
+    _googleClientSecretCtrl.dispose();
+    _googleProjetCtrl.dispose();
+    _googleDomainesCtrl.dispose();
+    _appUrlProdCtrl.dispose();
+    _serverPortInfraCtrl.dispose();
+    _newsletterFeatureSemaineCtrl.dispose();
+    _newsletterPromptBaseCtrl.dispose();
+    _contexteLibreCtrl.dispose();
     super.dispose();
   }
 
@@ -667,6 +739,17 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         {'cle': 'notif_email_analyse_cv', 'valeur': _emailAnalyseCvPlat},
         {'cle': 'notif_email_resume_hebdo', 'valeur': _weeklySummary},
         {'cle': 'notif_resume_hebdo', 'valeur': _weeklySummary},
+        {'cle': 'newsletter_actif', 'valeur': _newsletterActif},
+        {'cle': 'newsletter_ia_actif', 'valeur': _newsletterIaActif},
+        {'cle': 'newsletter_ia_seuil_offres', 'valeur': _newsletterIaSeuilOffres},
+        {
+          'cle': 'newsletter_feature_semaine',
+          'valeur': _newsletterFeatureSemaineCtrl.text.trim(),
+        },
+        {
+          'cle': 'newsletter_prompt_base',
+          'valeur': _newsletterPromptBaseCtrl.text.trim(),
+        },
         {'cle': 'url_application_publique', 'valeur': _publicAppUrlCtrl.text.trim()},
         {'cle': 'email_template_wrapper_html', 'valeur': _emailWrapperCtrl.text},
         {'cle': 'email_couleur_primaire', 'valeur': _emailMailAccentCtrl.text.trim()},
@@ -768,6 +851,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         {'cle': 'footer_telephone', 'valeur': _footerPhoneCtrl.text.trim()},
         {'cle': 'footer_adresse', 'valeur': _footerAdresseCtrl.text.trim()},
         {'cle': 'footer_tagline', 'valeur': _footerTaglineCtrl.text.trim()},
+        {'cle': 'app_url_prod', 'valeur': _appUrlProdCtrl.text.trim()},
+        {'cle': 'server_port', 'valeur': _serverPortInfraCtrl.text.trim()},
       ]);
       if (!mounted) return;
       setState(() {
@@ -776,6 +861,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       });
       context.read<AdminProvider>().loadDashboard();
       await _loadParametres();
+      if (!mounted) return;
+      await context.read<AppConfigProvider>().reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Paramètres sauvegardés avec succès')),
@@ -1488,7 +1575,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
-              onTap: () => setState(() => _sectionIndex = i),
+              onTap: () {
+                setState(() => _sectionIndex = i);
+                if (i == 7) {
+                  unawaited(_refreshTwoFaStatus());
+                }
+                if (i == 10) {
+                  _fetchInfraData();
+                }
+              },
             ),
           );
         }),
@@ -1515,8 +1610,12 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       case 7:
         return _buildSecuritySection();
       case 8:
-        return _buildFooterSection();
+        return _buildContentSection();
       case 9:
+        return _buildFooterSection();
+      case 10:
+        return _buildInfrastructureSection();
+      case 11:
         return _buildMaintenanceSection();
       default:
         return _buildGeneralSection();
@@ -1563,6 +1662,599 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         ),
         const SizedBox(width: 6),
         _InfoTooltip(tooltip),
+      ],
+    );
+  }
+
+  Future<void> _refreshContentSectionData() async {
+    if (!mounted) return;
+    setState(() => _contenuLoading = true);
+    try {
+      final results = await Future.wait([
+        _admin.getAproposSectionsAdmin(),
+        _admin.getNewsletterAbonnes(actifsOnly: true),
+      ]);
+      if (!mounted) return;
+      final apropos = results[0] as List<Map<String, dynamic>>;
+      final newsletter = results[1] as Map<String, dynamic>;
+      final d = newsletter['data'] as Map<String, dynamic>? ?? {};
+      final t = d['total'];
+      setState(() {
+        _aproposSections = apropos;
+        _newsletterAbonnesActifs = t is int ? t : int.tryParse(t?.toString() ?? '') ?? 0;
+        _contenuLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _contenuLoading = false);
+    }
+  }
+
+  Future<void> _editAproposSection(Map<String, dynamic> section) async {
+    final titreCtrl = TextEditingController(text: section['titre']?.toString() ?? '');
+    final contenuCtrl = TextEditingController(text: section['contenu']?.toString() ?? '');
+    final iconeCtrl = TextEditingController(text: section['icone']?.toString() ?? '');
+    bool estActif = section['est_actif'] != false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: const Text('Modifier section À propos'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: iconeCtrl, decoration: const InputDecoration(labelText: 'Icône (emoji)')),
+                const SizedBox(height: 8),
+                TextField(controller: titreCtrl, decoration: const InputDecoration(labelText: 'Titre')),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: contenuCtrl,
+                  maxLines: 5,
+                  decoration: const InputDecoration(labelText: 'Contenu'),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Section active'),
+                  value: estActif,
+                  onChanged: (v) => setModalState(() => estActif = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () async {
+                final id = section['id']?.toString() ?? '';
+                if (id.isEmpty) return;
+                await _admin.putAproposSection(id, {
+                  'titre': titreCtrl.text.trim(),
+                  'contenu': contenuCtrl.text.trim(),
+                  'icone': iconeCtrl.text.trim(),
+                  'est_actif': estActif,
+                });
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                await _refreshContentSectionData();
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    titreCtrl.dispose();
+    contenuCtrl.dispose();
+    iconeCtrl.dispose();
+  }
+
+  Future<void> _saveNewsletterPromptBase() async {
+    try {
+      final r = await _admin.updateParametres([
+        {
+          'cle': 'newsletter_prompt_base',
+          'valeur': _newsletterPromptBaseCtrl.text.trim(),
+        },
+      ]);
+      if (!mounted) return;
+      final ok = r['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'Prompt de base IA enregistré.' : 'Échec enregistrement prompt.'),
+          backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _saveNewsletterFeatureSemaine() async {
+    try {
+      final r = await _admin.updateParametres([
+        {
+          'cle': 'newsletter_feature_semaine',
+          'valeur': _newsletterFeatureSemaineCtrl.text.trim(),
+        },
+      ]);
+      final ok = r['success'] == true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'Feature de la semaine enregistrée.' : 'Échec enregistrement feature.'),
+          backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+        ),
+      );
+      if (ok) {
+        setState(() => _hasUnsavedChanges = false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Color _couleurType(String type) {
+    switch (type) {
+      case 'nouvelles_offres':
+        return const Color(0xFF1A56DB);
+      case 'hebdomadaire':
+        return const Color(0xFF8B5CF6);
+      case 'admin':
+        return const Color(0xFF10B981);
+      default:
+        return const Color(0xFF1A56DB);
+    }
+  }
+
+  IconData _iconeType(String type) {
+    switch (type) {
+      case 'nouvelles_offres':
+        return Icons.work_outline_rounded;
+      case 'hebdomadaire':
+        return Icons.calendar_today_rounded;
+      case 'admin':
+        return Icons.edit_note_rounded;
+      default:
+        return Icons.email_rounded;
+    }
+  }
+
+  String _descriptionType(String type) {
+    switch (type) {
+      case 'nouvelles_offres':
+        return 'Claude met en avant les nouvelles offres de la semaine + 1 conseil rapide.';
+      case 'hebdomadaire':
+        return 'Mix complet : offres + conseils carrière + outils IA + partenaires + feature semaine.';
+      case 'admin':
+        return 'Campagne libre : vous guidez Claude avec vos instructions, il rédige la newsletter.';
+      default:
+        return '';
+    }
+  }
+
+  Future<void> _lancerNewsletterIA() async {
+    setState(() {
+      _isLancerIA = true;
+      _resultatIA = null;
+    });
+    try {
+      final token = context.read<AuthProvider>().token ?? '';
+      final body = <String, dynamic>{
+        'declencheur': _newsletterType,
+      };
+      if (_newsletterType == 'admin' && _contexteLibreCtrl.text.trim().isNotEmpty) {
+        body['contexte_libre'] = _contexteLibreCtrl.text.trim();
+      }
+
+      final res = await http
+          .post(
+            Uri.parse('$apiBaseUrl$apiPrefix/admin/newsletter/ia/generer'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(minutes: 3));
+
+      final respBody = jsonDecode(res.body);
+      setState(() {
+        _resultatOk = respBody['success'] == true;
+        _resultatIA = respBody['success'] == true
+            ? 'Newsletter "${respBody['sujet']}" envoyée a ${respBody['nb_envois']} abonnes.'
+            : '${respBody['message']}';
+      });
+      await _refreshContentSectionData();
+    } catch (e) {
+      setState(() {
+        _resultatOk = false;
+        _resultatIA = 'Erreur: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _isLancerIA = false);
+    }
+  }
+
+  Widget _buildContentSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionCard(
+          title: 'Page « À propos »',
+          children: [
+            Text(
+              'Modifiez les sections publiques (hero, mission, vision, etc.) directement depuis cet onglet.',
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).pushNamed('/a-propos'),
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('Voir la page'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: _refreshContentSectionData,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Actualiser'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (_contenuLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else if (_aproposSections.isEmpty)
+              const Text('Aucune section trouvée.')
+            else
+              ..._aproposSections.map(
+                (s) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(s['icone']?.toString() ?? '📄'),
+                  title: Text(s['titre']?.toString() ?? s['section']?.toString() ?? ''),
+                  subtitle: Text('Section: ${s['section'] ?? ''}'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    onPressed: () => _editAproposSection(s),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Newsletter',
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.people_rounded, color: Color(0xFF1A56DB), size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    '$_newsletterAbonnesActifs abonné(s) actif(s)',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A56DB),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _newsletterActif,
+              onChanged: (v) => setState(() {
+                _newsletterActif = v;
+                _markChanged();
+              }),
+              title: const Text('Newsletter active'),
+              subtitle: const Text('Permet les inscriptions depuis le footer.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _newsletterIaActif,
+              onChanged: (v) => setState(() {
+                _newsletterIaActif = v;
+                _markChanged();
+              }),
+              title: const Text('Newsletter IA automatique'),
+              subtitle: const Text('Déclenchements auto + hebdo via cron.'),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: _newsletterIaSeuilOffres.toString(),
+                    decoration: const InputDecoration(
+                      labelText: 'Seuil nouvelles offres (IA auto)',
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => setState(() {
+                      _newsletterIaSeuilOffres = int.tryParse(v) ?? 3;
+                      _markChanged();
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _newsletterFeatureSemaineCtrl,
+              decoration: InputDecoration(
+                labelText: 'Feature IA de la semaine (optionnel)',
+                hintText: 'Ex: Nouveau simulateur d\'entretien disponible !',
+                isDense: true,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.save_rounded, size: 16),
+                  onPressed: _saveNewsletterFeatureSemaine,
+                ),
+              ),
+              onChanged: (_) => _markChanged(),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F7FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF1A56DB).withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.lightbulb_outline_rounded, color: Color(0xFF1A56DB), size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Instructions de base pour l\'IA',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A56DB),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Claude lit ces instructions avant chaque newsletter. '
+                    'Il doit se baser uniquement sur les donnees reelles de la plateforme.',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: const Color(0xFF374151),
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _newsletterPromptBaseCtrl,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: 'Ex: Tu es le responsable communication d\'EmploiConnect...',
+                hintStyle: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFCBD5E1)),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.all(12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+              ),
+              onChanged: (_) => _markChanged(),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh_rounded, size: 14),
+                    label: const Text('Reinitialiser'),
+                    onPressed: () {
+                      const defaut = 'Tu es le responsable communication d\'EmploiConnect, la plateforme N1 de l\'emploi en Guinee. Rédige des newsletters professionnelles basees uniquement sur les donnees reelles de la plateforme. Ne jamais inventer d\'offres ou d\'entreprises. Adapte le contenu au contexte guineen.';
+                      setState(() {
+                        _newsletterPromptBaseCtrl.text = defaut;
+                        _markChanged();
+                      });
+                      _saveNewsletterPromptBase();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.save_rounded, size: 14),
+                    label: const Text('Sauvegarder'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A56DB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                    onPressed: _saveNewsletterPromptBase,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Type de newsletter IA',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              value: _newsletterType,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'hebdomadaire',
+                  child: Row(children: [Text('📅 '), Text('Hebdomadaire (mix complet)')]),
+                ),
+                DropdownMenuItem(
+                  value: 'nouvelles_offres',
+                  child: Row(children: [Text('💼 '), Text('Nouvelles offres')]),
+                ),
+                DropdownMenuItem(
+                  value: 'admin',
+                  child: Row(children: [Text('✏️ '), Text('Campagne libre')]),
+                ),
+              ],
+              onChanged: (v) => setState(() => _newsletterType = v ?? 'hebdomadaire'),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _couleurType(_newsletterType).withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _couleurType(_newsletterType).withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(_iconeType(_newsletterType), color: _couleurType(_newsletterType), size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _descriptionType(_newsletterType),
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: _couleurType(_newsletterType),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              child: _newsletterType == 'admin'
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Contexte / Instructions pour l\'IA',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF374151),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: _contexteLibreCtrl,
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            hintText: 'Ex: Mets en avant nos nouvelles fonctionnalites IA...',
+                            hintStyle: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFCBD5E1)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.all(12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    )
+                  : const SizedBox(),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: _isLancerIA
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: Text(
+                  _isLancerIA ? 'Generation en cours...' : 'Lancer la newsletter IA',
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _couleurType(_newsletterType),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _isLancerIA ? null : _lancerNewsletterIA,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_resultatIA != null)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _resultatOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _resultatOk ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                      color: _resultatOk ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _resultatIA!,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _resultatOk ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -1884,7 +2576,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
-                    b['image_url']?.toString() ?? '',
+                    [
+                      (b['type_banniere'] ?? 'hero').toString(),
+                      if ((b['type_banniere'] ?? '').toString().toLowerCase() != 'ticker')
+                        (b['image_url']?.toString().isNotEmpty == true)
+                            ? 'Image'
+                            : 'Sans image',
+                    ].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2017,289 +2715,514 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
-  Future<bool> _persistGoogleCle(String cle, String valeur) async {
-    if (valeur.isEmpty) return false;
-    try {
-      final r = await _admin.updateParametres([
-        {'cle': cle, 'valeur': valeur},
-      ]);
-      final data = r['data'];
-      final errs = data is Map ? data['erreurs'] as List<dynamic>? : null;
-      final success = r['success'] == true;
-      if (!mounted) return false;
-      if (!success || (errs != null && errs.isNotEmpty)) {
-        final msg = (errs != null && errs.isNotEmpty)
-            ? errs.map((e) => e.toString()).join('\n')
-            : (r['message']?.toString() ?? 'Sauvegarde impossible');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: const Color(0xFFEF4444),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return false;
-      }
-      await _loadParametres();
-      if (!mounted) return false;
-      setState(() => _googleCredentialsEpoch++);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Clé enregistrée'),
-          backgroundColor: Color(0xFF10B981),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return true;
-    } catch (e) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$e'),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return false;
-    }
-  }
-
-  Future<void> _verifierConfigGoogle() async {
-    final clientId = _loadedGoogleClientId.trim();
-    if (clientId.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Client ID non configuré. Saisissez la clé puis Enregistrer.'),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (!clientId.contains('apps.googleusercontent.com')) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Format invalide : doit contenir « apps.googleusercontent.com »'),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (!clientId.contains('-')) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Format invalide : vérifiez votre Client ID.'),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    final preview = clientId.length > 40
-        ? '${clientId.substring(0, 20)}…${clientId.substring(clientId.length - 30)}'
-        : clientId;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: double.infinity),
-          child: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Client ID valide',
-                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Format correct',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF10B981),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    preview,
-                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF374151)),
-                  ),
-                ],
-              ),
+  Widget _buildGuideEtapes() {
+    const etapes = [
+      '1. Ouvrir Google Cloud Console > APIs & Services > Credentials.',
+      '2. Creer un OAuth Client ID de type Application Web.',
+      '3. Renseigner l URI de redirection ci-dessous dans Google.',
+      '4. Copier Client ID et Client Secret dans ce formulaire.',
+      '5. Activer Google OAuth si vous voulez afficher le bouton Google.',
+      '6. Tester la configuration avec le bouton Tester.',
+      '7. Sauvegarder pour appliquer en production.',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: etapes.map(
+          (e) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              e,
+              style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF374151), height: 1.35),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Vous pouvez tester la connexion Google sur la page de connexion.',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: const Color(0xFF64748B),
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
           ),
-        ],
+        ).toList(),
       ),
     );
   }
 
+  Future<void> _testerOAuth() async {
+    setState(() {
+      _isTesting = true;
+      _testResultat = null;
+    });
+    try {
+      final token = context.read<AuthProvider>().token ?? '';
+      final res = await http.post(
+        Uri.parse('$apiBaseUrl$apiPrefix/admin/oauth/test'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      setState(() => _testResultat = Map<String, dynamic>.from(jsonDecode(res.body) as Map));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _testResultat = {
+        'success': false,
+        'etapes': [
+          {'ok': false, 'message': 'Erreur: $e'},
+        ],
+      });
+    } finally {
+      if (mounted) setState(() => _isTesting = false);
+    }
+  }
+
+  Future<void> _sauvegarderOAuth() async {
+    setState(() => _isSavingOAuth = true);
+    try {
+      final token = context.read<AuthProvider>().token ?? '';
+      final payload = <String, dynamic>{
+        'google_client_id': _googleClientIdCtrl.text.trim(),
+        'google_oauth_actif': _googleOauthActif,
+        'google_roles_defaut': _googleRolesDefaut,
+        'google_domaines_autorises': _googleDomainesCtrl.text.trim(),
+        'google_projet_id': _googleProjetCtrl.text.trim(),
+        'google_redirect_uri': _redirectUriAuto.trim(),
+        'app_url_prod': _appUrlProdCtrl.text.trim(),
+      };
+      if (_googleClientSecretCtrl.text.trim().isNotEmpty && _googleClientSecretCtrl.text.trim() != '********') {
+        payload['google_client_secret'] = _googleClientSecretCtrl.text.trim();
+      }
+
+      final res = await http.post(
+        Uri.parse('$apiBaseUrl$apiPrefix/admin/oauth/sauvegarder'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(payload),
+      );
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (!mounted) return;
+      if (body['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Config Google OAuth sauvegardee'),
+            backgroundColor: Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        if (_googleClientSecretCtrl.text.trim() != '********' && _googleClientSecretCtrl.text.trim().isNotEmpty) {
+          setState(() => _googleClientSecretCtrl.text = '********');
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(body['message']?.toString() ?? 'Echec sauvegarde OAuth'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingOAuth = false);
+    }
+  }
+
+  Future<void> _loadOAuthConfig() async {
+    try {
+      final token = context.read<AuthProvider>().token ?? '';
+      final res = await http.get(
+        Uri.parse('$apiBaseUrl$apiPrefix/admin/oauth/config'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['success'] != true || !mounted) return;
+      final d = body['data'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _googleClientIdCtrl.text = d['google_client_id']?.toString() ?? '';
+        _googleClientSecretCtrl.text = (d['google_client_secret_configure'] == true
+                || (d['google_client_secret'] ?? '').toString().isNotEmpty)
+            ? '********'
+            : '';
+        _googleOauthActif = (d['google_oauth_actif'] ?? '').toString().toLowerCase() == 'true';
+        final role = d['google_roles_defaut']?.toString().trim().toLowerCase() ?? 'chercheur';
+        _googleRolesDefaut = role == 'entreprise' ? 'entreprise' : 'chercheur';
+        _googleDomainesCtrl.text = d['google_domaines_autorises']?.toString() ?? '';
+        _googleProjetCtrl.text = d['google_projet_id']?.toString() ?? '';
+        _appUrlProdCtrl.text = d['app_url_prod']?.toString() ?? '';
+        _redirectUriAuto = d['redirect_uri_auto']?.toString() ?? '';
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
   Widget _buildAuthSection() {
+    final clientIdOk = _googleClientIdCtrl.text.trim().isNotEmpty;
+    final secretOk = _googleClientSecretCtrl.text.trim().isNotEmpty;
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionCard(
-          title: 'Connexion Google (OAuth 2.0)',
+          title: 'Statut actuel',
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _BadgeStatut(label: 'Client ID', configure: clientIdOk),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _BadgeStatut(label: 'Client Secret', configure: secretOk),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               value: _googleOauthActif,
-              onChanged: (v) => setState(() {
-                _googleOauthActif = v;
-                _markChanged();
-              }),
-              title: const Text('Activer « Continuer avec Google »'),
-              subtitle: Text(
-                'Les utilisateurs peuvent se connecter ou s’inscrire avec un compte Google.',
-                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+              onChanged: (v) => setState(() => _googleOauthActif = v),
+              title: const Text('Google OAuth active'),
+              subtitle: const Text('Affiche "Se connecter avec Google".'),
+            ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Guide de configuration',
+          children: [
+            InkWell(
+              onTap: () => setState(() => _guideExpanded = !_guideExpanded),
+              child: Row(
+                children: [
+                  const Icon(Icons.help_outline_rounded, color: Color(0xFF1A56DB), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Comment creer des identifiants Google OAuth ?',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A56DB),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _guideExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    color: const Color(0xFF1A56DB),
+                    size: 18,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              child: _guideExpanded ? _buildGuideEtapes() : const SizedBox(),
+            ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Identifiants Google Cloud',
+          children: [
+            TextField(
+              controller: _googleClientIdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Client ID *',
+                hintText: 'xxx.apps.googleusercontent.com',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _googleClientSecretCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Client Secret *',
+                hintText: 'GOCSPX-xxxxx',
+              ),
+            ),
+            const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: const Color(0xFFF0F7FF),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.28)),
+                border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Configuration Google Cloud',
+                    'URI de redirection a copier dans Google Cloud',
                     style: GoogleFonts.inter(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1E40AF),
+                      color: const Color(0xFF1A56DB),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Console → APIs & Services → Credentials → OAuth 2.0 Client IDs (type « Application Web »). '
-                    'Origines autorisées : URL de votre app et backend.',
-                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF1E40AF), height: 1.35),
-                  ),
                   const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final uri = Uri.parse('https://console.cloud.google.com/apis/credentials');
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                      }
-                    },
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('Ouvrir Google Cloud Console'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _redirectUriAuto.isEmpty ? 'Chargement...' : _redirectUriAuto,
+                          style: GoogleFonts.robotoMono(fontSize: 11, color: const Color(0xFF0F172A)),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 14),
+                        onPressed: _redirectUriAuto.isEmpty
+                            ? null
+                            : () {
+                                Clipboard.setData(ClipboardData(text: _redirectUriAuto));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('URI copiee'),
+                                    backgroundColor: Color(0xFF10B981),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            _AdminGoogleCleTile(
-              key: ValueKey<String>('gci_${_googleCredentialsEpoch}_$_loadedGoogleClientId'),
-              cle: 'google_client_id',
-              label: 'Google Client ID',
-              hint: 'xxx.apps.googleusercontent.com',
-              isSecret: false,
-              loadedValue: _loadedGoogleClientId,
-              onSave: _persistGoogleCle,
+          ],
+        ),
+        _sectionCard(
+          title: 'Checklist mise en production',
+          children: [
+            TextField(
+              controller: _appUrlProdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'URL du site en production',
+                hintText: 'Ex: https://emploiconnect.gn',
+              ),
+              onChanged: (_) => setState(() {}),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Cette URL est utilisee pour calculer l URI de redirection Google en production.',
+              style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF94A3B8)),
+            ),
+            const SizedBox(height: 8),
+            if (_appUrlProdCtrl.text.trim().isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'URI de redirection production :',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF065F46),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_appUrlProdCtrl.text.trim().replaceAll(RegExp(r"/+$"), "")}/api/auth/google/callback',
+                            style: GoogleFonts.robotoMono(fontSize: 11, color: const Color(0xFF065F46)),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy_rounded, size: 14),
+                          color: const Color(0xFF10B981),
+                          onPressed: () {
+                            final uri = '${_appUrlProdCtrl.text.trim().replaceAll(RegExp(r"/+$"), "")}/api/auth/google/callback';
+                            Clipboard.setData(ClipboardData(text: uri));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('URI copiee'),
+                                backgroundColor: Color(0xFF10B981),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
-            _AdminGoogleCleTile(
-              key: ValueKey<String>('gcs_${_googleCredentialsEpoch}_$_loadedGoogleSecretDisplay'),
-              cle: 'google_client_secret',
-              label: 'Google Client Secret',
-              hint: 'GOCSPX-…',
-              isSecret: true,
-              loadedValue: _loadedGoogleSecretDisplay,
-              onSave: _persistGoogleCle,
+            Text(
+              'Etapes pour la mise en production :',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const _ChecklistItem(
+              numero: '1',
+              titre: 'Heberger le site',
+              desc: 'Sur un serveur avec un vrai domaine (ex: emploiconnect.gn).',
+            ),
+            const _ChecklistItem(
+              numero: '2',
+              titre: 'Mettre a jour l URI de redirection',
+              desc: 'Google Cloud Console > Identifiants > ajouter l URI de production.',
+            ),
+            const _ChecklistItem(
+              numero: '3',
+              titre: 'Passer en mode Production',
+              desc: 'Ecran consentement OAuth > Publier l application > tous les emails autorises.',
+            ),
+            const _ChecklistItem(
+              numero: '4',
+              titre: 'Verifier l application (optionnel)',
+              desc: 'Si >100 utilisateurs, demander la verification Google.',
+            ),
+            const _ChecklistItem(
+              numero: '5',
+              titre: 'Tester en production',
+              desc: 'Tester avec un email non test; la connexion Google doit fonctionner.',
             ),
             const SizedBox(height: 10),
-            Text(
-              'Rôle par défaut (nouveaux comptes Google uniquement)',
-              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF374151)),
-            ),
-            const SizedBox(height: 6),
-            DropdownButtonFormField<String>(
-              key: ValueKey<String>('google_role_$_googleRolesDefaut'),
-              initialValue: _googleRolesDefaut,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'chercheur', child: Text('Chercheur d’emploi')),
-                DropdownMenuItem(value: 'entreprise', child: Text('Entreprise / recruteur')),
-              ],
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() {
-                  _googleRolesDefaut = v;
-                  _markChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _verifierConfigGoogle,
-                icon: const Icon(Icons.verified_outlined, size: 18),
-                label: const Text('Vérifier le format du Client ID'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF4285F4),
-                  side: const BorderSide(color: Color(0xFF4285F4)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
+                icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                label: const Text('Ouvrir Google Cloud Console'),
+                onPressed: () async {
+                  final uri = Uri.parse('https://console.cloud.google.com/apis/credentials');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
               ),
             ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFF92400E), size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'En mode Test Google, seuls les emails ajoutes dans Google Cloud Console peuvent se connecter.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: const Color(0xFF92400E),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Configuration avancee',
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _googleRolesDefaut,
+              decoration: const InputDecoration(labelText: 'Role nouveaux comptes'),
+              items: const [
+                DropdownMenuItem(value: 'chercheur', child: Text('Candidat')),
+                DropdownMenuItem(value: 'entreprise', child: Text('Recruteur')),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _googleRolesDefaut = v);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _googleDomainesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Domaines email autorises (optionnel)',
+                hintText: 'Ex: gmail.com, orange-guinee.com',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _googleProjetCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Google Projet ID (optionnel)',
+              ),
+            ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Test et sauvegarde',
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: _isTesting
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4285F4)),
+                          )
+                        : const Icon(Icons.play_arrow_rounded, size: 16),
+                    label: Text(_isTesting ? 'Test...' : 'Tester'),
+                    onPressed: _isTesting ? null : _testerOAuth,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: _isSavingOAuth
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.save_rounded, size: 16),
+                    label: Text(_isSavingOAuth ? 'Sauvegarde...' : 'Sauvegarder'),
+                    onPressed: _isSavingOAuth ? null : _sauvegarderOAuth,
+                  ),
+                ),
+              ],
+            ),
+            if (_testResultat != null) ...[
+              const SizedBox(height: 12),
+              ...((_testResultat!['etapes'] as List?) ?? const []).map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        e['ok'] == true ? Icons.check_circle_rounded : Icons.warning_rounded,
+                        color: e['ok'] == true ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          e['message']?.toString() ?? '',
+                          style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF374151)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ],
@@ -3444,6 +4367,160 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  Future<void> _refreshTwoFaStatus() async {
+    setState(() => _twoFaStatusLoading = true);
+    try {
+      final m = await _admin.get2faStatus();
+      final d = m['data'];
+      if (!mounted) return;
+      if (d is Map) {
+        setState(() {
+          _twoFaUserActif = d['twofa_actif'] == true;
+          _twoFaSetupPending = d['setup_pending'] == true;
+          _twoFaStatusLoading = false;
+        });
+      } else {
+        setState(() => _twoFaStatusLoading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _twoFaStatusLoading = false);
+    }
+  }
+
+  Future<void> _openMonTwoFaSetup() async {
+    if (!_admin2fa) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Activez d’abord « 2FA pour les administrateurs » ci-dessus, puis enregistrez.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _twoFaActionLoading = true);
+    try {
+      final r = await _admin.get2faSetup();
+      if (!mounted) return;
+      if (r['success'] != true) {
+        throw Exception(r['message']?.toString() ?? 'Impossible de préparer le 2FA');
+      }
+      final d = r['data'];
+      final qrUrl = d is Map ? d['qrCodeDataUrl']?.toString() : null;
+      if (qrUrl == null || qrUrl.isEmpty) throw Exception('QR code indisponible');
+
+      final qrBytes = !qrUrl.startsWith('data:image')
+          ? null
+          : () {
+              final i = qrUrl.indexOf(',');
+              if (i <= 0) return null;
+              return base64Decode(qrUrl.substring(i + 1));
+            }();
+
+      final codeCtrl = TextEditingController();
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Configurer le 2FA', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '1. Scannez le QR avec Google Authenticator ou Authy.\n'
+                  '2. Entrez le code à 6 chiffres pour confirmer.',
+                  style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 12),
+                if (qrBytes != null)
+                  Center(child: Image.memory(qrBytes, width: 200, height: 200))
+                else
+                  const Text('Impossible d’afficher le QR code.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: codeCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 8,
+                  decoration: const InputDecoration(
+                    labelText: 'Code',
+                    counterText: '',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () async {
+                final code = codeCtrl.text.trim();
+                if (code.length < 6) return;
+                try {
+                  final ar = await _admin.post2faActiver(code);
+                  if (!ctx.mounted) return;
+                  if (ar['success'] == true) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(
+                        content: Text('2FA activé sur votre compte.'),
+                        backgroundColor: Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                    await _refreshTwoFaStatus();
+                  } else {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(ar['message']?.toString() ?? 'Erreur')),
+                    );
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('$e')));
+                  }
+                }
+              },
+              child: const Text('Confirmer'),
+            ),
+          ],
+        ),
+      );
+      codeCtrl.dispose();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _twoFaActionLoading = false);
+    }
+  }
+
+  Future<void> _desactiverMonTwoFa() async {
+    final ok = await showAdminTwoFactorCodeDialog(
+      context,
+      submit: (code) async {
+        try {
+          final m = await _admin.post2faDesactiver(code);
+          return (m['success'] == true, m['message']?.toString());
+        } catch (e) {
+          return (false, e.toString());
+        }
+      },
+    );
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('2FA désactivé sur votre compte.'),
+          backgroundColor: Color(0xFF64748B),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      await _refreshTwoFaStatus();
+    }
+  }
+
   Widget _buildSecuritySection() {
     return _sectionCard(
       title: 'Sécurité',
@@ -3451,7 +4528,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         _metricLabelWithTooltip(
           label: 'Durée de session',
           tooltip:
-              'Durée avant déconnexion automatique (inactivité / expiration session).',
+              'Inactivité côté appli (déconnexion si aucune interaction pendant ce délai). '
+              'Côté API, la durée du JWT est le minimum entre cette valeur et « Expiration JWT ».',
           valueText: '${_sessionMinutes.round()} min',
         ),
         Slider(
@@ -3503,18 +4581,142 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           }),
           title: _labelWithTooltip(
             '2FA pour les administrateurs',
-            'Ajoute une seconde étape (TOTP type Google Authenticator) pour les comptes admin.',
+            'Autorise l’activation TOTP par admin. Les secrets restent en base (accès service_role uniquement).',
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 28),
+        Text(
+          'Mon authentification à deux facteurs',
+          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        if (_twoFaStatusLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _twoFaUserActif ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _twoFaUserActif
+                    ? const Color(0xFF10B981).withValues(alpha: 0.35)
+                    : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _twoFaUserActif ? Icons.verified_user_rounded : Icons.security_outlined,
+                  color: _twoFaUserActif ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _twoFaUserActif
+                        ? '2FA activé sur votre compte administrateur.'
+                        : (_twoFaSetupPending
+                              ? 'Configuration en cours : terminez avec le code à 6 chiffres.'
+                              : '2FA non activé — recommandé pour sécuriser l’accès admin.'),
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _twoFaUserActif ? const Color(0xFF065F46) : const Color(0xFF92400E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: _twoFaActionLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : Icon(_twoFaUserActif ? Icons.lock_open_rounded : Icons.qr_code_rounded, size: 16),
+            label: Text(_twoFaUserActif ? 'Désactiver mon 2FA' : 'Activer mon 2FA'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _twoFaUserActif ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: _twoFaActionLoading
+                ? null
+                : () {
+                    if (_twoFaUserActif) {
+                      unawaited(_desactiverMonTwoFa());
+                    } else {
+                      unawaited(_openMonTwoFaSetup());
+                    }
+                  },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Google Authenticator, Authy ou toute appli compatible TOTP.',
+          style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF94A3B8)),
+        ),
+        const Divider(height: 28),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F7FF),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFF1A56DB), size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'IPs bloquées — comment ça marche',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A56DB),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '• Une adresse par ligne (ou liste JSON côté API).\n'
+                '• Correspondance stricte avec l’IP client (détection via X-Forwarded-For si proxy).\n'
+                '• Ces adresses reçoivent 403 sur toutes les routes /api (dès le middleware).\n'
+                '• Utile pour bloquer une source d’abus après sauvegarde des paramètres.',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: const Color(0xFF374151),
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: Text(
-                'IPs bloquées (une par ligne)',
+                'Liste des IPs bloquées',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -3528,7 +4730,10 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           controller: _ipsBlockedCtrl,
           maxLines: 5,
           decoration: const InputDecoration(
-            hintText: '192.168.1.1',
+            hintText: '192.168.1.100\n10.0.0.1',
+            filled: true,
+            fillColor: Color(0xFFF8FAFC),
+            contentPadding: EdgeInsets.all(12),
             border: OutlineInputBorder(),
           ),
           onChanged: (_) => _markChanged(),
@@ -3642,6 +4847,397 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  Future<void> _fetchInfraData({bool showTestSpinner = false}) async {
+    if (!context.read<AdminProvider>().estSuperAdmin) return;
+    if (showTestSpinner && mounted) {
+      setState(() => _testSupabaseEnCours = true);
+    }
+    try {
+      final body = await _admin.getInfraTest();
+      if (!mounted) return;
+      if (body['success'] == true) {
+        final raw = body['data'];
+        if (raw is Map) {
+          final dm = Map<String, dynamic>.from(raw);
+          final bucketsRaw = dm['buckets'];
+          final exists = <String, bool>{};
+          final pub = <String, bool>{};
+          if (bucketsRaw is Map) {
+            bucketsRaw.forEach((k, v) {
+              final name = k.toString();
+              if (v is Map) {
+                final m = Map<String, dynamic>.from(v);
+                exists[name] = m['exists'] == true;
+                pub[name] = m['public'] == true;
+              }
+            });
+          }
+          setState(() {
+            _configServeur = {
+              'supabase_url': dm['supabase_url']?.toString() ?? '',
+              'service_role_configured': dm['service_role_configured'] == true,
+              'jwt_configured': dm['jwt_configured'] == true,
+            };
+            _bucketExists = exists;
+            _bucketPublic = pub;
+            _portEnvHint = dm['port_env']?.toString() ?? '';
+            final bddPort = dm['server_port_bdd']?.toString() ?? '';
+            if (bddPort.isNotEmpty && _serverPortInfraCtrl.text.trim().isEmpty) {
+              _serverPortInfraCtrl.text = bddPort;
+            }
+            if (showTestSpinner) {
+              _testSupabaseOk = true;
+              _testSupabaseResultat = 'Connexion Supabase opérationnelle.';
+            }
+          });
+          return;
+        }
+      }
+      if (mounted && showTestSpinner) {
+        setState(() {
+          _testSupabaseOk = false;
+          _testSupabaseResultat =
+              body['message']?.toString() ?? 'Impossible de joindre l’API infra.';
+        });
+      }
+    } catch (e) {
+      if (mounted && showTestSpinner) {
+        setState(() {
+          _testSupabaseOk = false;
+          _testSupabaseResultat = 'Erreur : $e';
+        });
+      }
+    } finally {
+      if (mounted && showTestSpinner) {
+        setState(() => _testSupabaseEnCours = false);
+      }
+    }
+  }
+
+  Future<void> _sauvegarderInfra() async {
+    if (!context.read<AdminProvider>().estSuperAdmin) return;
+    setState(() => _savingInfra = true);
+    try {
+      final port = _serverPortInfraCtrl.text.trim();
+      final batch = <Map<String, dynamic>>[
+        {'cle': 'app_url_prod', 'valeur': _appUrlProdCtrl.text.trim()},
+        {'cle': 'server_port', 'valeur': port},
+      ];
+      final r = await _admin.updateParametres(batch);
+      if (!mounted) return;
+      final ok = r['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'Configuration enregistrée.'
+                : (r['message']?.toString() ?? 'Erreur lors de l’enregistrement'),
+          ),
+          backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      if (ok) await _fetchInfraData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString()), behavior: SnackBarBehavior.floating),
+      );
+    } finally {
+      if (mounted) setState(() => _savingInfra = false);
+    }
+  }
+
+  Widget _buildInfrastructureSection() {
+    final superOnly = context.watch<AdminProvider>().estSuperAdmin;
+    if (!superOnly) {
+      return _sectionCard(
+        title: 'Infrastructure',
+        children: [
+          Text(
+            'Cette section est réservée au super administrateur.',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
+          ),
+        ],
+      );
+    }
+
+    final svcOk = _configServeur['service_role_configured'] == true;
+    final jwtOk = _configServeur['jwt_configured'] == true;
+    final supaUrl = _configServeur['supabase_url']?.toString() ?? '';
+
+    Widget ligneLecture({
+      required String label,
+      required String valeur,
+      required IconData icone,
+      bool estOk = false,
+    }) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icone, size: 18, color: const Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  valeur,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: estOk ? const Color(0xFF065F46) : const Color(0xFF334155),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final bucketNames = _bucketExists.keys.toList()..sort();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionCard(
+          title: 'Infrastructure',
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_rounded, color: Color(0xFF92400E), size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Section réservée au super administrateur.\n'
+                      'SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY et JWT_SECRET '
+                      'doivent rester dans le fichier .env du serveur : les stocker en base '
+                      'créerait un paradoxe (il faut déjà être connecté pour les lire).',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: const Color(0xFF92400E),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Base de données Supabase',
+              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              'Lecture seule — valeurs sensibles dans .env',
+              style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+            ),
+            const SizedBox(height: 12),
+            ligneLecture(
+              label: 'SUPABASE_URL (masquée)',
+              valeur: supaUrl.isEmpty ? 'Non chargée — ouvrez cet onglet ou testez la connexion' : supaUrl,
+              icone: Icons.link_rounded,
+            ),
+            const SizedBox(height: 10),
+            ligneLecture(
+              label: 'SERVICE_ROLE_KEY',
+              valeur: svcOk ? 'Configurée' : 'Non configurée',
+              icone: Icons.vpn_key_rounded,
+              estOk: svcOk,
+            ),
+            const SizedBox(height: 10),
+            ligneLecture(
+              label: 'JWT_SECRET',
+              valeur: jwtOk ? '••••••••••••••••' : 'Non configuré',
+              icone: Icons.security_rounded,
+              estOk: jwtOk,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: _testSupabaseEnCours
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1A56DB)),
+                      )
+                    : const Icon(Icons.wifi_tethering_rounded, size: 16),
+                label: Text(_testSupabaseEnCours ? 'Test en cours…' : 'Tester la connexion Supabase'),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF1A56DB)),
+                  foregroundColor: const Color(0xFF1A56DB),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _testSupabaseEnCours ? null : () => _fetchInfraData(showTestSpinner: true),
+              ),
+            ),
+            if (_testSupabaseResultat != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: (_testSupabaseOk == true)
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _testSupabaseOk == true
+                          ? Icons.check_circle_rounded
+                          : Icons.error_outline_rounded,
+                      color: _testSupabaseOk == true
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _testSupabaseResultat!,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _testSupabaseOk == true
+                              ? const Color(0xFF065F46)
+                              : const Color(0xFF991B1B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        _sectionCard(
+          title: 'Configuration du serveur',
+          children: [
+            TextField(
+              controller: _appUrlProdCtrl,
+              onChanged: (_) => _markChanged(),
+              decoration: InputDecoration(
+                labelText: 'URL publique du site (app_url_prod)',
+                hintText: 'https://emploiconnect.gn',
+                suffixIcon: _InfoTooltip(
+                  'Utilisée pour les e-mails, newsletters et redirections OAuth.',
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _serverPortInfraCtrl,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => _markChanged(),
+              decoration: InputDecoration(
+                labelText: 'Port du serveur (server_port en base)',
+                hintText: '3000',
+                suffixIcon: _InfoTooltip(
+                  'Valeur documentaire / cohérence avec l’admin. '
+                  'Le port réel du processus vient de la variable PORT (.env). '
+                  '${_portEnvHint.isNotEmpty ? 'PORT actuel : $_portEnvHint.' : ''}',
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: _savingInfra
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.save_rounded, size: 16),
+                label: const Text('Sauvegarder'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A56DB),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _savingInfra ? null : _sauvegarderInfra,
+              ),
+            ),
+          ],
+        ),
+        _sectionCard(
+          title: 'Buckets Storage',
+          children: [
+            Text(
+              'État des buckets Supabase (existence + public)',
+              style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8)),
+            ),
+            const SizedBox(height: 10),
+            if (bucketNames.isEmpty)
+              Text(
+                'Aucune donnée — ouvrez cet onglet ou lancez un test.',
+                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+              )
+            else
+              ...bucketNames.map((name) {
+                final ex = _bucketExists[name] == true;
+                final pub = _bucketPublic[name] == true;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        ex ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                        color: ex ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        !ex
+                            ? 'Absent'
+                            : (pub ? 'Public' : 'Privé'),
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: !ex
+                              ? const Color(0xFFEF4444)
+                              : (pub ? const Color(0xFF10B981) : const Color(0xFF64748B)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildMaintenanceSection() {
     return _sectionCard(
       title: 'Maintenance',
@@ -3701,7 +5297,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
 /// Client ID / Secret Google : affichage masqué si déjà en base, sinon saisie + [Enregistrer] (un paramètre à la fois).
 class _AdminGoogleCleTile extends StatefulWidget {
   const _AdminGoogleCleTile({
-    super.key,
     required this.cle,
     required this.label,
     required this.hint,
@@ -3946,6 +5541,236 @@ class _InfoTooltip extends StatelessWidget {
   }
 }
 
+class _BadgeStatut extends StatelessWidget {
+  const _BadgeStatut({required this.label, required this.configure});
+
+  final String label;
+  final bool configure;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: configure ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: configure
+              ? const Color(0xFF10B981).withValues(alpha: 0.3)
+              : const Color(0xFFEF4444).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            configure ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            color: configure ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: configure ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChecklistItem extends StatelessWidget {
+  const _ChecklistItem({
+    required this.numero,
+    required this.titre,
+    required this.desc,
+  });
+
+  final String numero;
+  final String titre;
+  final String desc;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4285F4),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                numero,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titre,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _banniereGuideDimensions(String type) {
+  final t = type.toLowerCase();
+  if (t == 'ticker') {
+    return _BanniereGuideCarte(
+      titre: 'Dimensions (rendu réel) — Ticker',
+      items: const [
+        _BanniereDimData('Hauteur', '40 px (fixe, `TickerBannieresWidget`)'),
+        _BanniereDimData('Largeur', '100 % du viewport'),
+        _BanniereDimData('Contenu', 'Texte uniquement (titre / sous-titre défilants)'),
+        _BanniereDimData('Image', 'Non affichée sur la page d’accueil pour ce type'),
+      ],
+    );
+  }
+  if (t == 'pub') {
+    return _BanniereGuideCarte(
+      titre: 'Dimensions (rendu réel) — Grande bannière pub',
+      items: const [
+        _BanniereDimData('Hauteur affichée', '260 px (bureau, ≥768 px) ; 200 px (mobile)'),
+        _BanniereDimData('Hauteur BDD', '`hauteur_px` utilisé jusqu’à 320 px, clamp 160–320'),
+        _BanniereDimData('Carrousel', '`viewportFraction` 0,88 → carte ≈ 88 % largeur − marges'),
+        _BanniereDimData('Image', '`BoxFit.cover`, centrage `Alignment.center`'),
+        _BanniereDimData('Fichier conseillé', '≥ 900 × 260 px (même ratio), JPG / PNG / WebP'),
+        _BanniereDimData('Poids max', '2 Mo (upload admin)'),
+      ],
+    );
+  }
+  return _BanniereGuideCarte(
+    titre: 'Dimensions (rendu réel) — Hero',
+    items: const [
+      _BanniereDimData('Zone section', 'Hauteur min. 400 px (`HomeHeroPrdSection`)'),
+      _BanniereDimData('Carte desktop', '380 px de large, hauteur min. 220 px, `BoxFit.cover`'),
+      _BanniereDimData('Carte mobile', 'Pleine largeur, hauteur min. 220 px'),
+      _BanniereDimData('Fichier conseillé', '≈ 1920 × 500 px à 560 px (paysage)'),
+      _BanniereDimData('Poids max', '3 Mo (upload admin)'),
+    ],
+  );
+}
+
+class _BanniereDimData {
+  const _BanniereDimData(this.label, this.valeur);
+  final String label;
+  final String valeur;
+}
+
+class _BanniereGuideCarte extends StatelessWidget {
+  const _BanniereGuideCarte({
+    required this.titre,
+    required this.items,
+  });
+
+  final String titre;
+  final List<_BanniereDimData> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F7FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFF1A56DB).withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Color(0xFF1A56DB), size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  titre,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A56DB),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...items.map(
+            (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 108,
+                    child: Text(
+                      e.label,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      e.valeur,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: const Color(0xFF64748B),
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BanniereDialog extends StatefulWidget {
   const _BanniereDialog({required this.onSave, this.banniere});
 
@@ -3964,10 +5789,11 @@ class _BanniereDialogState extends State<_BanniereDialog> {
   final _lienCta1Ctrl = TextEditingController();
   final _labelCta2Ctrl = TextEditingController();
   final _lienCta2Ctrl = TextEditingController();
-  final _largeurPxCtrl = TextEditingController(text: '320');
-  final _hauteurPxCtrl = TextEditingController(text: '180');
+  final _largeurPxCtrl = TextEditingController(text: '900');
+  final _hauteurPxCtrl = TextEditingController(text: '260');
   final _lienExterneCtrl = TextEditingController();
   final _ordrePubCtrl = TextEditingController(text: '0');
+  final _couleurBadgeCtrl = TextEditingController(text: '#1A56DB');
   String? _imageUrl;
   bool _isSaving = false;
   String _typeBanniere = 'hero';
@@ -3993,6 +5819,10 @@ class _BanniereDialogState extends State<_BanniereDialog> {
       if (t != null && (t == 'ticker' || t == 'pub' || t == 'hero')) {
         _typeBanniere = t;
       }
+      final cb = b['couleur_badge']?.toString().trim();
+      if (cb != null && cb.isNotEmpty) {
+        _couleurBadgeCtrl.text = cb;
+      }
     }
   }
 
@@ -4009,6 +5839,7 @@ class _BanniereDialogState extends State<_BanniereDialog> {
     _hauteurPxCtrl.dispose();
     _lienExterneCtrl.dispose();
     _ordrePubCtrl.dispose();
+    _couleurBadgeCtrl.dispose();
     super.dispose();
   }
 
@@ -4070,14 +5901,32 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                         DropdownMenuItem(value: 'pub', child: Text('Publicité (réserve)')),
                       ],
                       onChanged: (v) {
-                        if (v != null) setState(() => _typeBanniere = v);
+                        if (v == null) return;
+                        final prev = _typeBanniere;
+                        setState(() {
+                          _typeBanniere = v;
+                          if (v == 'pub' && prev != 'pub') {
+                            _largeurPxCtrl.text = '900';
+                            _hauteurPxCtrl.text = '260';
+                          }
+                        });
                       },
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Le ticker affiche surtout le titre ; une image reste requise côté serveur.',
+                      _typeBanniere == 'ticker'
+                          ? 'Le ticker défile le texte du titre (et du sous-titre si renseigné). Aucune image nécessaire.'
+                          : 'Hero et pub : image fortement recommandée (upload ci-dessous).',
                       style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
                     ),
+                    const SizedBox(height: 10),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: _banniereGuideDimensions(_typeBanniere),
+                    ),
+                    const SizedBox(height: 12),
                     if (_typeBanniere == 'pub') ...[
                       const SizedBox(height: 14),
                       _dialogLabel('Dimensions recommandées (carrousel pub)'),
@@ -4107,7 +5956,7 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Format recommandé : 320×180 px (ratio 16:9). Max 2 Mo. JPG, PNG ou WebP.',
+                                'Les champs largeur / hauteur alimentent `hauteur_px` côté carrousel (voir encadré bleu : 260 px / 200 px selon l’écran).',
                                 style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF92400E)),
                               ),
                             ),
@@ -4126,75 +5975,100 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                       const SizedBox(height: 6),
                       _dialogField(_ordrePubCtrl, '0 = premier', keyboard: TextInputType.number),
                     ],
+                    if (_typeBanniere != 'ticker') ...[
+                      const SizedBox(height: 16),
+                      _dialogLabel('Image de fond *'),
+                      const SizedBox(height: 8),
+                      ImageUploadWidget(
+                        currentImageUrl: _imageUrl,
+                        uploadUrl:
+                            '$apiBaseUrl$apiPrefix/admin/bannieres/upload-image',
+                        fieldName: 'image',
+                        title: 'Image de bannière',
+                        dimensionsInfo: _typeBanniere == 'pub'
+                            ? '900×260 px recommandé — affichage 260 px (bureau) / 200 px (mobile), cover centré'
+                            : '≈1920×500 px — hero zone min. 400 px haut, carte ~380×220+ px, cover',
+                        acceptedFormats: 'JPG, PNG, WEBP',
+                        maxSizeMb: _typeBanniere == 'pub' ? 2 : 3,
+                        previewHeight: 120,
+                        onUploaded: (url) => setState(() => _imageUrl = url),
+                      ),
+                    ],
                     const SizedBox(height: 16),
-                    _dialogLabel('Image de fond *'),
-                    const SizedBox(height: 8),
-                    ImageUploadWidget(
-                      currentImageUrl: _imageUrl,
-                      uploadUrl:
-                          '$apiBaseUrl$apiPrefix/admin/bannieres/upload-image',
-                      fieldName: 'image',
-                      title: 'Image de bannière',
-                      dimensionsInfo:
-                          '1920 × 440 px (bande large) — affichage accueil ≈ 440 px haut (bureau), 300–400 px (mobile)',
-                      acceptedFormats: 'JPG, PNG, WEBP',
-                      maxSizeMb: 10,
-                      previewHeight: 120,
-                      onUploaded: (url) => setState(() => _imageUrl = url),
-                    ),
-                    const SizedBox(height: 16),
-                    _dialogLabel('Badge'),
-                    const SizedBox(height: 6),
-                    _dialogField(
-                      _badgeCtrl,
-                      'Ex: 🇬🇳 Plateforme N°1 en Guinée',
-                    ),
-                    const SizedBox(height: 14),
                     _dialogLabel('Titre principal *'),
                     const SizedBox(height: 6),
                     _dialogField(
                       _titreCtrl,
                       'Ex: Trouvez l\'Emploi de Vos Rêves',
                     ),
-                    const SizedBox(height: 14),
-                    _dialogLabel('Sous-titre'),
-                    const SizedBox(height: 6),
-                    _dialogField(
-                      _sousTitreCtrl,
-                      'Description courte',
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 14),
-                    _dialogLabel('Bouton principal (CTA 1)'),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _dialogField(_labelCta1Ctrl, 'Label CTA 1'),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _dialogField(
-                            _lienCta1Ctrl,
-                            'Lien CTA 1 (ex: /offres)',
+                    if (_typeBanniere != 'ticker') ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('Badge'),
+                      const SizedBox(height: 6),
+                      _dialogField(
+                        _badgeCtrl,
+                        'Ex: 🇬🇳 Plateforme N°1 en Guinée',
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(
+                              _couleurBadgeCtrl,
+                              'Couleur badge (hex, ex: #1A56DB)',
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _dialogLabel('Bouton secondaire (CTA 2)'),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _dialogField(_labelCta2Ctrl, 'Label CTA 2'),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _dialogField(_lienCta2Ctrl, 'Lien CTA 2'),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _dialogLabel('Sous-titre'),
+                      const SizedBox(height: 6),
+                      _dialogField(
+                        _sousTitreCtrl,
+                        'Description courte',
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 14),
+                      _dialogLabel('Bouton principal (CTA 1)'),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(_labelCta1Ctrl, 'Label CTA 1'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _dialogField(
+                              _lienCta1Ctrl,
+                              'Lien CTA 1 (ex: /offres)',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _dialogLabel('Bouton secondaire (CTA 2)'),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dialogField(_labelCta2Ctrl, 'Label CTA 2'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _dialogField(_lienCta2Ctrl, 'Lien CTA 2'),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('Sous-titre (optionnel, affiché dans le ticker)'),
+                      const SizedBox(height: 6),
+                      _dialogField(
+                        _sousTitreCtrl,
+                        'Texte additionnel dans la bande',
+                        maxLines: 2,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -4212,13 +6086,18 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed:
-                          (_isSaving || _imageUrl == null || _imageUrl!.isEmpty)
+                      onPressed: (_isSaving ||
+                              _titreCtrl.text.trim().isEmpty ||
+                              (_typeBanniere != 'ticker' &&
+                                  (_imageUrl == null || _imageUrl!.isEmpty)))
                           ? null
                           : () async {
                               setState(() => _isSaving = true);
                               await widget.onSave({
-                                'image_url': _imageUrl,
+                                if (_typeBanniere != 'ticker' ||
+                                    (_imageUrl != null &&
+                                        _imageUrl!.trim().isNotEmpty))
+                                  'image_url': _imageUrl,
                                 'type_banniere': _typeBanniere,
                                 'texte_badge': _badgeCtrl.text.trim(),
                                 'titre': _titreCtrl.text.trim(),
@@ -4231,6 +6110,7 @@ class _BanniereDialogState extends State<_BanniereDialog> {
                                 'hauteur_px': _hauteurPxCtrl.text.trim(),
                                 'lien_externe': _lienExterneCtrl.text.trim(),
                                 'ordre_pub': _ordrePubCtrl.text.trim(),
+                                'couleur_badge': _couleurBadgeCtrl.text.trim(),
                               });
                               if (!mounted) return;
                               Navigator.pop(context);

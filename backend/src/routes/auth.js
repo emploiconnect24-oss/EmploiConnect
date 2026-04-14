@@ -11,6 +11,8 @@ import { logError } from '../utils/logger.js';
 import { notifNouvelleInscription } from '../services/auto_notification.service.js';
 import { sendWelcomeEmailOnRegister } from '../services/mail.service.js';
 import { getSecurityParamsCached, loginAttemptsGuard } from '../middleware/security.middleware.js';
+import { resolveJwtExpiresIn, parseSessionIdleMinutes } from '../utils/jwtExpires.js';
+import { verifierCodeTotp } from '../services/twoFactor.service.js';
 import { requestPasswordReset, completePasswordReset } from '../services/passwordReset.service.js';
 import {
   verifierTokenGoogle,
@@ -22,6 +24,55 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const SALT_ROUNDS = 10;
+
+/**
+ * Admin avec TOTP activé : premier facteur OK → jeton temporaire 2FA (pas le JWT session).
+ * @param {{ googleShape?: boolean }} opts — Google renvoie `{ success, data }`, login un JSON plat.
+ */
+async function tryAdminTwoFactorResponse(res, user, opts = {}) {
+  if (user.role !== ROLES.ADMIN) return false;
+  const { data: adm } = await supabase
+    .from('administrateurs')
+    .select('id, twofa_actif, totp_secret')
+    .eq('utilisateur_id', user.id)
+    .maybeSingle();
+  if (!adm?.twofa_actif || !adm.totp_secret) return false;
+  const tempToken = jwt.sign(
+    {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      p2fa: true,
+    },
+    JWT_SECRET,
+    { expiresIn: '10m' },
+  );
+  const userPayload = {
+    id: user.id,
+    email: user.email,
+    nom: user.nom,
+    role: user.role,
+  };
+  if (opts.googleShape) {
+    res.json({
+      success: true,
+      message: 'Code 2FA requis',
+      data: {
+        two_factor_required: true,
+        temp_token: tempToken,
+        user: userPayload,
+      },
+    });
+  } else {
+    res.json({
+      two_factor_required: true,
+      temp_token: tempToken,
+      message: 'Code 2FA requis',
+      user: userPayload,
+    });
+  }
+  return true;
+}
 
 // Limitation de débit spécifique sur /auth/login pour éviter le brute-force
 const loginLimiter = rateLimit({
@@ -89,9 +140,16 @@ router.post('/google', async (req, res) => {
       });
     }
 
-    const googleUser = idToken
-      ? await verifierTokenGoogle(String(idToken), supabase)
-      : await verifierAccessTokenGoogle(String(accessToken), supabase);
+    let googleUser;
+    if (idToken) {
+      console.log('[GoogleAuth] Verification id_token...');
+      googleUser = await verifierTokenGoogle(String(idToken), supabase);
+      console.log('[GoogleAuth] id_token OK:', googleUser.email);
+    } else {
+      console.log('[GoogleAuth] Utilisation access_token...');
+      googleUser = await verifierAccessTokenGoogle(String(accessToken), supabase);
+      console.log('[GoogleAuth] access_token OK:', googleUser.email);
+    }
 
     const sel = 'id, nom, email, role, photo_url, google_id, est_actif, est_valide, mot_de_passe';
 
@@ -210,16 +268,6 @@ router.post('/google', async (req, res) => {
       }
     }
 
-    const secParams = await getSecurityParamsCached();
-    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
-    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
-
-    const token = jwt.sign(
-      { userId: utilisateur.id, email: utilisateur.email, role: utilisateur.role },
-      JWT_SECRET,
-      { expiresIn },
-    );
-
     const { data: userFinal, error: uErr } = await supabase
       .from('utilisateurs')
       .select('id, nom, email, role, photo_url, est_actif, est_valide')
@@ -237,12 +285,24 @@ router.post('/google', async (req, res) => {
       .eq('id', userFinal.id);
     if (lcErr) logError('[auth/google] derniere_connexion', lcErr);
 
+    if (await tryAdminTwoFactorResponse(res, userFinal, { googleShape: true })) return;
+
+    const secParams = await getSecurityParamsCached();
+    const expiresIn = resolveJwtExpiresIn(secParams, JWT_EXPIRES_IN);
+    const session_idle_minutes = parseSessionIdleMinutes(secParams);
+    const token = jwt.sign(
+      { userId: userFinal.id, email: userFinal.email, role: userFinal.role },
+      JWT_SECRET,
+      { expiresIn },
+    );
+
     return res.json({
       success: true,
       message: 'Connexion Google réussie',
       data: {
         token,
         expiresIn,
+        ...(session_idle_minutes != null ? { session_idle_minutes } : {}),
         user: {
           id: userFinal.id,
           nom: userFinal.nom,
@@ -270,12 +330,13 @@ router.post('/google', async (req, res) => {
 
 /**
  * POST /auth/register
- * Body: { email, mot_de_passe, nom, role, telephone?, adresse? }
+ * Body: { email, mot_de_passe, nom, role, telephone?, adresse?, nom_entreprise? }
  * role: 'chercheur' | 'entreprise' | 'admin'
  */
 router.post('/register', async (req, res) => {
   try {
-    const { email, mot_de_passe, nom, role, telephone, adresse } = req.body;
+    const { email, mot_de_passe, nom, role, telephone, adresse, nom_entreprise } =
+      req.body;
 
     if (!email || !mot_de_passe || !nom || !role) {
       return res.status(400).json({
@@ -360,9 +421,13 @@ router.post('/register', async (req, res) => {
     if (role === ROLES.CHERCHEUR) {
       await supabase.from('chercheurs_emploi').insert({ utilisateur_id: newUser.id });
     } else if (role === ROLES.ENTREPRISE) {
+      const ne =
+        nom_entreprise != null && String(nom_entreprise).trim()
+          ? String(nom_entreprise).trim().slice(0, 255)
+          : String(nom).trim();
       await supabase.from('entreprises').insert({
         utilisateur_id: newUser.id,
-        nom_entreprise: nom, // À compléter côté frontend avec un champ dédié si besoin
+        nom_entreprise: ne,
       });
     } else if (role === ROLES.ADMIN) {
       await supabase.from('administrateurs').insert({ utilisateur_id: newUser.id });
@@ -375,15 +440,14 @@ router.post('/register', async (req, res) => {
 
     void sendWelcomeEmailOnRegister(newUser, validationManuelle && role !== ROLES.ADMIN);
 
-    // Expiration JWT dynamique (paramètre jwt_expiration_heures) si configuré
     const secParams = await getSecurityParamsCached();
-    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
-    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
+    const expiresIn = resolveJwtExpiresIn(secParams, JWT_EXPIRES_IN);
+    const session_idle_minutes = parseSessionIdleMinutes(secParams);
 
     const token = jwt.sign(
       { userId: newUser.id, email: newUser.email, role: newUser.role },
       JWT_SECRET,
-      { expiresIn }
+      { expiresIn },
     );
 
     // Si validation manuelle activée : ne pas donner de token utilisable (compte non validé),
@@ -410,6 +474,7 @@ router.post('/register', async (req, res) => {
       },
       token,
       expiresIn,
+      ...(session_idle_minutes != null ? { session_idle_minutes } : {}),
     });
   } catch (err) {
     logError('Register - erreur inattendue', err);
@@ -464,14 +529,16 @@ router.post('/login', loginAttemptsGuard, loginLimiter, async (req, res) => {
       return res.status(403).json({ message: 'Compte en attente de validation par un administrateur' });
     }
 
+    if (await tryAdminTwoFactorResponse(res, user)) return;
+
     const secParams = await getSecurityParamsCached();
-    const jwtH = parseInt(secParams.jwt_expiration_heures || '0', 10);
-    const expiresIn = jwtH > 0 ? `${jwtH}h` : JWT_EXPIRES_IN;
+    const expiresIn = resolveJwtExpiresIn(secParams, JWT_EXPIRES_IN);
+    const session_idle_minutes = parseSessionIdleMinutes(secParams);
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
-      { expiresIn }
+      { expiresIn },
     );
 
     const nowIso = new Date().toISOString();
@@ -493,10 +560,82 @@ router.post('/login', loginAttemptsGuard, loginLimiter, async (req, res) => {
       },
       token,
       expiresIn,
+      ...(session_idle_minutes != null ? { session_idle_minutes } : {}),
     });
   } catch (err) {
     logError('Login - erreur inattendue', err);
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * POST /auth/login/2fa — finalise la connexion admin après TOTP (jeton temporaire).
+ * Body: { temp_token, code }
+ */
+router.post('/login/2fa', loginLimiter, async (req, res) => {
+  try {
+    const { temp_token: tempToken, code } = req.body || {};
+    if (!tempToken || !code) {
+      return res.status(400).json({ message: 'temp_token et code requis' });
+    }
+    let decoded;
+    try {
+      decoded = jwt.verify(String(tempToken), JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Session 2FA expirée ou invalide' });
+    }
+    if (!decoded.p2fa || !decoded.userId) {
+      return res.status(401).json({ message: 'Jeton 2FA invalide' });
+    }
+    const { data: adm } = await supabase
+      .from('administrateurs')
+      .select('totp_secret, twofa_actif')
+      .eq('utilisateur_id', decoded.userId)
+      .maybeSingle();
+    if (!adm?.twofa_actif || !adm.totp_secret) {
+      return res.status(400).json({ message: '2FA non configuré pour ce compte' });
+    }
+    if (!verifierCodeTotp(adm.totp_secret, code)) {
+      return res.status(401).json({ message: 'Code 2FA incorrect' });
+    }
+    const { data: user, error: uErr } = await supabase
+      .from('utilisateurs')
+      .select('id, email, nom, role, est_actif, est_valide')
+      .eq('id', decoded.userId)
+      .single();
+    if (uErr || !user || !user.est_actif) {
+      return res.status(403).json({ message: 'Compte indisponible' });
+    }
+    const secParams = await getSecurityParamsCached();
+    const expiresIn = resolveJwtExpiresIn(secParams, JWT_EXPIRES_IN);
+    const session_idle_minutes = parseSessionIdleMinutes(secParams);
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn },
+    );
+    const nowIso = new Date().toISOString();
+    const { error: lcErr } = await supabase
+      .from('utilisateurs')
+      .update({ derniere_connexion: nowIso })
+      .eq('id', user.id);
+    if (lcErr) logError('Login/2fa - derniere_connexion', lcErr);
+
+    return res.json({
+      message: 'Connexion réussie',
+      user: {
+        id: user.id,
+        email: user.email,
+        nom: user.nom,
+        role: user.role,
+      },
+      token,
+      expiresIn,
+      ...(session_idle_minutes != null ? { session_idle_minutes } : {}),
+    });
+  } catch (err) {
+    logError('Login/2fa', err);
+    return res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 

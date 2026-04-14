@@ -102,15 +102,34 @@ export async function getProfilAdmin(req, res) {
 
     const { data: adm } = await supabase
       .from('administrateurs')
-      .select('niveau_acces')
+      .select(
+        `
+        niveau_acces,
+        est_super_admin,
+        role_id,
+        admin_roles ( nom, couleur )
+      `,
+      )
       .eq('utilisateur_id', req.user.id)
       .maybeSingle();
+
+    let adminPayload = adm ? { ...adm } : { niveau_acces: 'admin' };
+    const rawRole = adminPayload.admin_roles;
+    const roleRow = Array.isArray(rawRole) ? rawRole[0] : rawRole;
+    delete adminPayload.admin_roles;
+    if (roleRow && typeof roleRow === 'object') {
+      adminPayload.role_nom = roleRow.nom ?? null;
+      adminPayload.role_couleur = roleRow.couleur ?? null;
+    } else {
+      adminPayload.role_nom = null;
+      adminPayload.role_couleur = null;
+    }
 
     return res.json({
       success: true,
       data: {
         ...user,
-        admin: adm || { niveau_acces: 'admin' },
+        admin: adminPayload,
       },
     });
   } catch (err) {

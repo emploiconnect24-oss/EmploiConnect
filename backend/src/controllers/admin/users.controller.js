@@ -49,7 +49,11 @@ export async function getUtilisateurs(req, res) {
         photo_url, est_actif, est_valide, raison_blocage,
         derniere_connexion, date_creation,
         chercheurs_emploi ( id, disponibilite, niveau_etude ),
-        entreprises ( id, nom_entreprise, secteur_activite, logo_url, banniere_url )
+        entreprises ( id, nom_entreprise, secteur_activite, logo_url, banniere_url ),
+        administrateurs (
+          est_super_admin,
+          admin_roles ( nom, couleur, icone )
+        )
       `,
         { count: 'exact' },
       )
@@ -69,11 +73,26 @@ export async function getUtilisateurs(req, res) {
     const { data, count, error } = await query;
     if (error) throw error;
 
-    const utilisateurs = (data || []).map((u) => ({
-      ...u,
-      ville: u.adresse ?? u.ville ?? null,
-      created_at: u.date_creation ?? u.created_at,
-    }));
+    const utilisateurs = (data || []).map((u) => {
+      const rawAdm = u.administrateurs;
+      const adm = Array.isArray(rawAdm) ? rawAdm[0] : rawAdm;
+      const rawRole = adm?.admin_roles;
+      const roleRow = Array.isArray(rawRole) ? rawRole[0] : rawRole;
+      const { administrateurs: _adm, ...rest } = u;
+      return {
+        ...rest,
+        ville: u.adresse ?? u.ville ?? null,
+        created_at: u.date_creation ?? u.created_at,
+        est_super_admin: Boolean(adm?.est_super_admin),
+        role_admin: roleRow
+          ? {
+              nom: roleRow.nom,
+              couleur: roleRow.couleur,
+              icone: roleRow.icone,
+            }
+          : null,
+      };
+    });
 
     const { data: compteurs } = await supabase.from('utilisateurs').select('role, est_actif, est_valide');
     const stats = {

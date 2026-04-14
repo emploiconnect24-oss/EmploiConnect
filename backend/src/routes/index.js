@@ -2,6 +2,7 @@
  * Agrégation des routes API
  */
 import { Router } from 'express';
+import { optionalAuth } from '../middleware/auth.js';
 import authRoutes from './auth.routes.js';
 import usersRoutes from './users.js';
 import offresRoutes from './offres.js';
@@ -33,6 +34,11 @@ import { listBannieresPubliques } from '../controllers/admin/bannieres.controlle
 import { getFooterConfig, getGeneralConfig } from '../controllers/public/siteConfig.controller.js';
 import { getTopEntreprisesPublic } from '../controllers/public/entreprisesPublic.controller.js';
 import { getTemoignagesPublic } from '../controllers/public/temoignagesPublic.controller.js';
+import { getApropos } from '../controllers/apropos.controller.js';
+import {
+  postNewsletterSubscribe,
+  getNewsletterUnsubscribe,
+} from '../controllers/public/newsletter.controller.js';
 import candidatTemoignagesRoutes from './candidat/temoignages.js';
 import statsRoutes from './stats.routes.js';
 import illustrationRoutes from './illustration.routes.js';
@@ -47,6 +53,10 @@ router.get('/config/general', getGeneralConfig);
 router.get('/entreprises/top-public', getTopEntreprisesPublic);
 router.get('/temoignages/public', getTemoignagesPublic);
 router.get('/temoignages', getTemoignagesPublic);
+
+router.get('/apropos', optionalAuth, getApropos);
+router.post('/newsletter/subscribe', postNewsletterSubscribe);
+router.get('/newsletter/unsubscribe', getNewsletterUnsubscribe);
 
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);

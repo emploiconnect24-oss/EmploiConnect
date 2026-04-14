@@ -11,6 +11,9 @@ const defaultGeneralConfig = {
   favicon_url: '',
   couleur_primaire: '#1A56DB',
   description_plateforme: 'Plateforme intelligente d\'offres et de recherche d\'emploi en Guinée',
+  email_contact: '',
+  telephone_contact: '',
+  adresse_contact: '',
   mode_maintenance: 'false',
   message_maintenance: '',
 };
@@ -25,6 +28,8 @@ const defaultFooterConfig = {
   footer_twitter: '',
   footer_instagram: '',
   footer_whatsapp: '',
+  /** Renseigné depuis `nom_plateforme` (onglet Général) pour copyright / cohérence. */
+  platform_name: 'EmploiConnect',
 };
 
 export async function getFooterConfig(req, res) {
@@ -43,6 +48,34 @@ export async function getFooterConfig(req, res) {
     (data || []).forEach((p) => {
       result[p.cle] = p.valeur;
     });
+
+    const { data: genRows, error: genErr } = await supabase
+      .from('parametres_plateforme')
+      .select('cle, valeur')
+      .in('cle', [
+        'email_contact',
+        'telephone_contact',
+        'adresse_contact',
+        'nom_plateforme',
+        'description_plateforme',
+      ]);
+    const gen = {};
+    if (!genErr) {
+      (genRows || []).forEach((p) => {
+        gen[p.cle] = p.valeur;
+      });
+    }
+    const trim = (v) => String(v ?? '').trim();
+    /** L’onglet Général prime lorsque les champs sont renseignés (même source que le footer public). */
+    if (trim(gen.email_contact)) result.footer_email = trim(gen.email_contact);
+    if (trim(gen.telephone_contact)) result.footer_telephone = trim(gen.telephone_contact);
+    if (trim(gen.adresse_contact)) result.footer_adresse = trim(gen.adresse_contact);
+    if (trim(gen.description_plateforme)) {
+      result.footer_tagline = trim(gen.description_plateforme);
+    }
+    if (trim(gen.nom_plateforme)) {
+      result.platform_name = trim(gen.nom_plateforme);
+    }
 
     return res.json({ success: true, data: result });
   } catch (err) {
@@ -66,6 +99,9 @@ export async function getGeneralConfig(req, res) {
         'favicon_url',
         'couleur_primaire',
         'description_plateforme',
+        'email_contact',
+        'telephone_contact',
+        'adresse_contact',
         'mode_maintenance',
         'message_maintenance',
       ]);

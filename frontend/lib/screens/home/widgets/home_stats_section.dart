@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../config/api_config.dart';
+import '../../../core/theme/theme_extension.dart';
 import 'home_design_tokens.dart';
 
 /// Agrégats accueil (une seule requête possible depuis [HomePage]).
@@ -71,7 +72,7 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200));
     final snap = widget.statsSnapshot;
     if (snap != null) {
       _applySnapshot(snap);
@@ -138,10 +139,22 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
       _nbEntreprises = 0;
       _nbCandidats = 0;
       _nbOffres = 0;
-      _satisfaction = 0;
+      _satisfaction = 98;
       _loaded = true;
     });
     _ctrl.forward(from: 0);
+  }
+
+  /// Affichage marketing : 0 → « Bientôt », sinon « n+ » / « k+ » (brut déjà borné côté anim).
+  static String _formatCompteHero(int valeurFinale, int brutAnime) {
+    if (valeurFinale <= 0) return 'Bientôt';
+    final n = brutAnime.clamp(1, valeurFinale);
+    if (n >= 1000) {
+      final k = n / 1000.0;
+      final s = (k >= 10 || k == k.roundToDouble()) ? k.toStringAsFixed(0) : k.toStringAsFixed(1);
+      return '${s}k+';
+    }
+    return '$n+';
   }
 
   static double _easeOutExpo(double t) {
@@ -154,8 +167,9 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
     final w = MediaQuery.sizeOf(context).width;
     final pad = w < 700 ? 14.0 : 40.0;
     final waitingParent = widget.expectParentStats && widget.statsSnapshot == null && !_loaded;
+    final cs = Theme.of(context).colorScheme;
     return ColoredBox(
-      color: Colors.white,
+      color: cs.surface,
       child: Padding(
         padding: EdgeInsets.fromLTRB(pad, 28, pad, 20),
         child: Column(
@@ -180,7 +194,7 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
                     style: GoogleFonts.poppins(
                       fontSize: w < 600 ? 24 : 28,
                       fontWeight: FontWeight.w800,
-                      color: HomeDesign.dark,
+                      color: cs.onSurface,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -189,7 +203,7 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
                     _loaded ? 'La plateforme qui grandit avec vous' : 'Chargement…',
                     style: GoogleFonts.inter(
                       fontSize: 14,
-                      color: const Color(0xFF64748B),
+                      color: cs.onSurfaceVariant,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -210,31 +224,34 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
                     icone: Icons.apartment_rounded,
                     valeurFinale: _nbEntreprises,
                     label: 'Entreprises\npartenaires',
-                    suffixe: _nbEntreprises >= 100 ? '+' : '',
+                    suffixe: '',
                     ctrl: _ctrl,
                     delai: 0,
                     valeurStatique: null,
                     cardWidth: tileW,
+                    marketingCount: true,
                   ),
                   _StatAnimee(
                     icone: Icons.groups_rounded,
                     valeurFinale: _nbCandidats,
                     label: 'Candidats\ninscrits',
-                    suffixe: _nbCandidats >= 100 ? '+' : '',
+                    suffixe: '',
                     ctrl: _ctrl,
                     delai: 110,
                     valeurStatique: null,
                     cardWidth: tileW,
+                    marketingCount: true,
                   ),
                   _StatAnimee(
                     icone: Icons.work_outline_rounded,
                     valeurFinale: _nbOffres,
                     label: 'Offres\npubliées',
-                    suffixe: _nbOffres >= 50 ? '+' : '',
+                    suffixe: '',
                     ctrl: _ctrl,
                     delai: 220,
                     valeurStatique: null,
                     cardWidth: tileW,
+                    marketingCount: true,
                   ),
                   _StatAnimee(
                     icone: Icons.star_rounded,
@@ -245,6 +262,7 @@ class _HomeStatsSectionState extends State<HomeStatsSection> with SingleTickerPr
                     delai: 330,
                     valeurStatique: _satisfaction <= 0 && _loaded ? '—' : null,
                     cardWidth: tileW,
+                    marketingCount: false,
                   ),
                 ];
 
@@ -275,6 +293,7 @@ class _StatAnimee extends StatefulWidget {
     required this.delai,
     required this.cardWidth,
     this.valeurStatique,
+    this.marketingCount = false,
   });
 
   final IconData icone;
@@ -285,6 +304,8 @@ class _StatAnimee extends StatefulWidget {
   final int delai;
   final String? valeurStatique;
   final double cardWidth;
+  /// Comptes accueil : format « Bientôt » / « n+ » / « k+ ».
+  final bool marketingCount;
 
   @override
   State<_StatAnimee> createState() => _StatAnimeeState();
@@ -312,7 +333,7 @@ class _StatAnimeeState extends State<_StatAnimee> with SingleTickerProviderState
 
   @override
   Widget build(BuildContext context) {
-    const totalMs = 1800;
+    const totalMs = 2200;
     final start = (widget.delai / totalMs).clamp(0.0, 0.88);
     final anim = CurvedAnimation(
       parent: widget.ctrl,
@@ -336,21 +357,36 @@ class _StatAnimeeState extends State<_StatAnimee> with SingleTickerProviderState
             animation: anim,
             builder: (context, _) {
               final t = _HomeStatsSectionState._easeOutExpo(anim.value);
-              final brut = (t * widget.valeurFinale).round();
+              final vf = widget.valeurFinale;
+              final int brut;
+              if (widget.marketingCount) {
+                brut = vf <= 0 ? 0 : math.max(1, (t * vf).round()).clamp(0, vf);
+              } else {
+                brut = (t * vf).round();
+              }
               final afficheStatique = widget.valeurStatique;
-              final texteNombre = afficheStatique ?? '$brut${widget.suffixe}';
+              final String texteNombre;
+              if (afficheStatique != null) {
+                texteNombre = afficheStatique;
+              } else if (widget.marketingCount) {
+                texteNombre = _HomeStatsSectionState._formatCompteHero(vf, brut);
+              } else {
+                texteNombre = '$brut${widget.suffixe}';
+              }
               final scaleNombre = Tween<double>(begin: 0.82, end: 1).transform(
                 Curves.easeOutBack.transform(anim.value.clamp(0.0, 1.0)),
               );
 
+              final cardBg = Theme.of(context).colorScheme.surface;
+              final borderC = context.themeExt.cardBorder;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardBg,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: _hovered ? HomeDesign.primary.withValues(alpha: 0.35) : const Color(0xFFE2E8F0),
+                    color: _hovered ? HomeDesign.primary.withValues(alpha: 0.35) : borderC,
                     width: _hovered ? 1.5 : 1,
                   ),
                   boxShadow: [

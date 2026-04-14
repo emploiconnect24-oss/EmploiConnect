@@ -47,11 +47,10 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
         return 'Super administrateur';
       case 'moderateur':
       case 'modérateur':
-        // En base, la valeur par défaut historique « moderateur » = accès panneau admin complet.
-        return 'Administrateur';
+        return 'Compte modérateur (ancien champ)';
       case 'admin':
       default:
-        return 'Administrateur';
+        return 'Compte administrateur (ancien champ)';
     }
   }
 
@@ -60,7 +59,10 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
     if (k == 'super_admin' || k == 'superadmin') {
       return 'Tous les droits sur la plateforme';
     }
-    return 'Accès complet au panneau d’administration';
+    if (k == 'moderateur' || k == 'modérateur') {
+      return 'Droits délégués — le détail du rôle RBAC s’affiche une fois les permissions chargées.';
+    }
+    return 'Droits définis par le super administrateur (rôle RBAC).';
   }
 
   String _formatDateTime(String? iso) {
@@ -106,7 +108,9 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
           _loading = false;
         });
         if (mounted) {
-          context.read<AdminProvider>().syncProfilFromMap(m);
+          final ap = context.read<AdminProvider>();
+          ap.syncProfilFromMap(m);
+          await ap.loadAdminAccess(force: false);
         }
       } else {
         setState(() {
@@ -453,15 +457,33 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
       );
     }
 
-    final admin = _profil?['admin'];
-    final niveauRaw = admin is Map ? admin['niveau_acces']?.toString() : null;
-    final niveauLibelle = _libelleNiveauAcces(niveauRaw);
-    final niveauSousTitre = _sousTitreNiveau(niveauRaw);
+    final adminMap = _profil?['admin'];
+    final niveauRaw = adminMap is Map ? adminMap['niveau_acces']?.toString() : null;
+    final roleNomProfil =
+        adminMap is Map ? adminMap['role_nom']?.toString().trim() : null;
+    final estSuperProfil = adminMap is Map && adminMap['est_super_admin'] == true;
     final photoUrl = _profil?['photo_url']?.toString();
     final nom = _profil?['nom']?.toString() ?? '';
     final derniere = _profil?['derniere_connexion']?.toString();
 
-    return ResponsiveContainer(
+    return Consumer<AdminProvider>(
+      builder: (context, adminProv, _) {
+        late final String niveauLibelle;
+        late final String niveauSousTitre;
+        if (adminProv.adminAccessLoaded) {
+          niveauLibelle = adminProv.libelleRoleLong;
+          niveauSousTitre = adminProv.descriptionAcces;
+        } else if (roleNomProfil != null && roleNomProfil.isNotEmpty) {
+          niveauLibelle = estSuperProfil ? 'Super Administrateur' : roleNomProfil;
+          niveauSousTitre = estSuperProfil
+              ? 'Accès complet à la plateforme'
+              : 'Accès limité : $roleNomProfil';
+        } else {
+          niveauLibelle = _libelleNiveauAcces(niveauRaw);
+          niveauSousTitre = _sousTitreNiveau(niveauRaw);
+        }
+
+        return ResponsiveContainer(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         child: LayoutBuilder(
@@ -522,6 +544,8 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
           },
         ),
       ),
+    );
+      },
     );
   }
 
@@ -618,7 +642,9 @@ class _AdminProfilScreenState extends State<AdminProfilScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                nom.isEmpty ? 'Administrateur' : nom,
+                nom.isNotEmpty
+                    ? nom
+                    : (_profil?['email']?.toString().split('@').first ?? 'Profil'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.headlineSmall?.copyWith(
                   color: Colors.white,

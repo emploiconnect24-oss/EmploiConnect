@@ -79,6 +79,9 @@ export async function runWeeklyDigestJob() {
     .eq('est_actif', true)
     .eq('est_valide', true)
     .eq('notif_resume_hebdo', true);
+  console.log(
+    `[weeklyDigest] Début envoi — candidats éligibles: ${(users || []).length}, offres 7j: ${(offres || []).length}`,
+  );
 
   const minGapMs = 5 * 24 * 3600 * 1000;
   const now = Date.now();
@@ -90,6 +93,7 @@ export async function runWeeklyDigestJob() {
     .in('utilisateur_id', userIds);
   const profilByUser = Object.fromEntries((profils || []).map((p) => [p.utilisateur_id, p]));
 
+  let nbEnvoyes = 0;
   for (const u of users || []) {
     if (!u.email) continue;
     const last = u.dernier_resume_hebdo_envoye_at ? new Date(u.dernier_resume_hebdo_envoye_at).getTime() : 0;
@@ -133,6 +137,7 @@ export async function runWeeklyDigestJob() {
     try {
       const r = await sendPlatformEmail({ to: u.email, subject, text, html });
       if (r.ok) {
+        nbEnvoyes += 1;
         await supabase
           .from('utilisateurs')
           .update({ dernier_resume_hebdo_envoye_at: new Date().toISOString() })
@@ -143,5 +148,7 @@ export async function runWeeklyDigestJob() {
     }
   }
 
-  console.log('[weeklyDigest] Terminé — candidats éligibles:', (users || []).length);
+  console.log(
+    `[weeklyDigest] Terminé — envoyés: ${nbEnvoyes}, candidats éligibles: ${(users || []).length}`,
+  );
 }

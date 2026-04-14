@@ -10,7 +10,7 @@ import '../../../../shared/widgets/job_card_widget.dart';
 import 'home_design_tokens.dart';
 
 Map<String, dynamic> _mapOffreToJobCard(Map<String, dynamic> o) {
-  dynamic ent = o['entreprises'];
+  dynamic ent = o['entreprise'] ?? o['entreprises'];
   String company = '';
   if (ent is Map) {
     company = ent['nom_entreprise']?.toString() ?? '';
@@ -63,7 +63,7 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
 
   Future<List<Map<String, dynamic>>> _load() async {
     try {
-      final r = await OffresService().getOffresPublic(offset: 0, limit: _kMaxOffresAccueil);
+      final r = await OffresService().getOffresPublic(page: 1, limit: _kMaxOffresAccueil);
       final list = r.offres.map(_mapOffreToJobCard).toList();
       list.sort((a, b) {
         final da = a['date'] is DateTime ? a['date'] as DateTime : DateTime.fromMillisecondsSinceEpoch(0);
@@ -89,24 +89,32 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
     }
 
     final flatBg = widget.backgroundColor ?? context.themeExt.sectionBg;
+    final cs = Theme.of(context).colorScheme;
+    final dark = context.isDark;
     return Container(
       width: double.infinity,
       decoration: widget.homepageV2Gradient
-          ? const BoxDecoration(
+          ? BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFFFFFFFF),
-                  Color(0xFFF0F7FF),
-                  Color(0xFFFFFFFF),
-                ],
+                colors: dark
+                    ? const [
+                        Color(0xFF0F172A),
+                        Color(0xFF1A2F5E),
+                        Color(0xFF0F172A),
+                      ]
+                    : const [
+                        Color(0xFFFFFFFF),
+                        Color(0xFFF0F7FF),
+                        Color(0xFFFFFFFF),
+                      ],
               ),
             )
           : BoxDecoration(
               color: flatBg,
               border: Border(
-                top: BorderSide(color: Colors.black.withValues(alpha: 0.04)),
+                top: BorderSide(color: context.themeExt.cardBorder.withValues(alpha: 0.65)),
               ),
             ),
       child: Padding(
@@ -119,7 +127,7 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
               style: GoogleFonts.poppins(
                 fontSize: w < 600 ? 24 : 28,
                 fontWeight: FontWeight.w800,
-                color: HomeDesign.dark,
+                color: cs.onSurface,
               ),
             )
                 .animate()
@@ -131,7 +139,7 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: const Color(0xFF64748B),
+                color: cs.onSurfaceVariant,
                 height: 1.5,
               ),
             )
@@ -146,9 +154,12 @@ class _RecentJobsSectionWidgetState extends State<RecentJobsSectionWidget> {
                 }
                 final jobs = snap.data ?? const <Map<String, dynamic>>[];
                 if (jobs.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 30),
-                    child: Text('Aucune offre disponible pour le moment.'),
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 30),
+                    child: Text(
+                      'Aucune offre disponible pour le moment.',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
                   );
                 }
                 final maxItems = cols * 2;
@@ -266,6 +277,7 @@ class _ShimmerGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spacing = 14.0;
+    final shimmerBlock = context.themeExt.shimmerHighlight;
     return LayoutBuilder(
       builder: (context, c) {
         final itemW = (c.maxWidth - (columns - 1) * spacing) / columns;
@@ -292,27 +304,27 @@ class _ShimmerGrid extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
+                          Container(width: 42, height: 42, decoration: BoxDecoration(color: shimmerBlock, borderRadius: BorderRadius.circular(12))),
                           const SizedBox(width: 10),
-                          Expanded(child: Container(height: 16, color: Colors.white)),
+                          Expanded(child: Container(height: 16, color: shimmerBlock)),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Container(height: 12, width: 160, color: Colors.white),
+                      Container(height: 12, width: 160, color: shimmerBlock),
                       const SizedBox(height: 8),
-                      Container(height: 12, width: 120, color: Colors.white),
+                      Container(height: 12, width: 120, color: shimmerBlock),
                       const SizedBox(height: 12),
-                      Container(height: 24, width: 62, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(100))),
+                      Container(height: 24, width: 62, decoration: BoxDecoration(color: shimmerBlock, borderRadius: BorderRadius.circular(100))),
                       const SizedBox(height: 12),
-                      Container(height: 12, width: double.infinity, color: Colors.white),
+                      Container(height: 12, width: double.infinity, color: shimmerBlock),
                       const SizedBox(height: 6),
-                      Container(height: 12, width: 180, color: Colors.white),
+                      Container(height: 12, width: 180, color: shimmerBlock),
                       const Spacer(),
                       Row(
                         children: [
-                          Container(height: 10, width: 60, color: Colors.white),
+                          Container(height: 10, width: 60, color: shimmerBlock),
                           const Spacer(),
-                          Container(height: 10, width: 90, color: Colors.white),
+                          Container(height: 10, width: 90, color: shimmerBlock),
                         ],
                       ),
                     ],

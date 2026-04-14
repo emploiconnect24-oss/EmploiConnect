@@ -6,30 +6,37 @@ import { supabase } from '../../config/supabase.js';
 export async function getTemoignagesPublic(req, res) {
   try {
     const lim = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 24);
-
-    // Deux FK vers utilisateurs → PostgREST exige le nom de contrainte (PGRST201) :
-    // - temoignages_recrutement_utilisateur_id_fkey (auteur / candidat)
-    // - temoignages_recrutement_moderateur_user_id_fkey (modérateur — non utilisé ici)
-    const { data, error } = await supabase
+    const selectFields = `
+      id,
+      message,
+      date_creation,
+      auteur:utilisateurs!temoignages_recrutement_utilisateur_id_fkey (
+        nom,
+        photo_url
+      ),
+      entreprises ( nom_entreprise, logo_url )
+    `;
+    let query = supabase
       .from('temoignages_recrutement')
-      .select(
-        `
-        id,
-        message,
-        date_creation,
-        auteur:utilisateurs!temoignages_recrutement_utilisateur_id_fkey (
-          nom,
-          photo_url
-        ),
-        entreprises ( nom_entreprise, logo_url )
-      `,
-      )
+      .select(selectFields)
       .eq('statut_moderation', 'approuve')
       .eq('est_publie', true)
       .order('date_creation', { ascending: false })
       .limit(lim);
-
+    let { data, error } = await query;
     if (error) throw error;
+
+    // Fallback: certains témoignages approuvés ne sont pas encore "publiés".
+    if (!data || data.length === 0) {
+      query = supabase
+        .from('temoignages_recrutement')
+        .select(selectFields)
+        .eq('statut_moderation', 'approuve')
+        .order('date_creation', { ascending: false })
+        .limit(lim);
+      ({ data, error } = await query);
+      if (error) throw error;
+    }
 
     const rows = (data || []).map((row) => {
       const u = row.auteur;

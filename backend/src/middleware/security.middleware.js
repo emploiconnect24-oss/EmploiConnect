@@ -4,6 +4,11 @@ import { logError } from '../utils/logger.js';
 let securityParamsCache = null;
 let cacheTimestamp = 0;
 
+export function invalidateSecurityParamsCache() {
+  securityParamsCache = null;
+  cacheTimestamp = 0;
+}
+
 async function loadSecurityParams() {
   const { data, error } = await supabase
     .from('parametres_plateforme')
@@ -44,24 +49,43 @@ function getClientIp(req) {
   );
 }
 
+/** Liste d’IPs : JSON array (admin) ou lignes / virgules (legacy). */
+export function parseIpsBloquees(raw) {
+  if (raw == null) return [];
+  const s = String(raw).trim();
+  if (!s) return [];
+  if (s.startsWith('[')) {
+    try {
+      const arr = JSON.parse(s);
+      if (!Array.isArray(arr)) return [];
+      return arr.map((x) => String(x).trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  return s.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+}
+
+export function ipMatchesBlocklist(clientIP, list) {
+  const c = String(clientIP || '').trim();
+  if (!c || !Array.isArray(list) || list.length === 0) return false;
+  return list.some((entry) => {
+    const e = String(entry || '').trim();
+    if (!e) return false;
+    return c === e;
+  });
+}
+
 export async function checkBlockedIP(req, res, next) {
   try {
     const params = await getSecurityParamsCached();
-    let ipsBloquees = [];
-    try {
-      ipsBloquees = JSON.parse(params.ips_bloquees || '[]');
-    } catch (_) {
-      ipsBloquees = [];
-    }
+    const ipsBloquees = parseIpsBloquees(params.ips_bloquees);
     const clientIP = getClientIp(req);
-    if (clientIP && Array.isArray(ipsBloquees)) {
-      const blocked = ipsBloquees.some((ip) => String(clientIP).includes(String(ip)));
-      if (blocked) {
-        return res.status(403).json({
-          success: false,
-          message: 'Accès refusé depuis cette adresse IP',
-        });
-      }
+    if (clientIP && ipMatchesBlocklist(clientIP, ipsBloquees)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Accès refusé depuis cette adresse IP',
+      });
     }
     return next();
   } catch (_) {

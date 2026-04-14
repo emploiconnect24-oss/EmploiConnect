@@ -358,6 +358,15 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
   }
 
   Color _accentColor(Map<String, dynamic> item) {
+    final hex = item['couleur_badge']?.toString().trim();
+    if (hex != null && hex.isNotEmpty) {
+      var h = hex.startsWith('#') ? hex.substring(1) : hex;
+      if (h.length == 8) h = h.substring(2);
+      if (h.length == 6) {
+        final parsed = int.tryParse(h, radix: 16);
+        if (parsed != null) return Color(0xFF000000 | parsed);
+      }
+    }
     final c = item['couleur'];
     if (c is int) return Color(c);
     if (c is num) return Color(c.toInt());
@@ -381,10 +390,12 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
     final imgUrl = (widget.item['image_url'] ?? widget.item['image'])?.toString();
     final titre = widget.item['titre']?.toString() ?? '';
     final desc = (widget.item['sous_titre'] ?? widget.item['desc'] ?? widget.item['description'])?.toString();
-    final badge = widget.item['badge']?.toString();
+    final badge = (widget.item['texte_badge'] ?? widget.item['badge'])?.toString();
     final placeholder = widget.item['_placeholder'] == true;
     final lien = (widget.item['lien_externe'] ?? widget.item['lien_cta_1'])?.toString().trim() ?? '';
     final showCta = widget.isActive && (placeholder || lien.isNotEmpty);
+    final ctaRaw = (widget.item['label_cta_1'] ?? widget.item['texte_bouton'])?.toString().trim();
+    final ctaLabel = (ctaRaw != null && ctaRaw.isNotEmpty) ? ctaRaw : 'Découvrir';
 
     return Material(
       color: Colors.transparent,
@@ -400,6 +411,7 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                 Image.network(
                   imgUrl,
                   fit: BoxFit.cover,
+                  alignment: Alignment.center,
                   loadingBuilder: (ctx, child, progress) {
                     if (progress == null) return child;
                     return Container(
@@ -458,15 +470,21 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                     );
                   },
                 ),
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxHeight < 170;
+                  return Padding(
+                    padding: EdgeInsets.all(compact ? 14 : 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
                     if (badge != null && badge.isNotEmpty) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 10 : 12,
+                          vertical: compact ? 4 : 5,
+                        ),
                         decoration: BoxDecoration(
                           color: couleur,
                           borderRadius: BorderRadius.circular(100),
@@ -481,13 +499,13 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                         child: Text(
                           badge,
                           style: GoogleFonts.inter(
-                            fontSize: 11,
+                            fontSize: compact ? 10 : 11,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: compact ? 6 : 10),
                     ],
                     AnimatedOpacity(
                       opacity: widget.isActive ? 1 : 0.72,
@@ -495,7 +513,7 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                       child: Text(
                         titre,
                         style: GoogleFonts.poppins(
-                          fontSize: 22,
+                          fontSize: compact ? 16 : 22,
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
                           height: 1.2,
@@ -506,20 +524,20 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                       ),
                     ),
                     if (desc != null && desc.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      SizedBox(height: compact ? 4 : 6),
                       Text(
                         desc,
                         style: GoogleFonts.inter(
-                          fontSize: 13,
+                          fontSize: compact ? 11 : 13,
                           color: Colors.white.withValues(alpha: 0.88),
                           height: 1.4,
                         ),
-                        maxLines: 2,
+                        maxLines: compact ? 1 : 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    if (showCta) ...[
-                      const SizedBox(height: 14),
+                    if (showCta && !compact) ...[
+                      const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
                         decoration: BoxDecoration(
@@ -534,7 +552,7 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                           ],
                         ),
                         child: Text(
-                          'Découvrir →',
+                          '$ctaLabel →',
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -543,8 +561,10 @@ class _CartePubState extends State<_CartePub> with SingleTickerProviderStateMixi
                         ),
                       ),
                     ],
-                  ],
-                ),
+                      ],
+                    ),
+                  );
+                },
               ),
               Positioned(
                 top: 16,

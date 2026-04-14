@@ -169,7 +169,7 @@ export async function getMailSettings() {
         map.email_from || '',
       ).trim(),
       fromName: String(
-        map.email_nom || map.email_nom_expediteur || 'EmploiConnect',
+        map.nom_plateforme || map.email_nom || map.email_nom_expediteur || 'EmploiConnect',
       ).trim() || 'EmploiConnect',
       platformName: String(map.nom_plateforme || 'EmploiConnect').trim() || 'EmploiConnect',
       tplWelcomeSubject: String(map.template_bienvenue_sujet || '').trim(),

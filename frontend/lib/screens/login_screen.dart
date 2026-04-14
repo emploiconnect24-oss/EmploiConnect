@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:animate_do/animate_do.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../core/constants/app_animations.dart';
-import '../core/constants/app_colors.dart';
-import '../core/constants/app_text_styles.dart';
+
 import '../providers/auth_provider.dart';
 import '../services/google_auth_service.dart';
-import 'auth/widgets/mobile_auth_header.dart';
-import '../shared/widgets/logo_widget.dart';
-import '../widgets/responsive_container.dart';
-import '../widgets/hover_scale.dart';
+import 'auth/admin_two_factor_code_dialog.dart';
+import 'auth/auth_widgets.dart';
 
+/// Connexion — PRD_AUTH_PAGES.md §1
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -18,14 +15,19 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
+  final _emailCtrl = TextEditingController();
+  final _mdpCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _loading = false;
-  bool _googleLoading = false;
-  String? _errorMessage;
-  bool _obscure = true;
+  bool _mdpVisible = false;
+  bool _isLoading = false;
+  bool _isGoogleLoading = false;
+  String? _erreur;
+
+  late AnimationController _animCtrl;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   @override
   void initState() {
@@ -33,404 +35,435 @@ class _LoginScreenState extends State<LoginScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       GoogleAuthService.prefetchConfig();
     });
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
+    _animCtrl.forward();
   }
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _animCtrl.dispose();
+    _emailCtrl.dispose();
+    _mdpCtrl.dispose();
     super.dispose();
   }
 
-  void _goForgotPassword() {
-    Navigator.of(context).pushNamed('/forgot-password');
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 768;
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: isMobile ? _buildMobile() : _buildDesktop(),
+    );
   }
 
-  Future<void> _googleSignIn() async {
-    if (_loading || _googleLoading) return;
-    debugPrint('[BoutonGoogle] login: clic');
-    setState(() {
-      _googleLoading = true;
-      _errorMessage = null;
-    });
-    final auth = context.read<AuthProvider>();
-    debugPrint('[BoutonGoogle] login: loginWithGoogle…');
-    final (ok, msg, pending) = await auth.loginWithGoogle();
-    debugPrint('[BoutonGoogle] login: ok=$ok pending=$pending msg=$msg');
-    if (!mounted) return;
-    setState(() => _googleLoading = false);
-    if (ok) {
-      auth.navigateToAuthenticatedHome(context);
-      return;
-    }
-    if (msg == null) return;
-    if (pending) {
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Compte créé'),
-          content: Text(msg),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
+  Widget _buildDesktop() => Row(
+    children: [
+      Expanded(
+        flex: 5,
+        child: ClipRect(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF1A56DB),
+                  Color(0xFF2563EB),
+                  Color(0xFF4F46E5),
+                ],
+              ),
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AuthLogoHeader(couleurTexte: Colors.white),
+                      const SizedBox(height: 40),
+                      Text(
+                        'Votre carrière\nvous attend.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 38,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Connectez-vous et découvrez les opportunités '
+                        'qui correspondent à votre profil.',
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          color: Colors.white.withValues(alpha: 0.75),
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      ..._loginPanelHighlights(),
+                      const SizedBox(height: 28),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('🇬🇳', style: TextStyle(fontSize: 24)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'La première plateforme intelligente '
+                                "de l'emploi en Guinée.",
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  height: 1.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      Expanded(
+        flex: 4,
+        child: ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.zero,
+            child: Center(
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+                    child: _buildFormulaire(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildMobile() => SafeArea(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 20),
+          AuthLogoHeader(couleurTexte: Theme.of(context).colorScheme.onSurface),
+          const SizedBox(height: 32),
+          _buildFormulaire(),
+        ],
+      ),
+    ),
+  );
+
+  Widget _buildFormulaire() {
+    final cs = Theme.of(context).colorScheme;
+    return Form(
+    key: _formKey,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Connexion',
+          style: GoogleFonts.poppins(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+          ),
+        ),
+        const SizedBox(height: 6),
+        RichText(
+          text: TextSpan(
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: cs.onSurfaceVariant,
+            ),
+            children: [
+              const TextSpan(text: 'Nouveau sur EmploiConnect ? '),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: GestureDetector(
+                  onTap: () =>
+                      Navigator.of(context).pushReplacementNamed('/register'),
+                  child: Text(
+                    'Créer un compte',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        AuthBoutonGoogle(
+          label: 'Continuer avec Google',
+          isLoading: _isGoogleLoading,
+          onTap: _connecterGoogle,
+        ),
+        const SizedBox(height: 14),
+        const AuthSeparateur(texte: 'ou se connecter avec email'),
+        const SizedBox(height: 14),
+        if (_erreur != null) ...[
+          AuthCarteErreur(message: _erreur!),
+          const SizedBox(height: 12),
+        ],
+        AuthChampEmail(ctrl: _emailCtrl),
+        const SizedBox(height: 14),
+        AuthChampMotDePasse(
+          ctrl: _mdpCtrl,
+          visible: _mdpVisible,
+          onToggle: () => setState(() => _mdpVisible = !_mdpVisible),
+          validator: (v) {
+            if (v == null || v.isEmpty) return 'Mot de passe requis';
+            return null;
+          },
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pushNamed('/forgot-password'),
+            child: Text(
+              'Mot de passe oublié ?',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: cs.primary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        AuthBoutonPrincipal(
+          label: 'Se connecter',
+          isLoading: _isLoading,
+          onTap: _seConnecter,
+        ),
+        const SizedBox(height: 14),
+        Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 16,
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.of(context).pushReplacementNamed(
+                  '/register?role=candidat',
+                ),
+                child: Text(
+                  'Créer un compte Candidat',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Text(
+                '·',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: cs.outline,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pushReplacementNamed(
+                  '/register?role=recruteur',
+                ),
+                child: Text(
+                  'Créer un compte Recruteur',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+  }
+
+  /// Points forts — panneau gauche (remplace stats / témoignages fictifs).
+  List<Widget> _loginPanelHighlights() {
+    const items = <(String, String, String)>[
+      ('🎯', 'Matching IA intelligent', 'Vos offres idéales en un clic'),
+      ('🚀', 'Opportunités en temps réel', 'Nouvelles offres chaque jour'),
+      ('🔒', 'Profil 100% sécurisé', 'Vos données restent privées'),
+    ];
+    return items.map((item) {
+      final (emoji, titre, sous) = item;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 18))),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titre,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    sous,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       );
-      return;
-    }
-    setState(() => _errorMessage = msg);
+    }).toList();
   }
 
-  Future<void> _submit() async {
+  Future<void> _seConnecter() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
-      _errorMessage = null;
-      _loading = true;
+      _isLoading = true;
+      _erreur = null;
     });
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    final auth = context.read<AuthProvider>();
-    final (ok, msg) = await auth.login(email: email, motDePasse: password);
-    setState(() => _loading = false);
-    if (!mounted) return;
-    if (ok) {
-      auth.navigateToAuthenticatedHome(context);
-    } else {
-      setState(() => _errorMessage = msg ?? 'Erreur de connexion');
+    try {
+      final auth = context.read<AuthProvider>();
+      final r = await auth.login(
+        email: _emailCtrl.text.trim(),
+        motDePasse: _mdpCtrl.text,
+      );
+      if (!mounted) return;
+      if (r.success) {
+        auth.navigateToAuthenticatedHome(context);
+        return;
+      }
+      if (r.needsTwoFactor && (r.tempToken ?? '').isNotEmpty) {
+        final done = await showAdminTwoFactorCodeDialog(
+          context,
+          submit: (code) => auth.completeLogin2Fa(
+                tempToken: r.tempToken!,
+                code: code,
+              ),
+        );
+        if (!mounted) return;
+        if (done) {
+          auth.navigateToAuthenticatedHome(context);
+        }
+        return;
+      }
+      setState(() => _erreur = r.message ?? 'Erreur de connexion');
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Widget _leftPanel(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: AppColors.authPanelGradient,
-          stops: AppColors.authPanelStops,
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const LogoWidget(
-              height: 40,
-              fallbackTextColor: Colors.white,
-              fallbackAccentColor: Color(0xFFBAE6FD),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Bienvenue sur EmploiConnect',
-              style: AppTextStyles.authPanelTitle,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Connectez-vous pour accéder à vos offres, candidatures, CV et suggestions IA.',
-              style: AppTextStyles.authPanelBody,
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _Pill(icon: Icons.auto_awesome, label: 'Matching IA'),
-                _Pill(icon: Icons.assignment, label: 'Suivi candidatures'),
-                _Pill(icon: Icons.shield, label: 'Plateforme modérée'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _formCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FadeInDown(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 200),
-                child: Text('Connexion', style: AppTextStyles.authTitle),
+  Future<void> _connecterGoogle() async {
+    setState(() {
+      _isGoogleLoading = true;
+      _erreur = null;
+    });
+    try {
+      final auth = context.read<AuthProvider>();
+      final g = await auth.loginWithGoogle();
+      if (!mounted) return;
+      if (g.ok) {
+        auth.navigateToAuthenticatedHome(context);
+        return;
+      }
+      if ((g.twoFaTempToken ?? '').isNotEmpty) {
+        final done = await showAdminTwoFactorCodeDialog(
+          context,
+          submit: (code) => auth.completeLogin2Fa(
+                tempToken: g.twoFaTempToken!,
+                code: code,
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Accédez à votre espace EmploiConnect.',
-                style: AppTextStyles.authSubtitle,
-              ),
-              const SizedBox(height: 16),
-              if (_errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    _errorMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 240),
-                child: OutlinedButton.icon(
-                  onPressed: (_loading || _googleLoading) ? null : _googleSignIn,
-                  icon: _googleLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.g_mobiledata, size: 28),
-                  label: Text(
-                    _googleLoading ? 'Connexion Google…' : 'Continuer avec Google',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 260),
-                child: Row(
-                  children: [
-                    Expanded(child: Divider(color: scheme.outlineVariant)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 10),
-                      child: Text(
-                        'ou se connecter avec e-mail',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: scheme.outlineVariant)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 280),
-                child: TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Email requis';
-                    final email = v.trim();
-                    final ok = RegExp(
-                      r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
-                    ).hasMatch(email);
-                    if (!ok) return 'Format email invalide';
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 300),
-                child: TextFormField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(
-                    labelText: 'Mot de passe',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      tooltip: _obscure ? 'Afficher' : 'Masquer',
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(
-                        _obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                      ),
-                    ),
-                  ),
-                  obscureText: _obscure,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Mot de passe requis';
-                    return null;
-                  },
-                  onFieldSubmitted: (_) => _loading ? null : _submit(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 350),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _loading ? null : _goForgotPassword,
-                    child: const Text('Mot de passe oublié ?'),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 400),
-                child: HoverScale(
-                  onTap: _loading ? null : _submit,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: _loading ? null : _submit,
-                    child: _loading
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Se connecter'),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FadeInUp(
-                duration: AppAnimations.medium,
-                delay: const Duration(milliseconds: 500),
-                child: TextButton(
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).pushReplacementNamed('/register'),
-                  child: const Text('Pas de compte ? S’inscrire'),
-                ),
+        );
+        if (!mounted) return;
+        if (done) {
+          auth.navigateToAuthenticatedHome(context);
+        }
+        return;
+      }
+      if (g.message == null) return;
+      if (g.pendingValidation) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Compte créé'),
+            content: Text(g.message!),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              scheme.primary.withValues(alpha: 0.06),
-              AppColors.primary.withValues(alpha: 0.05),
-              scheme.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: ResponsiveContainer(
-            maxWidth: 1100,
-            padding: const EdgeInsets.all(14),
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final desktop = c.maxWidth >= 900;
-                final content = desktop
-                    ? Row(
-                        children: [
-                          Expanded(
-                            child: FadeInLeft(
-                              duration: AppAnimations.slow,
-                              child: _leftPanel(context),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: FadeInRight(
-                              duration: AppAnimations.slow,
-                              delay: const Duration(milliseconds: 150),
-                              child: _formCard(context),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        children: [
-                          FadeInDown(
-                            duration: AppAnimations.slow,
-                            child: const MobileAuthHeader(
-                              title: 'Connexion',
-                              subtitle: 'Accedez a votre espace EmploiConnect',
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          _formCard(context),
-                        ],
-                      );
-                return SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    child: content,
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.92), size: 18),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
+        );
+        return;
+      }
+      setState(() => _erreur = g.message);
+    } catch (e) {
+      if (mounted) setState(() => _erreur = 'Erreur Google: $e');
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
+    }
   }
 }

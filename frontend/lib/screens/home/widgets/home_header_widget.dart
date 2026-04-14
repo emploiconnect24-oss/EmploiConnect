@@ -10,7 +10,10 @@ import 'home_design_tokens.dart';
 
 /// Header accueil — fond blanc, ombre au scroll, thème clair/sombre.
 class HomeHeaderWidget extends StatelessWidget {
-  const HomeHeaderWidget({
+  /// Non-`const` volontairement : le hot reload rejette parfois les changements sur les widgets `const`
+  /// (ex. suppression de champs statiques).
+  // ignore: prefer_const_constructors_in_immutables
+  HomeHeaderWidget({
     super.key,
     required this.isScrolled,
     this.onOpenMenu,
@@ -19,24 +22,8 @@ class HomeHeaderWidget extends StatelessWidget {
   final bool isScrolled;
   final VoidCallback? onOpenMenu;
 
-  static const Color _textDark = Color(0xFF0F172A);
-  static const Color _navGrey = Color(0xFF374151);
-
   static void _about(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('À propos', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
-        content: Text(
-          'EmploiConnect connecte les talents aux entreprises en Guinée. '
-          'Parcours candidat, matching et outils pour avancer dans votre carrière.',
-          style: GoogleFonts.inter(height: 1.5),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
-        ],
-      ),
-    );
+    Navigator.of(context).pushNamed('/a-propos');
   }
 
   static void _parcours(BuildContext context) {
@@ -49,6 +36,7 @@ class HomeHeaderWidget extends StatelessWidget {
   }
 
   Widget _themeToggle(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Consumer<ThemeProvider>(
       builder: (context, theme, _) {
         final dark = theme.isDark(context);
@@ -60,7 +48,7 @@ class HomeHeaderWidget extends StatelessWidget {
             child: Icon(
               dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               key: ValueKey<bool>(dark),
-              color: _navGrey,
+              color: cs.onSurface,
               size: 22,
             ),
           ),
@@ -74,16 +62,20 @@ class HomeHeaderWidget extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final wide = w > 900;
     final padH = w < 600 ? 16.0 : 24.0;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = context.watch<ThemeProvider>().isDark(context);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: EdgeInsets.symmetric(horizontal: padH, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         boxShadow: isScrolled
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
+                  color: isDark
+                      ? Colors.black.withValues(alpha: 0.35)
+                      : Colors.black.withValues(alpha: 0.06),
                   blurRadius: 16,
                   offset: const Offset(0, 2),
                 ),
@@ -116,19 +108,23 @@ class HomeHeaderWidget extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'EmploiConnect',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: _textDark,
-                    ),
+                  Consumer<AppConfigProvider>(
+                    builder: (context, cfg, _) {
+                      return Text(
+                        cfg.nomPlateforme,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurface,
+                        ),
+                      );
+                    },
                   ),
                   Text(
                     'Guinée · Plateforme d\'emploi',
                     style: GoogleFonts.inter(
                       fontSize: 9,
-                      color: const Color(0xFF94A3B8),
+                      color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -143,27 +139,31 @@ class HomeHeaderWidget extends StatelessWidget {
           ],
           if (!wide && onOpenMenu != null)
             IconButton(
-              icon: const Icon(Icons.menu_rounded, color: _navGrey),
+              icon: Icon(Icons.menu_rounded, color: cs.onSurface),
               onPressed: onOpenMenu,
             ),
           if (wide) ...[
             _NavItem(
               'Offres d\'emploi',
               () => Navigator.of(context).pushNamed(PublicRoutes.listPath),
+              muted: cs.onSurfaceVariant,
             ),
             _NavItem(
               'Entreprises',
               () => Navigator.of(context).pushNamed(PublicRoutes.listPath),
+              muted: cs.onSurfaceVariant,
             ),
-            _NavItem('Parcours Carrière', () => _parcours(context)),
-            _NavItem('À propos', () => _about(context)),
+            _NavItem('Parcours Carrière', () => _parcours(context), muted: cs.onSurfaceVariant),
+            _NavItem('À propos', () => _about(context), muted: cs.onSurfaceVariant),
             const SizedBox(width: 12),
             _themeToggle(context),
             const SizedBox(width: 8),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF1A56DB)),
-                foregroundColor: const Color(0xFF1A56DB),
+                side: BorderSide(
+                  color: isDark ? Colors.white.withValues(alpha: 0.38) : const Color(0xFF1A56DB),
+                ),
+                foregroundColor: isDark ? Colors.white : const Color(0xFF1A56DB),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -245,10 +245,11 @@ class _HeaderLogoFallback extends StatelessWidget {
 }
 
 class _NavItem extends StatefulWidget {
-  const _NavItem(this.titre, this.onTap);
+  const _NavItem(this.titre, this.onTap, {required this.muted});
 
   final String titre;
   final VoidCallback onTap;
+  final Color muted;
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -281,7 +282,7 @@ class _NavItemState extends State<_NavItem> {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: _hovered ? HomeDesign.primary : const Color(0xFF374151),
+              color: _hovered ? HomeDesign.primary : widget.muted,
             ),
           ),
         ),

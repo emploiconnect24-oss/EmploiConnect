@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/theme/theme_extension.dart';
 import 'home_design_tokens.dart';
 
 /// CTA finale — fond animé bleu très léger, boutons dégradé / outline bleu.
@@ -45,6 +46,7 @@ class _HomeCtaSectionState extends State<HomeCtaSection> with SingleTickerProvid
           final ax = math.cos(t * math.pi * 2) * 0.35;
           final ay = math.sin(t * math.pi * 2) * 0.25;
           final a = Alignment(ax, ay);
+          final dark = context.isDark;
           return Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
@@ -53,11 +55,17 @@ class _HomeCtaSectionState extends State<HomeCtaSection> with SingleTickerProvid
               gradient: LinearGradient(
                 begin: a,
                 end: Alignment(-ax, -ay),
-                colors: [
-                  HomeDesign.surfaceBlue,
-                  const Color(0xFFE0F2FE),
-                  HomeDesign.surfaceBlue,
-                ],
+                colors: dark
+                    ? const [
+                        Color(0xFF0F172A),
+                        Color(0xFF1A2F5E),
+                        Color(0xFF0F172A),
+                      ]
+                    : [
+                        HomeDesign.surfaceBlue,
+                        const Color(0xFFE0F2FE),
+                        HomeDesign.surfaceBlue,
+                      ],
                 stops: const [0.0, 0.52, 1.0],
               ),
               border: Border.all(color: HomeDesign.primary.withValues(alpha: 0.12)),
@@ -107,7 +115,7 @@ class _HomeCtaSectionState extends State<HomeCtaSection> with SingleTickerProvid
                       style: GoogleFonts.poppins(
                         fontSize: w < 600 ? 26 : 32,
                         fontWeight: FontWeight.w800,
-                        color: HomeDesign.dark,
+                        color: Theme.of(context).colorScheme.onSurface,
                         height: 1.15,
                       ),
                       textAlign: TextAlign.center,
@@ -120,7 +128,7 @@ class _HomeCtaSectionState extends State<HomeCtaSection> with SingleTickerProvid
                       'Créez un compte en quelques minutes et accédez aux offres, au matching et aux outils IA.',
                       style: GoogleFonts.inter(
                         fontSize: 15,
-                        color: const Color(0xFF64748B),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         height: 1.55,
                       ),
                       textAlign: TextAlign.center,

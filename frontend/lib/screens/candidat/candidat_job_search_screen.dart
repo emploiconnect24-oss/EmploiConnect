@@ -100,7 +100,8 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
         _offres = next;
         if (reset) _scores = {};
         _offset += r.offres.length;
-        _hasMore = r.offres.length >= _limit;
+        final t = r.total;
+        _hasMore = t != null ? _offset < t : r.offres.length >= _limit;
         _loading = false;
         _loadingMore = false;
       });

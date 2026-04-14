@@ -17,17 +17,61 @@ import { loadProfilMatchingPourChercheur } from '../services/matchingProfil.serv
 
 const router = Router();
 
+function mapOffreListeRow(o) {
+  if (!o || typeof o !== 'object') return o;
+  const ent = o.entreprise ?? o.entreprises ?? null;
+  const rel = o.candidatures;
+  let nb = 0;
+  if (Array.isArray(rel) && rel.length && rel[0]?.count != null) {
+    nb = Number(rel[0].count) || 0;
+  }
+  const {
+    entreprises: _e,
+    candidatures: _c,
+    ...rest
+  } = o;
+  return {
+    ...rest,
+    entreprise: ent,
+    nb_candidatures: nb,
+    date_expiration: rest.date_limite ?? null,
+    niveau_experience: rest.niveau_experience_requis ?? null,
+  };
+}
+
 /**
  * GET /offres
- * Liste des offres. Par défaut : statut=active. Filtres : statut, domaine, localisation, type_contrat
+ * Liste des offres. Par défaut : statut=active. Filtres : statut, domaine, localisation, type_contrat, ville, niveau, categorie
+ * Pagination : ?page=&limit= ou ?offset=&limit=
  * Si authentifié en tant qu'entreprise et ?mes=1 : uniquement les offres de mon entreprise
  */
 router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
   try {
     const {
-      statut, domaine, localisation, type_contrat, mes, recherche, q, entreprise_id,
+      statut,
+      domaine,
+      localisation,
+      ville,
+      type_contrat,
+      mes,
+      recherche,
+      q,
+      entreprise_id,
+      niveau,
+      categorie,
     } = req.query;
     const searchText = String(recherche || q || '').trim();
+
+    const limitRaw = parseInt(req.query.limit, 10);
+    const pageRaw = parseInt(req.query.page, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
+    const hasPage = Number.isFinite(pageRaw) && pageRaw > 0;
+    const from = hasPage
+      ? (pageRaw - 1) * limit
+      : (Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0);
+    const to = from + limit - 1;
+    const currentPage = hasPage ? pageRaw : Math.floor(from / limit) + 1;
 
     let query = supabase
       .from('offres_emploi')
@@ -49,7 +93,15 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
         date_publication,
         date_limite,
         date_creation,
-        entreprises(nom_entreprise, secteur_activite, logo_url)
+        competences_requises,
+        entreprise:entreprises (
+          id,
+          nom_entreprise,
+          logo_url,
+          secteur_activite,
+          adresse_siege
+        ),
+        candidatures ( count )
       `, { count: 'exact' })
       .order('date_publication', { ascending: false });
 
@@ -66,8 +118,19 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
 
     if (statut) query = query.eq('statut', statut);
     if (domaine) query = query.ilike('domaine', `%${domaine}%`);
-    if (localisation) query = query.ilike('localisation', `%${localisation}%`);
+    const lieuFiltre = String(ville || localisation || '').trim();
+    if (lieuFiltre) {
+      const safe = lieuFiltre.replace(/[%_,()]/g, ' ').trim().slice(0, 120);
+      if (safe.length) query = query.ilike('localisation', `%${safe}%`);
+    }
     if (type_contrat) query = query.eq('type_contrat', type_contrat);
+    const niv = String(niveau || '').trim();
+    if (niv) query = query.eq('niveau_experience_requis', niv);
+    const cat = String(categorie || '').trim();
+    if (cat) {
+      const safe = cat.replace(/[%_,()]/g, ' ').trim().slice(0, 100);
+      if (safe.length) query = query.ilike('domaine', `%${safe}%`);
+    }
     const eid = String(entreprise_id || '').trim();
     if (eid) query = query.eq('entreprise_id', eid);
     if (searchText) {
@@ -78,19 +141,18 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
       }
     }
 
-    const { data, error, count } = await query.range(
-      parseInt(req.query.offset, 10) || 0,
-      (parseInt(req.query.limit, 10) || 20) - 1
-    );
+    const { data, error, count } = await query.range(from, to);
 
     if (error) {
       logError('GET /offres - erreur requête', error);
       return res.status(500).json({ message: 'Erreur lors de la récupération des offres' });
     }
 
+    const rowsMapped = (data || []).map(mapOffreListeRow);
+
     let scoresMap = {};
-    if (req.user?.role === ROLES.CHERCHEUR && req.chercheurId && Array.isArray(data) && data.length) {
-      const offreIds = data.map((o) => o.id).filter(Boolean);
+    if (req.user?.role === ROLES.CHERCHEUR && req.chercheurId && rowsMapped.length) {
+      const offreIds = rowsMapped.map((o) => o.id).filter(Boolean);
       try {
         const { data: cached } = await supabase
           .from('offres_scores_cache')
@@ -106,7 +168,7 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
               const wrap = await loadProfilMatchingPourChercheur(req.chercheurId);
               if (!wrap) return;
               const { profil } = wrap;
-              const toScore = data.filter((o) => missingIds.includes(o.id)).slice(0, 12);
+              const toScore = rowsMapped.filter((o) => missingIds.includes(o.id)).slice(0, 12);
               for (const offre of toScore) {
                 const score = await calculerMatchingScore(profil, offre);
                 await supabase.from('offres_scores_cache').upsert({
@@ -126,12 +188,24 @@ router.get('/', optionalAuth, attachProfileIds, async (req, res) => {
       }
     }
 
-    const offresAvecScore = (data || []).map((o) => ({
+    const offresAvecScore = rowsMapped.map((o) => ({
       ...o,
       score_compatibilite: scoresMap[o.id] ?? o.score_compatibilite ?? null,
     }));
 
-    res.json({ offres: offresAvecScore, total: count ?? offresAvecScore.length });
+    const total = count ?? offresAvecScore.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    res.json({
+      success: true,
+      data: {
+        offres: offresAvecScore,
+        total,
+        page: currentPage,
+        limit,
+        total_pages: totalPages,
+      },
+    });
   } catch (err) {
     logError('GET /offres - erreur inattendue', err);
     res.status(500).json({ message: 'Erreur serveur' });

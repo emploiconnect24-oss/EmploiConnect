@@ -4,7 +4,20 @@ import 'api_service.dart';
 class OffresService {
   final ApiService _api = ApiService();
 
-  Future<({List<Map<String, dynamic>> offres, int? total})> getOffres({
+  static Map<String, dynamic> _unwrapOffresList(Map<String, dynamic> body) {
+    if (body['success'] == true && body['data'] is Map) {
+      return Map<String, dynamic>.from(body['data'] as Map);
+    }
+    return body;
+  }
+
+  static int? _asInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return null;
+  }
+
+  Future<({List<Map<String, dynamic>> offres, int? total, int page, int limit, int totalPages})> getOffres({
     String? statut,
     String? domaine,
     String? localisation,
@@ -35,28 +48,40 @@ class OffresService {
     if (res.statusCode != 200) {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur chargement offres');
     }
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final raw = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = _unwrapOffresList(raw);
     final list = (data['offres'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e as Map))
             .toList() ??
         [];
-    final total = data['total'] as int?;
-    return (offres: list, total: total);
+    final total = _asInt(data['total']);
+    final page = _asInt(data['page']) ?? 1;
+    final lim = _asInt(data['limit']) ?? limit;
+    final totalPages = _asInt(data['total_pages']) ?? 1;
+    return (offres: list, total: total, page: page, limit: lim, totalPages: totalPages);
   }
 
-  /// Liste publique (sans JWT) — page d’accueil, visiteurs.
-  Future<({List<Map<String, dynamic>> offres, int? total})> getOffresPublic({
-    int offset = 0,
+  /// Liste publique (sans JWT) — vitrine offres.
+  Future<({List<Map<String, dynamic>> offres, int total, int page, int limit, int totalPages})> getOffresPublic({
+    int page = 1,
     int limit = 12,
+    String? q,
     String? recherche,
+    String? typeContrat,
+    String? ville,
+    String? niveau,
+    String? categorie,
     String? entrepriseId,
   }) async {
+    final search = (q ?? recherche)?.trim();
     final qs = <String, String>{
-      'offset': '$offset',
+      'page': '$page',
       'limit': '$limit',
-      ...?((recherche == null || recherche.trim().isEmpty)
-          ? null
-          : {'recherche': recherche.trim()}),
+      ...?((search == null || search.isEmpty) ? null : {'q': search}),
+      ...?((typeContrat == null || typeContrat.isEmpty) ? null : {'type_contrat': typeContrat}),
+      ...?((ville == null || ville.isEmpty) ? null : {'ville': ville}),
+      ...?((niveau == null || niveau.isEmpty) ? null : {'niveau': niveau}),
+      ...?((categorie == null || categorie.isEmpty) ? null : {'categorie': categorie}),
       ...?((entrepriseId == null || entrepriseId.trim().isEmpty)
           ? null
           : {'entreprise_id': entrepriseId.trim()}),
@@ -67,13 +92,20 @@ class OffresService {
     if (res.statusCode != 200) {
       throw Exception(ApiService.errorMessage(res) ?? 'Erreur chargement offres');
     }
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final raw = jsonDecode(res.body) as Map<String, dynamic>;
+    if (raw['success'] != true || raw['data'] is! Map) {
+      throw Exception('Réponse offres inattendue');
+    }
+    final data = Map<String, dynamic>.from(raw['data'] as Map);
     final list = (data['offres'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e as Map))
             .toList() ??
         [];
-    final total = data['total'] as int?;
-    return (offres: list, total: total);
+    final total = _asInt(data['total']) ?? 0;
+    final pg = _asInt(data['page']) ?? page;
+    final lim = _asInt(data['limit']) ?? limit;
+    final totalPages = _asInt(data['total_pages']) ?? 1;
+    return (offres: list, total: total, page: pg, limit: lim, totalPages: totalPages);
   }
 
   Future<Map<String, dynamic>> getOffreById(String id) async {

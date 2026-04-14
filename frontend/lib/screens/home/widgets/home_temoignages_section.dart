@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/theme/theme_extension.dart';
 import 'home_design_tokens.dart';
 
 /// Témoignages en grille de petites cartes (fond blanc).
@@ -28,13 +29,20 @@ class HomeTemoignagesSection extends StatelessWidget {
     },
   ];
 
+  List<Map<String, dynamic>> get _temoignagesAffiches {
+    if (temoignages.length >= 3) return temoignages;
+    final defauts = _defaut.take(3 - temoignages.length).toList();
+    return [...temoignages, ...defauts];
+  }
+
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.sizeOf(context).width < 700 ? 24.0 : 60.0;
-    final list = temoignages.isEmpty ? _defaut : temoignages;
+    final list = _temoignagesAffiches;
+    final cs = Theme.of(context).colorScheme;
 
     return ColoredBox(
-      color: Colors.white,
+      color: cs.surface,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: pad, vertical: 56),
         child: Column(
@@ -61,7 +69,7 @@ class HomeTemoignagesSection extends StatelessWidget {
               style: GoogleFonts.poppins(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: HomeDesign.dark,
+                color: cs.onSurface,
               ),
               textAlign: TextAlign.center,
             ),
@@ -108,6 +116,8 @@ class _CarteTemoignageState extends State<_CarteTemoignage> with SingleTickerPro
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ext = context.themeExt;
     final t = widget.temoignage;
     final message = (t['message'] ?? '').toString();
     final nom = (t['nom'] ?? '').toString();
@@ -131,10 +141,10 @@ class _CarteTemoignageState extends State<_CarteTemoignage> with SingleTickerPro
           width: 280,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: _hovered ? HomeDesign.primary.withValues(alpha: 0.3) : const Color(0xFFE2E8F0),
+              color: _hovered ? HomeDesign.primary.withValues(alpha: 0.3) : ext.cardBorder,
             ),
             boxShadow: [
               BoxShadow(
@@ -158,7 +168,7 @@ class _CarteTemoignageState extends State<_CarteTemoignage> with SingleTickerPro
                 '"$message"',
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: const Color(0xFF374151),
+                  color: cs.onSurfaceVariant,
                   height: 1.5,
                   fontStyle: FontStyle.italic,
                 ),
@@ -193,14 +203,14 @@ class _CarteTemoignageState extends State<_CarteTemoignage> with SingleTickerPro
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: HomeDesign.dark,
+                            color: cs.onSurface,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           poste,
-                          style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF94A3B8)),
+                          style: GoogleFonts.inter(fontSize: 10, color: cs.onSurfaceVariant),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

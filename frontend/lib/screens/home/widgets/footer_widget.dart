@@ -7,6 +7,7 @@ import 'dart:convert';
 import '../../../config/api_config.dart';
 import '../../../shared/widgets/logo_widget.dart';
 import '../../../app/public_routes.dart';
+import '../../../services/newsletter_service.dart';
 
 class FooterWidget extends StatefulWidget {
   const FooterWidget({super.key});
@@ -76,8 +77,8 @@ class _FooterWidgetState extends State<FooterWidget> {
           Padding(
             padding: EdgeInsets.symmetric(vertical: isMobile ? 16 : 20, horizontal: hPad),
             child: isMobile
-                ? const _FooterBottomMobile()
-                : const _FooterBottomDesktop(),
+                ? _FooterBottomMobile(brandName: _footer['platform_name'] ?? 'EmploiConnect')
+                : _FooterBottomDesktop(brandName: _footer['platform_name'] ?? 'EmploiConnect'),
           ),
         ],
       ),
@@ -223,6 +224,10 @@ class _LinksColCandidat extends StatelessWidget {
         ),
         (label: 'Conseils carrière', onTap: null),
         (
+          label: 'À propos',
+          onTap: () => Navigator.of(context).pushNamed('/a-propos'),
+        ),
+        (
           label: 'Mon espace',
           onTap: () => Navigator.of(context).pushNamed('/login'),
         ),
@@ -257,6 +262,10 @@ class _LinksColEntreprise extends StatelessWidget {
         (
           label: 'Comment ça marche',
           onTap: () => Navigator.of(context).pushNamed('/landing'),
+        ),
+        (
+          label: 'À propos',
+          onTap: () => Navigator.of(context).pushNamed('/a-propos'),
         ),
         (label: 'Contactez-nous', onTap: null),
       ],
@@ -327,6 +336,10 @@ class _ConnectCol extends StatefulWidget {
 
 class _ConnectColState extends State<_ConnectCol> {
   final TextEditingController _emailCtrl = TextEditingController();
+  final _newsletter = NewsletterService();
+  bool _nlLoading = false;
+  bool _nlSuccess = false;
+  String? _nlMessage;
 
   @override
   void dispose() {
@@ -334,69 +347,130 @@ class _ConnectColState extends State<_ConnectCol> {
     super.dispose();
   }
 
+  Future<void> _subscribe() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) return;
+    setState(() {
+      _nlLoading = true;
+      _nlMessage = null;
+    });
+    final r = await _newsletter.subscribe(email: email, source: 'footer');
+    if (!mounted) return;
+    setState(() {
+      _nlLoading = false;
+      _nlSuccess = r.success;
+      _nlMessage = r.message ?? (r.success ? 'Merci !' : 'Erreur');
+    });
+    if (r.success) _emailCtrl.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Restez Connecté',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Recevez nos nouveautés et les tendances du marché de l’emploi.',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: const Color(0x99FFFFFF),
-            height: 1.6,
-          ),
-        ),
-        const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: TextField(
-                controller: _emailCtrl,
-                style: GoogleFonts.inter(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Votre email',
-                  hintStyle: GoogleFonts.inter(color: const Color(0x77FFFFFF)),
-                  filled: true,
-                  fillColor: const Color(0x14FFFFFF),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-            ),
+            const Icon(Icons.email_outlined, color: Color(0xFF1A56DB), size: 20),
             const SizedBox(width: 8),
-            SizedBox(
-              height: 44,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A56DB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  elevation: 0,
-                ),
-                onPressed: () {},
-                child: const Icon(Icons.arrow_forward),
+            Text(
+              'Restez informé !',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Text(
+          'Recevez les nouvelles offres et les tendances du marché de l’emploi en Guinée.',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            color: const Color(0x99FFFFFF),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (_nlSuccess)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _nlMessage ?? 'Inscription réussie !',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: const Color(0xFF10B981),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  style: GoogleFonts.inter(fontSize: 13, color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'votre@email.com',
+                    hintStyle: GoogleFonts.inter(fontSize: 13, color: const Color(0x77FFFFFF)),
+                    filled: true,
+                    fillColor: const Color(0x14FFFFFF),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF1A56DB), width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                  onSubmitted: (_) => _subscribe(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1A56DB),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: _nlLoading ? null : _subscribe,
+                  child: _nlLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.arrow_forward),
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 14),
         _ContactLine(
           icon: Icons.mail_outline,
@@ -586,7 +660,9 @@ class _FooterLinkState extends State<_FooterLink> {
 }
 
 class _FooterBottomDesktop extends StatelessWidget {
-  const _FooterBottomDesktop();
+  const _FooterBottomDesktop({required this.brandName});
+
+  final String brandName;
 
   @override
   Widget build(BuildContext context) {
@@ -597,7 +673,7 @@ class _FooterBottomDesktop extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '© 2026 EmploiConnect. Tous droits réservés.',
+              '© 2026 $brandName. Tous droits réservés.',
               style: GoogleFonts.inter(
                 fontSize: 13,
                 color: const Color(0x99FFFFFF),
@@ -628,7 +704,9 @@ class _FooterBottomDesktop extends StatelessWidget {
 }
 
 class _FooterBottomMobile extends StatelessWidget {
-  const _FooterBottomMobile();
+  const _FooterBottomMobile({required this.brandName});
+
+  final String brandName;
 
   @override
   Widget build(BuildContext context) {
@@ -636,7 +714,7 @@ class _FooterBottomMobile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '© 2026 EmploiConnect. Tous droits réservés.',
+          '© 2026 $brandName. Tous droits réservés.',
           style: GoogleFonts.inter(
             fontSize: 13,
             color: const Color(0x99FFFFFF),

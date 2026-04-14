@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "kill-port": "kill-port 3000",
+    "start-clean": "kill-port 3000 && nodemon src/index.js",
     "test-db": "node test-connection.js",
     "seed:offres:recruteur": "node scripts/seed_recruteur_offres.js",
     "fill:recruteur:http": "node scripts/fill_recruteur_test_http.js",
@@ -28,9 +30,15 @@
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.10.1",
+    "otplib": "^13.4.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.2",
+    "qrcode": "^1.5.4",
     "redis": "^4.7.1",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "kill-port": "^2.0.1",
+    "nodemon": "^3.1.14"
   }
 }

@@ -1,0 +1,3 @@
+ALTER TABLE messages_contact
+  ADD COLUMN IF NOT EXISTS reponse_ia TEXT,
+  ADD COLUMN IF NOT EXISTS repondu_le TIMESTAMPTZ;

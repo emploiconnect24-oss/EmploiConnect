@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/candidatures_service.dart';
 import '../../services/offres_service.dart';
+import '../../widgets/dialog_analyse_postulation.dart';
 import 'candidat_offer_detail_screen.dart';
 import 'widgets/apply_bottom_sheet.dart';
 
@@ -57,7 +58,7 @@ class _CandidatSavedOffersScreenState extends State<CandidatSavedOffersScreen> {
     );
   }
 
-  Future<void> _postuler(Map<String, dynamic> item) async {
+  Future<void> _ouvrirSheetPostulation(Map<String, dynamic> item) async {
     final offre = (item['offre'] as Map?)?.cast<String, dynamic>() ?? {};
     final id = (offre['id'] ?? '').toString();
     final titre = (offre['titre'] ?? 'Offre').toString();
@@ -73,6 +74,24 @@ class _CandidatSavedOffersScreenState extends State<CandidatSavedOffersScreen> {
             offreId: id,
             lettreMotivation: motivation,
           );
+        },
+      ),
+    );
+  }
+
+  Future<void> _postuler(Map<String, dynamic> item) async {
+    final offre = (item['offre'] as Map?)?.cast<String, dynamic>() ?? {};
+    final id = (offre['id'] ?? '').toString();
+    final titre = (offre['titre'] ?? 'Offre').toString();
+    if (id.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogAnalysePostulation(
+        offreId: id,
+        offreTitre: titre,
+        onConfirmerPostulation: () {
+          _ouvrirSheetPostulation(item);
         },
       ),
     );

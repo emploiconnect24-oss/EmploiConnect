@@ -19,6 +19,7 @@ import 'candidat_tips_resources_screen.dart';
 import 'pages/createur_cv_page.dart';
 import 'pages/parcours_carriere_page.dart';
 import 'pages/ia_demo_page.dart';
+import 'simulation/simulation_entretien_page.dart';
 import 'widgets/candidat_sidebar.dart';
 import 'widgets/candidat_topbar.dart';
 
@@ -113,6 +114,11 @@ class _CandidatShellScreenState extends State<CandidatShellScreen> {
       case '/dashboard/parcours':
         return ParcoursCarrierePage(
           onOpenCvCreate: () => setState(() => _currentRoute = '/dashboard/cv/creer'),
+          onOpenSimulation: () => setState(() => _currentRoute = '/dashboard/parcours/simulation'),
+        );
+      case '/dashboard/parcours/simulation':
+        return SimulationEntretienPage(
+          onExit: () => setState(() => _currentRoute = '/dashboard/parcours'),
         );
       case '/dashboard/alertes':
         return const CandidatJobAlertsScreen();

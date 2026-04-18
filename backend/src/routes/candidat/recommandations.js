@@ -9,12 +9,86 @@ import { ROLES, STATUT_OFFRE } from '../../config/constants.js';
 import { getRapidApiKeys } from '../../config/rapidApi.js';
 import { calculerMatchingScore } from '../../services/ia.service.js';
 import { loadProfilMatchingPourChercheur } from '../../services/matchingProfil.service.js';
+import { analyserCompatibilite } from '../../services/matchingAvance.service.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireRole(ROLES.CHERCHEUR));
 router.use(attachProfileIds);
+
+router.get('/offres/:offreId/analyse', async (req, res) => {
+  try {
+    const { offreId } = req.params;
+    if (!req.chercheurId) {
+      return res.status(403).json({ success: false, message: 'Profil candidat requis' });
+    }
+    console.log('[analyse] Candidat:', req.chercheurId, '| Offre:', offreId);
+    const resultat = await analyserCompatibilite(req.chercheurId, offreId);
+    console.log('[analyse] Resultat brut:', JSON.stringify(resultat?.analyse || null));
+    if (!resultat?.analyse) {
+      return res.json({
+        success: true,
+        data: {
+          score: null,
+          niveau: 'inconnu',
+          message_court: 'Analyse temporairement indisponible. Vous pouvez quand meme postuler.',
+          points_forts: [],
+          points_faibles: [],
+          conseils: [],
+          recommande_parcours: false,
+        },
+      });
+    }
+    const a = resultat.analyse;
+    const score = Number.isFinite(Number(a?.score ?? a?.score_matching))
+      ? Number(a.score ?? a.score_matching)
+      : null;
+    const niveau = a?.niveau
+      ?? (score == null
+        ? 'inconnu'
+        : (score >= 80 ? 'excellent' : score >= 60 ? 'bon' : score >= 40 ? 'moyen' : 'faible'));
+    const messageCourt = a?.message_court ?? a?.raison ?? 'Analyse effectuee';
+    const pointsForts = Array.isArray(a?.points_forts)
+      ? a.points_forts
+      : (Array.isArray(a?.competences_communes) ? a.competences_communes : []);
+    const pointsFaibles = Array.isArray(a?.points_faibles)
+      ? a.points_faibles
+      : (Array.isArray(a?.competences_manquantes) ? a.competences_manquantes : []);
+    const conseils = Array.isArray(a?.conseils)
+      ? a.conseils
+      : [
+        'Completez votre profil pour ameliorer vos chances',
+        'Consultez le Parcours Carriere pour developper vos competences',
+      ];
+    return res.json({
+      success: true,
+      data: {
+        score,
+        niveau,
+        message_court: messageCourt,
+        points_forts: pointsForts,
+        points_faibles: pointsFaibles,
+        conseils,
+        recommande_parcours: a?.recommande_parcours ?? ((score ?? 0) < 60),
+      },
+    });
+  } catch (err) {
+    console.error('[analyse] Erreur:', err?.message || err);
+    return res.json({
+      success: true,
+      data: {
+        score: null,
+        niveau: 'inconnu',
+        message_court: 'Analyse indisponible.',
+        points_forts: [],
+        points_faibles: [],
+        conseils: [],
+        recommande_parcours: false,
+      },
+    });
+  }
+});
 
 function calculerScoreProfilEtConseils(user, chercheur, cv) {
   let score = 0;

@@ -337,9 +337,62 @@ router.put(
   aproposAdmin.putAproposSection,
 );
 router.get(
+  '/equipe',
+  requirePermission('equipe', 'peut_voir'),
+  aproposAdmin.getEquipeAdmin,
+);
+router.post(
+  '/equipe',
+  requirePermission('equipe', 'peut_modifier'),
+  aproposAdmin.uploadEquipePhoto.single('photo'),
+  auditLog('CREATION_MEMBRE_EQUIPE', 'equipe_membres'),
+  aproposAdmin.postEquipeAdmin,
+);
+router.put(
+  '/equipe/:id',
+  requirePermission('equipe', 'peut_modifier'),
+  aproposAdmin.uploadEquipePhoto.single('photo'),
+  auditLog('MODIFICATION_MEMBRE_EQUIPE', 'equipe_membres'),
+  aproposAdmin.putEquipeAdmin,
+);
+router.delete(
+  '/equipe/:id',
+  requirePermission('equipe', 'peut_modifier'),
+  auditLog('SUPPRESSION_MEMBRE_EQUIPE', 'equipe_membres'),
+  aproposAdmin.deleteEquipeAdmin,
+);
+router.get(
+  '/messages-contact',
+  requirePermission('messages_contact', 'peut_voir'),
+  aproposAdmin.getMessagesContactAdmin,
+);
+router.patch(
+  '/messages-contact/:id/lire',
+  requirePermission('messages_contact', 'peut_modifier'),
+  auditLog('LECTURE_MESSAGE_CONTACT', 'messages_contact'),
+  aproposAdmin.patchMessageContactLu,
+);
+router.post(
+  '/messages-contact/:id/repondre',
+  requirePermission('messages_contact', 'peut_modifier'),
+  auditLog('REPONSE_MESSAGE_CONTACT', 'messages_contact'),
+  aproposAdmin.postMessageContactRepondre,
+);
+router.post(
+  '/messages-contact/:id/repondre-ia',
+  requirePermission('messages_contact', 'peut_modifier'),
+  auditLog('REPONSE_IA_MESSAGE_CONTACT', 'messages_contact'),
+  aproposAdmin.postMessageContactRepondreIa,
+);
+router.get(
   '/newsletter',
   requirePermission('newsletter', 'peut_voir'),
   newsletterAdmin.getNewsletterAbonnes,
+);
+router.get(
+  '/newsletter/historique',
+  requirePermission('newsletter', 'peut_voir'),
+  newsletterAdmin.getNewsletterHistorique,
 );
 router.post(
   '/newsletter/envoyer',

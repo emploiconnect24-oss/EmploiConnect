@@ -108,6 +108,27 @@ class AdminSidebar extends StatelessWidget {
       ],
     ),
     _SidebarSection(
+      title: 'CONTENU',
+      items: [
+        _SidebarItem(
+          label: 'Newsletter',
+          icon: Icons.campaign_outlined,
+          activeIcon: Icons.campaign_rounded,
+          route: '/admin/newsletter',
+          permissionSection: 'newsletter',
+        ),
+        _SidebarItem(
+          label: 'Messages Contact',
+          icon: Icons.mail_outlined,
+          activeIcon: Icons.mail_rounded,
+          route: '/admin/messages-contact',
+          permissionSection: 'messages_contact',
+          badgeKey: 'contact_messages_unread',
+          badgeColor: Color(0xFFEF4444),
+        ),
+      ],
+    ),
+    _SidebarSection(
       title: 'CONFIGURATION',
       items: [
         _SidebarItem(
@@ -160,6 +181,8 @@ class AdminSidebar extends StatelessWidget {
         return admin.signalementsEnAttente;
       case 'pending_testimonials':
         return admin.temoignagesEnAttente;
+      case 'contact_messages_unread':
+        return admin.nbMessagesContactNonLus;
       default:
         return 0;
     }

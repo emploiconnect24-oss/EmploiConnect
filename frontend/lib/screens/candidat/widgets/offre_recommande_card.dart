@@ -4,8 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../providers/candidat_provider.dart';
+import '../../../services/candidatures_service.dart';
 import '../../../services/offres_service.dart';
-import '../candidat_offer_detail_screen.dart';
+import '../../../widgets/dialog_analyse_postulation.dart';
+import 'apply_bottom_sheet.dart';
 
 /// Carte offre recommandée — grille dashboard (PRD §1).
 class OffreRecommandeCard extends StatefulWidget {
@@ -24,6 +26,7 @@ class OffreRecommandeCard extends StatefulWidget {
 
 class _OffreRecommandeCardState extends State<OffreRecommandeCard>
     with SingleTickerProviderStateMixin {
+  final _candidaturesService = CandidaturesService();
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -106,6 +109,42 @@ class _OffreRecommandeCardState extends State<OffreRecommandeCard>
     } finally {
       if (mounted) setState(() => _saveBusy = false);
     }
+  }
+
+  Future<void> _soumettrePostulation(String offreId, String titre) async {
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ApplyBottomSheet(
+        offerTitle: titre,
+        onSubmit: (motivation) async {
+          await _candidaturesService.postuler(
+            offreId: offreId,
+            lettreMotivation: motivation,
+          );
+        },
+      ),
+    );
+    if (!mounted || ok != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Candidature envoyee avec succes !')),
+    );
+  }
+
+  Future<void> _postulerAvecAnalyse(String offreId, String titre) async {
+    if (offreId.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogAnalysePostulation(
+        offreId: offreId,
+        offreTitre: titre,
+        onConfirmerPostulation: () {
+          _soumettrePostulation(offreId, titre);
+        },
+      ),
+    );
   }
 
   String _fmtSalaire(num? s) {
@@ -301,7 +340,7 @@ class _OffreRecommandeCardState extends State<OffreRecommandeCard>
                                 ? CachedNetworkImage(
                                     imageUrl: logo,
                                     fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => _initialeLogo(nom),
+                                    errorWidget: (_, error, stackTrace) => _initialeLogo(nom),
                                   )
                                 : _initialeLogo(nom),
                           ),
@@ -360,13 +399,7 @@ class _OffreRecommandeCardState extends State<OffreRecommandeCard>
                           ),
                           onPressed: offreId.isEmpty
                               ? null
-                              : () {
-                                  Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => CandidatOfferDetailScreen(offreId: offreId),
-                                    ),
-                                  );
-                                },
+                              : () => _postulerAvecAnalyse(offreId, titre.isEmpty ? 'Offre' : titre),
                           child: const Text('Postuler'),
                         ),
                       ),

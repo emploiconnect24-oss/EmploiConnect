@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../services/admin_service.dart';
 
-/// Abonnés newsletter + envoi d’e-mail groupé (PRD §3).
 class NewsletterAdminPage extends StatefulWidget {
   const NewsletterAdminPage({super.key});
 
@@ -11,25 +10,30 @@ class NewsletterAdminPage extends StatefulWidget {
   State<NewsletterAdminPage> createState() => _NewsletterAdminPageState();
 }
 
-class _NewsletterAdminPageState extends State<NewsletterAdminPage> {
+class _NewsletterAdminPageState extends State<NewsletterAdminPage>
+    with SingleTickerProviderStateMixin {
   final _admin = AdminService();
   final _sujetCtrl = TextEditingController();
   final _contenuCtrl = TextEditingController();
 
   List<Map<String, dynamic>> _abonnes = [];
-  int _total = 0;
-  bool _loading = true;
-  bool _envoi = false;
+  List<Map<String, dynamic>> _envois = [];
+  int _totalAbonnes = 0;
+  bool _isLoading = true;
+  bool _isEnvoi = false;
   String? _message;
+  late TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 3, vsync: this);
     _load();
   }
 
   @override
   void dispose() {
+    _tabCtrl.dispose();
     _sujetCtrl.dispose();
     _contenuCtrl.dispose();
     super.dispose();
@@ -37,41 +41,46 @@ class _NewsletterAdminPageState extends State<NewsletterAdminPage> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _isLoading = true;
       _message = null;
     });
     try {
-      final res = await _admin.getNewsletterAbonnes(actifsOnly: true);
-      final data = res['data'] as Map<String, dynamic>? ?? {};
-      final list = (data['abonnes'] as List<dynamic>? ?? [])
+      final abonnements = await _admin.getNewsletterAbonnes(actifsOnly: true);
+      final historique = await _admin.getNewsletterHistorique(limite: 100);
+      final data = abonnements['data'] as Map<String, dynamic>? ?? {};
+      final listAbonnes = (data['abonnes'] as List<dynamic>? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final listEnvois = (historique['data'] as List<dynamic>? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
       final t = data['total'];
       if (!mounted) return;
       setState(() {
-        _abonnes = list;
-        _total = t is int ? t : int.tryParse(t?.toString() ?? '') ?? list.length;
-        _loading = false;
+        _abonnes = listAbonnes;
+        _envois = listEnvois;
+        _totalAbonnes = t is int ? t : int.tryParse(t?.toString() ?? '') ?? listAbonnes.length;
+        _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loading = false;
+        _isLoading = false;
         _message = '$e';
       });
     }
   }
 
-  Future<void> _envoyer() async {
+  Future<void> _envoyerManuel() async {
     final sujet = _sujetCtrl.text.trim();
     final contenu = _contenuCtrl.text.trim();
     if (sujet.isEmpty || contenu.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Renseignez le sujet et le contenu HTML/texte.')),
+        const SnackBar(content: Text('Renseignez le sujet et le contenu.')),
       );
       return;
     }
-    setState(() => _envoi = true);
+    setState(() => _isEnvoi = true);
     try {
       final res = await _admin.postNewsletterEnvoyer(sujet: sujet, contenu: contenu);
       if (!mounted) return;
@@ -80,114 +89,354 @@ class _NewsletterAdminPageState extends State<NewsletterAdminPage> {
         SnackBar(
           content: Text(res['message']?.toString() ?? (ok ? 'Envoyé.' : 'Échec')),
           backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
         ),
       );
+      if (ok) {
+        _contenuCtrl.clear();
+        _sujetCtrl.clear();
+        await _load();
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$e'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
-      if (mounted) setState(() => _envoi = false);
+      if (mounted) setState(() => _isEnvoi = false);
     }
+  }
+
+  String _formatDate(String? raw) {
+    final dt = DateTime.tryParse(raw ?? '');
+    if (dt == null) return '-';
+    final d = dt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          color: Colors.white,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Newsletter',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Gerez vos abonnes et envois',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A56DB).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.people_rounded, color: Color(0xFF1A56DB), size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$_totalAbonnes abonnes',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A56DB),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TabBar(
+                controller: _tabCtrl,
+                labelColor: const Color(0xFF1A56DB),
+                unselectedLabelColor: const Color(0xFF94A3B8),
+                indicatorColor: const Color(0xFF1A56DB),
+                tabs: const [
+                  Tab(text: 'Abonnes'),
+                  Tab(text: 'Envoyer'),
+                  Tab(text: 'Historique'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (_message != null)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(_message!, style: const TextStyle(color: Color(0xFFB91C1C))),
+          ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabCtrl,
+            children: [
+              _buildAbonnes(),
+              _buildEnvoyer(),
+              _buildHistorique(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAbonnes() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF1A56DB)));
+    }
+    if (_abonnes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.people_outline, color: Color(0xFFE2E8F0), size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Aucun abonne pour le moment',
+              style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF94A3B8)),
+            ),
+            Text(
+              'Les inscriptions viennent du footer',
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFCBD5E1)),
+            ),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _abonnes.length,
+      itemBuilder: (ctx, i) {
+        final ab = _abonnes[i];
+        final email = ab['email']?.toString() ?? '';
+        final nom = ab['nom']?.toString() ?? 'Anonyme';
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: const Color(0xFF1A56DB).withValues(alpha: 0.1),
+            child: Text(
+              email.isEmpty ? 'A' : email[0].toUpperCase(),
+              style: const TextStyle(
+                color: Color(0xFF1A56DB),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          title: Text(
+            email,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(
+            nom,
+            style: GoogleFonts.inter(fontSize: 11),
+          ),
+          trailing: Text(
+            _formatDate(ab['date_inscription']?.toString()),
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEnvoyer() {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Newsletter',
-            style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          Text(
-            '$_total abonné(s) actif(s). Les e-mails partent via SMTP (paramètres plateforme).',
-            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 16),
-          if (_message != null)
-            Text(_message!, style: const TextStyle(color: Color(0xFFB91C1C))),
-          Expanded(
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF1A56DB).withValues(alpha: 0.2)),
+            ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Icon(Icons.auto_awesome_rounded, color: Color(0xFF1A56DB), size: 16),
+                const SizedBox(width: 10),
                 Expanded(
-                  flex: 2,
-                  child: Card(
-                    child: _loading
-                        ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-                        : ListView.separated(
-                            itemCount: _abonnes.length,
-                            separatorBuilder: (_, _) => const Divider(height: 1),
-                            itemBuilder: (ctx, i) {
-                              final a = _abonnes[i];
-                              final em = a['email']?.toString() ?? '';
-                              final nom = a['nom']?.toString();
-                              return ListTile(
-                                dense: true,
-                                title: Text(em, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                                subtitle: nom != null && nom.isNotEmpty ? Text(nom) : null,
-                              );
-                            },
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text('Campagne', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _sujetCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Sujet',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _contenuCtrl,
-                              maxLines: null,
-                              expands: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Contenu (HTML autorisé)',
-                                alignLabelWithHint: true,
-                                border: OutlineInputBorder(),
-                              ),
-                              textAlignVertical: TextAlignVertical.top,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: _envoi ? null : _envoyer,
-                            icon: _envoi
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Icon(Icons.send_rounded),
-                            label: const Text('Envoyer à tous les abonnés actifs'),
-                          ),
-                        ],
-                      ),
+                  child: Text(
+                    'La newsletter IA automatique est configuree dans Parametres > Contenu > Newsletter.\nIci vous pouvez envoyer une newsletter manuelle.',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: const Color(0xFF1E40AF),
+                      height: 1.4,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _sujetCtrl,
+            decoration: InputDecoration(
+              labelText: 'Sujet *',
+              hintText: 'Ex: Nouvelles offres de la semaine',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _contenuCtrl,
+            maxLines: 8,
+            decoration: InputDecoration(
+              labelText: 'Contenu *',
+              hintText: 'Redigez votre newsletter...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: Color(0xFF94A3B8), size: 14),
+                const SizedBox(width: 8),
+                Text(
+                  'Sera envoye a $_totalAbonnes abonne(s) actif(s)',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: _isEnvoi
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded, size: 16),
+              label: Text(
+                _isEnvoi ? 'Envoi en cours...' : 'Envoyer maintenant',
+                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A56DB),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _isEnvoi ? null : _envoyerManuel,
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHistorique() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF1A56DB)));
+    }
+    if (_envois.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucun envoi pour le moment',
+          style: GoogleFonts.inter(color: const Color(0xFF94A3B8)),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _envois.length,
+      itemBuilder: (ctx, i) {
+        final e = _envois[i];
+        final source = e['source']?.toString() ?? 'manuel';
+        final ia = source == 'ia_auto' || source == 'hebdo';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: (ia ? const Color(0xFF8B5CF6) : const Color(0xFF1A56DB)).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  ia ? Icons.auto_awesome_rounded : Icons.send_rounded,
+                  color: ia ? const Color(0xFF8B5CF6) : const Color(0xFF1A56DB),
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      e['sujet']?.toString() ?? '',
+                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${e['nb_destinataires'] ?? 0} envois · ${ia ? 'IA' : 'Manuel'} · ${_formatDate(e['date_envoi']?.toString())}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

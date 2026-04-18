@@ -63,6 +63,24 @@ final GoRouter appRouter = GoRouter(
             );
           },
         ),
+        GoRoute(
+          path: '/admin/messages-contact',
+          builder: (BuildContext context, GoRouterState state) {
+            return Consumer<AuthProvider>(
+              builder: (context, auth, _) {
+                if (!auth.sessionLoaded) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (!auth.isLoggedIn || auth.role != 'admin') {
+                  return const LoginScreen();
+                }
+                return const AdminShellScreen(initialRoute: '/admin/messages-contact');
+              },
+            );
+          },
+        ),
       ],
     ),
   ],

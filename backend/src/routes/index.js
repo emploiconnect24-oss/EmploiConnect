@@ -30,11 +30,12 @@ import candidatCvCreatorRoutes from './candidat/cvCreator.js';
 import candidatProfilRoutes from './candidat/profil.js';
 import candidatRecommandationsRoutes from './candidat/recommandations.js';
 import candidatParcoursRoutes from './candidat/parcoursCarriere.js';
+import candidatSimulationRoutes from './candidat/simulation.routes.js';
 import { listBannieresPubliques } from '../controllers/admin/bannieres.controller.js';
 import { getFooterConfig, getGeneralConfig } from '../controllers/public/siteConfig.controller.js';
 import { getTopEntreprisesPublic } from '../controllers/public/entreprisesPublic.controller.js';
 import { getTemoignagesPublic } from '../controllers/public/temoignagesPublic.controller.js';
-import { getApropos } from '../controllers/apropos.controller.js';
+import { getApropos, getAproposEquipe, postAproposContact } from '../controllers/apropos.controller.js';
 import {
   postNewsletterSubscribe,
   getNewsletterUnsubscribe,
@@ -55,6 +56,8 @@ router.get('/temoignages/public', getTemoignagesPublic);
 router.get('/temoignages', getTemoignagesPublic);
 
 router.get('/apropos', optionalAuth, getApropos);
+router.get('/apropos/equipe', getAproposEquipe);
+router.post('/apropos/contact', postAproposContact);
 router.post('/newsletter/subscribe', postNewsletterSubscribe);
 router.get('/newsletter/unsubscribe', getNewsletterUnsubscribe);
 
@@ -87,6 +90,7 @@ router.use('/candidat/cv', candidatCvCreatorRoutes);
 router.use('/candidat', candidatProfilRoutes);
 router.use('/candidat', candidatRecommandationsRoutes);
 router.use('/candidat', candidatParcoursRoutes);
+router.use('/candidat/simulation', candidatSimulationRoutes);
 router.use('/admin', adminRoutes);
 
 // Santé de l'API (sans auth)

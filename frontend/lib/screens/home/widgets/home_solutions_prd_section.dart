@@ -16,22 +16,22 @@ class _HomeSolutionsPrdSectionState extends State<HomeSolutionsPrdSection> with 
   late AnimationController _ctrl;
 
   static final _solutions = <_Solution>[
-    _Solution('🤖', 'Matching IA',
-        'Claude analyse votre profil et trouve les offres parfaites pour vous.', HomeDesign.primary, 'Populaire'),
-    _Solution('📄', 'Créateur de CV',
-        'Générez un CV pro en quelques minutes avec nos modèles optimisés.', HomeDesign.primaryMid, null),
-    _Solution('🎤', 'Simulateur IA',
-        'Préparez vos entretiens avec notre IA qui simule de vrais recruteurs.', HomeDesign.primary, 'Nouveau'),
+    _Solution('🤖', 'Matching intelligent',
+        'Notre moteur EmploiConnect analyse votre profil et vous propose les offres les plus pertinentes.', HomeDesign.primary, 'Populaire'),
+    _Solution('📄', 'Créateur de CV Pro',
+        'Construisez un CV moderne et convaincant en quelques minutes, prêt à impressionner les recruteurs.', HomeDesign.primaryMid, null),
+    _Solution('🎤', 'Simulateur d\'entretien',
+        'Entraînez-vous face à un recruteur virtuel, recevez un feedback personnalisé et progressez entretien après entretien.', HomeDesign.primary, 'Nouveau'),
     _Solution('💰', 'Calculateur salaire',
-        'Estimez votre valeur sur le marché guinéen grâce à l\'IA.', HomeDesign.primaryMid, null),
+        'Estimez votre fourchette salariale en Guinée selon votre poste, votre niveau et votre expérience.', HomeDesign.primaryMid, null),
     _Solution('🔔', 'Alertes emploi',
-        'Recevez en temps réel les offres qui correspondent à votre profil.', HomeDesign.primary, null),
+        'Recevez rapidement les nouvelles offres alignées avec votre profil et postulez au bon moment.', HomeDesign.primary, null),
     _Solution('🏆', 'Parcours Carrière',
-        'Guides, ressources et conseils pour booster votre carrière.', HomeDesign.primaryMid, null),
+        'Accédez à des ressources concrètes pour évoluer plus vite : compétences, objectifs et progression.', HomeDesign.primaryMid, null),
     _Solution('🏢', 'Vitrine entreprise',
-        'Créez votre page entreprise attractive pour attirer les meilleurs.', HomeDesign.primary, null),
+        'Mettez votre entreprise en valeur pour attirer des candidats qualifiés et renforcer votre marque employeur.', HomeDesign.primary, null),
     _Solution('📊', 'Analytics recruteur',
-        'Suivez vos performances et optimisez vos campagnes de recrutement.', HomeDesign.primaryMid, 'Pro'),
+        'Suivez vos performances de recrutement et optimisez vos campagnes avec des indicateurs utiles.', HomeDesign.primaryMid, 'Pro'),
   ];
 
   @override

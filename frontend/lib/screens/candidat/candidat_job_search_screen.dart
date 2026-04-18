@@ -5,6 +5,7 @@ import '../../services/candidatures_service.dart';
 import '../../services/matching_service.dart';
 import '../../services/offres_service.dart';
 import '../../shared/widgets/ia_score_badge.dart';
+import '../../widgets/dialog_analyse_postulation.dart';
 import 'candidat_offer_detail_screen.dart';
 import 'widgets/apply_bottom_sheet.dart';
 import '../../widgets/responsive_container.dart';
@@ -205,7 +206,7 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
       _minSalaire > 0 ||
       _sortBy != 'pertinence';
 
-  Future<void> _applyBottomSheet(Map<String, dynamic> offre) async {
+  Future<void> _ouvrirSheetPostulation(Map<String, dynamic> offre) async {
     final id = offre['id']?.toString() ?? '';
     final title = (offre['titre'] ?? 'Offre').toString();
     final ok = await showModalBottomSheet<bool>(
@@ -226,6 +227,23 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Candidature envoyée avec succès !')),
+    );
+  }
+
+  Future<void> _postulerAvecAnalyse(Map<String, dynamic> offre) async {
+    final id = offre['id']?.toString() ?? '';
+    final title = (offre['titre'] ?? 'Offre').toString();
+    if (id.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogAnalysePostulation(
+        offreId: id,
+        offreTitre: title,
+        onConfirmerPostulation: () {
+          _ouvrirSheetPostulation(offre);
+        },
+      ),
     );
   }
 
@@ -631,7 +649,7 @@ class _CandidatJobSearchScreenState extends State<CandidatJobSearchScreen> {
                                                       ),
                                                     ),
                                                     ElevatedButton(
-                                                      onPressed: () => _applyBottomSheet(o),
+                                                      onPressed: () => _postulerAvecAnalyse(o),
                                                       child: const Text('Postuler →'),
                                                     ),
                                                   ],

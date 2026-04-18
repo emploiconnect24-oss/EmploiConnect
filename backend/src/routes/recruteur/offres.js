@@ -5,6 +5,7 @@ import { supabase } from '../../config/supabase.js';
 import { _appellerIA, _getClesIA, extraireMotsCles } from '../../services/ia.service.js';
 import { notifNouvelleOffre } from '../../services/auto_notification.service.js';
 import { notifierAlertesPourOffrePubliee } from '../../services/alerteEmploiNotify.service.js';
+import { traiterAlertesNouvelleOffre } from '../../services/matchingAvance.service.js';
 
 async function offresPublicationAutoActive() {
   const { data } = await supabase
@@ -237,6 +238,7 @@ router.post('/', async (req, res) => {
         await notifNouvelleOffre(inserted, req.entreprise.nom_entreprise);
         if (String(inserted.statut || '').toLowerCase() === 'publiee') {
           void notifierAlertesPourOffrePubliee(inserted.id);
+          void traiterAlertesNouvelleOffre(inserted.id);
         }
       } catch (e) {
         console.warn('[recruteur/offres] enrichissement non bloquant:', e.message);
@@ -309,6 +311,7 @@ router.patch('/:id', async (req, res) => {
     if (!prevLive && nextLive) {
       setImmediate(() => {
         void notifierAlertesPourOffrePubliee(id);
+        void traiterAlertesNouvelleOffre(id);
       });
     }
 

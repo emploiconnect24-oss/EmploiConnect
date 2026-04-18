@@ -51,6 +51,23 @@ export async function getNewsletterAbonnes(req, res) {
   }
 }
 
+export async function getNewsletterHistorique(req, res) {
+  try {
+    const limite = Math.min(Math.max(Number.parseInt(String(req.query.limite || '50'), 10) || 50, 1), 200);
+    const { data, error } = await supabase
+      .from('newsletter_envois')
+      .select('*')
+      .order('date_envoi', { ascending: false })
+      .limit(limite);
+    if (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+    return res.json({ success: true, data: data || [] });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Erreur serveur' });
+  }
+}
+
 export async function postNewsletterEnvoyer(req, res) {
   try {
     const sujet = String(req.body?.sujet || '').trim();
@@ -103,6 +120,14 @@ export async function postNewsletterEnvoyer(req, res) {
       });
       if (r.ok) nbEnvois += 1;
     }
+
+    await supabase.from('newsletter_envois').insert({
+      sujet: sujet.slice(0, 200),
+      contenu: contenu.slice(0, 8000),
+      nb_destinataires: nbEnvois,
+      source: 'manuel',
+      declencheur: 'admin',
+    });
 
     return res.json({
       success: true,

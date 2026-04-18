@@ -20,6 +20,7 @@ import {
   notifyChercheurCandidatureStatutChanged,
   notifyRecruteurCandidatureAnnuleeParCandidat,
 } from '../services/candidatureSignalementNotify.service.js';
+import { traiterAlerteProfilCompatible } from '../services/matchingAvance.service.js';
 
 const router = Router();
 
@@ -153,6 +154,13 @@ router.post('/', requireRole(ROLES.CHERCHEUR), async (req, res) => {
       candidateEmail: req.user.email,
       candidateNom: req.user.nom,
       offreTitre: offre?.titre,
+    });
+
+    setImmediate(() => {
+      void traiterAlerteProfilCompatible({
+        candidatId: chercheurId,
+        offreId: offre_id,
+      });
     });
 
     res.status(201).json(data);

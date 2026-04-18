@@ -98,28 +98,79 @@ export async function sendWelcomeEmailOnRegister(user, validationManuelle) {
     : '';
 
   if (!body) {
-    if (validationManuelle) {
-      body = `Bonjour ${vars.nom},\n\nVotre compte sur ${cfg.platformName} a bien été créé.\n`
-        + 'Un administrateur doit valider votre inscription avant que vous puissiez vous connecter.\n\n'
-        + 'Vous recevrez un message lorsque votre compte sera validé.\n\n'
-        + 'Cordialement,\n'
-        + `L'équipe ${cfg.platformName}`;
-    } else {
-      body = `Bonjour ${vars.nom},\n\nVotre compte sur ${cfg.platformName} a bien été créé.\n`
-        + 'Vous pouvez dès maintenant vous connecter avec votre adresse e-mail.\n\n'
-        + 'Cordialement,\n'
-        + `L'équipe ${cfg.platformName}`;
-    }
+    body = validationManuelle
+      ? `Bonjour ${vars.nom},\n\nVotre compte sur ${cfg.platformName} a bien été créé.\nUn administrateur doit valider votre inscription avant que vous puissiez vous connecter.\n\nVous recevrez un message lorsque votre compte sera validé.\n\nCordialement,\nL'équipe ${cfg.platformName}`
+      : `Bonjour ${vars.nom},\n\nVotre compte sur ${cfg.platformName} a bien été créé et est actif.\n\nVous pouvez maintenant rechercher des offres, compléter votre profil et postuler.\n\nCordialement,\nL'équipe ${cfg.platformName}`;
   }
+
+  const appUrl = String(cfg.publicAppUrl || '').replace(/\/$/, '') || 'http://localhost:3001';
+  const safeNom = htmlEscape(vars.nom);
+  const safeEmail = htmlEscape(vars.email);
+  const safePlateforme = htmlEscape(cfg.platformName);
+  const ctaHref = `${appUrl}/offres`;
+  const inner = validationManuelle
+    ? `<h2 style="margin:0 0 10px;color:#0F172A;">Bienvenue ${safeNom} !</h2>
+<p style="margin:0 0 14px;color:#374151;line-height:1.7;">Votre compte sur <strong>${safePlateforme}</strong> a été créé et attend la validation d'un administrateur.</p>
+<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin:0 0 14px;">
+  <p style="margin:0;font-size:13px;color:#475569;">Email : <strong>${safeEmail}</strong></p>
+</div>
+<p style="margin:0;color:#64748B;font-size:13px;">Vous recevrez un email dès activation du compte.</p>`
+    : `<h2 style="margin:0 0 10px;color:#0F172A;">Bienvenue sur ${safePlateforme}, ${safeNom} !</h2>
+<p style="margin:0 0 14px;color:#374151;line-height:1.7;">Votre compte est actif et prêt à l'emploi.</p>
+<div style="background:#F0F7FF;border-left:4px solid #1A56DB;border-radius:10px;padding:14px;margin:0 0 14px;">
+  <p style="margin:0;font-size:13px;color:#1E40AF;">✅ Compte actif · 📧 <strong>${safeEmail}</strong></p>
+</div>
+<ul style="margin:0 0 16px;padding-left:18px;color:#374151;line-height:1.8;">
+  <li>Rechercher des offres d'emploi</li>
+  <li>Optimiser votre profil avec l'IA</li>
+  <li>Postuler en quelques clics</li>
+</ul>
+<p style="text-align:center;margin:0;"><a href="${htmlEscape(ctaHref)}" style="display:inline-block;padding:12px 22px;background:#1A56DB;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Voir les offres</a></p>`;
+  const html = await buildWrappedEmailHtml(inner);
 
   void sendPlatformEmail({
     to: user.email,
     subject,
     text: body,
-    html: textToHtml(body),
+    html,
   }).then((r) => {
     if (!r.ok) console.warn('[mail] Bienvenue non envoyé:', r.error);
   });
+}
+
+export async function sendSousAdminWelcomeEmail({
+  nom,
+  email,
+  motDePasse,
+  roleNom,
+}) {
+  const cfg = await getMailSettings();
+  if (!cfg.enabled || !email) return { ok: false, error: 'Email désactivé ou adresse manquante' };
+  const appUrl = String(cfg.publicAppUrl || '').replace(/\/$/, '') || 'http://localhost:3001';
+  const safeNom = htmlEscape(nom || '');
+  const safeEmail = htmlEscape(email || '');
+  const safeRole = htmlEscape(roleNom || 'Administrateur');
+  const safePwd = htmlEscape(motDePasse || '');
+  const safeApp = htmlEscape(`${appUrl}/admin/login`);
+  const subject = 'Votre accès EmploiConnect — Bienvenue';
+  const text =
+    `Bonjour ${nom || ''},\n\n`
+    + `Un compte administrateur a été créé sur ${cfg.platformName}.\n`
+    + `Email: ${email}\nMot de passe: ${motDePasse}\nRôle: ${roleNom || 'Administrateur'}\n\n`
+    + `Connexion: ${appUrl}/admin/login\n\n`
+    + 'Veuillez changer votre mot de passe dès la première connexion.';
+  const inner = `<h2 style="margin:0 0 12px;color:#0F172A;">Bienvenue, ${safeNom} !</h2>
+<p style="margin:0 0 14px;color:#374151;line-height:1.7;">Un compte administrateur a été créé pour vous sur <strong>${htmlEscape(cfg.platformName)}</strong>.</p>
+<div style="background:#F0F7FF;border-left:4px solid #1A56DB;border-radius:10px;padding:14px;margin:0 0 14px;">
+  <p style="margin:0;color:#1E40AF;font-weight:700;">Vos informations de connexion</p>
+  <p style="margin:6px 0 0;color:#374151;">📧 <strong>${safeEmail}</strong></p>
+  <p style="margin:4px 0 0;color:#374151;">🔑 <strong>${safePwd}</strong></p>
+  <p style="margin:4px 0 0;color:#374151;">👤 <strong>${safeRole}</strong></p>
+</div>
+<p style="margin:0 0 16px;color:#B91C1C;font-size:13px;">⚠️ Changez votre mot de passe dès la première connexion.</p>
+<p style="text-align:center;margin:0;"><a href="${safeApp}" style="display:inline-block;padding:12px 22px;background:#1A56DB;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Accéder au panneau admin</a></p>`;
+  const html = await buildWrappedEmailHtml(inner);
+  return sendPlatformEmail({ to: email, subject, text, html });
 }
 
 export async function sendAccountValidatedEmail(user) {

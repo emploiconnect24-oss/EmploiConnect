@@ -20,6 +20,7 @@ import 'admin_ressources_parcours_screen.dart';
 import 'admin_profil_screen.dart';
 import 'pages/admin_recherche_globale_page.dart';
 import 'pages/apropos_admin_page.dart';
+import 'pages/messages_contact_admin_page.dart';
 import 'pages/newsletter_admin_page.dart';
 import 'pages/sous_admins_page.dart';
 import 'widgets/admin_sidebar.dart';
@@ -54,6 +55,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   static const String _routeApropos = '/admin/apropos';
   static const String _routeNewsletter = '/admin/newsletter';
   static const String _routeAcces = '/admin/acces';
+  static const String _routeMessagesContact = '/admin/messages-contact';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _sidebarCollapsed = false;
@@ -84,6 +86,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     _routeApropos: 'Page À propos',
     _routeNewsletter: 'Newsletter',
     _routeAcces: 'Gestion des accès',
+    _routeMessagesContact: 'Messages Contact',
   };
 
   @override
@@ -141,6 +144,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         return 'apropos';
       case _routeNewsletter:
         return 'newsletter';
+      case _routeMessagesContact:
+        return 'messages_contact';
       default:
         return null;
     }
@@ -160,6 +165,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'parcours': 'Parcours carrière',
     'apropos': 'Page À propos',
     'newsletter': 'Newsletter',
+    'messages_contact': 'Messages Contact',
   };
 
   static const List<String> _routesSuperAdminSeulement = [
@@ -221,6 +227,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         return const NewsletterAdminPage();
       case _routeAcces:
         return const SousAdminsPage();
+      case _routeMessagesContact:
+        return const MessagesContactAdminPage();
       default:
         return const AdminDashboardScreen();
     }

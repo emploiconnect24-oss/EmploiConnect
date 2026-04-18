@@ -5,6 +5,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../../config/supabase.js';
 import { ROLES } from '../../config/constants.js';
+import { sendSousAdminWelcomeEmail } from '../../services/mail.service.js';
 import {
   getPermissionsAdmin,
   invaliderCacheAdmin,
@@ -245,6 +246,21 @@ router.post('/', requireSuperAdmin, async (req, res) => {
       });
     }
 
+    const roleInfo = role_id ? (await getRoleById(role_id)) : null;
+    try {
+      const sent = await sendSousAdminWelcomeEmail({
+        nom: newUser.nom,
+        email: newUser.email,
+        motDePasse: String(mot_de_passe),
+        roleNom: roleInfo?.nom || 'Administrateur',
+      });
+      if (!sent?.ok) {
+        console.warn('[sousAdmin] Email bienvenue échoué:', sent?.error || 'Erreur inconnue');
+      }
+    } catch (emailErr) {
+      console.warn('[sousAdmin] Email bienvenue échoué:', emailErr?.message || emailErr);
+    }
+
     return res.status(201).json({
       success: true,
       data: {
@@ -253,7 +269,7 @@ router.post('/', requireSuperAdmin, async (req, res) => {
         email: newUser.email,
         est_super_admin: false,
         est_actif: true,
-        role: role_id ? (await getRoleById(role_id)) : null,
+        role: roleInfo,
       },
       message: `Compte créé pour ${newUser.nom}`,
     });

@@ -46,5 +46,114 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    window.speakText = function (text, lang, genre) {
+      try {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        var lg = lang || 'fr-FR';
+        var isFemme = genre === 'femme';
+
+        function pickFrVoice(voices) {
+          var voixFr = voices.filter(function (v) {
+            return (v.lang || '').toLowerCase().indexOf('fr') === 0;
+          });
+          if (voixFr.length === 0) return null;
+          var n;
+          if (isFemme) {
+            n = voixFr.find(function (v) {
+              var x = (v.name || '').toLowerCase();
+              return x.indexOf('hortense') >= 0 || x.indexOf('julie') >= 0 || x.indexOf('denise') >= 0
+                || x.indexOf('caroline') >= 0 || x.indexOf('female') >= 0 || x.indexOf('femme') >= 0;
+            });
+            return n || voixFr[0];
+          }
+          n = voixFr.find(function (v) {
+            var x = (v.name || '').toLowerCase();
+            return x.indexOf('henri') >= 0 || x.indexOf('paul') >= 0 || x.indexOf('thomas') >= 0
+              || x.indexOf('male') >= 0 || x.indexOf('homme') >= 0;
+          });
+          return n || voixFr[voixFr.length - 1];
+        }
+
+        function run(voices) {
+          var utterance = new SpeechSynthesisUtterance(text || '');
+          utterance.lang = lg;
+          utterance.rate = 0.88;
+          utterance.pitch = isFemme ? 1.1 : 0.92;
+          utterance.volume = 1.0;
+          var v = pickFrVoice(voices || []);
+          if (v) utterance.voice = v;
+          window.speechSynthesis.speak(utterance);
+        }
+
+        var list = window.speechSynthesis.getVoices();
+        if (list && list.length > 0) {
+          run(list);
+          return;
+        }
+        var done = false;
+        function fire() {
+          if (done) return;
+          done = true;
+          try { window.speechSynthesis.onvoiceschanged = null; } catch (e) {}
+          run(window.speechSynthesis.getVoices());
+        }
+        window.speechSynthesis.onvoiceschanged = fire;
+        setTimeout(fire, 400);
+      } catch (e) {
+        console.warn('speakText error:', e);
+      }
+    };
+
+    var _recognition = null;
+
+    window.startSpeechRecognition = function (callback) {
+      try {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+          console.warn('SpeechRecognition non supporte');
+          return;
+        }
+        _recognition = new SR();
+        _recognition.lang = 'fr-FR';
+        _recognition.continuous = true;
+        _recognition.interimResults = true;
+        _recognition.onresult = function (event) {
+          var transcript = '';
+          for (var i = 0; i < event.results.length; i += 1) {
+            transcript += event.results[i][0].transcript;
+          }
+          if (callback && typeof callback === 'function') {
+            callback(transcript);
+          }
+        };
+        _recognition.onerror = function (e) {
+          console.warn('Speech error:', e.error);
+        };
+        _recognition.onend = function () {
+          console.log('Speech recognition termine');
+        };
+        _recognition.start();
+        console.log('Micro demarre');
+      } catch (e) {
+        console.warn('startSpeechRecognition error:', e);
+      }
+    };
+
+    window.stopSpeechRecognition = function () {
+      try {
+        if (_recognition) {
+          _recognition.stop();
+          _recognition = null;
+          console.log('Micro arrete');
+        }
+      } catch (e) {
+        console.warn('stopSpeechRecognition error:', e);
+      }
+    };
+
+    console.log('Speech API initialisee');
+  </script>
 </body>
 </html>

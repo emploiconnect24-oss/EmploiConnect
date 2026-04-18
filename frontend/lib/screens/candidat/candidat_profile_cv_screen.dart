@@ -999,20 +999,95 @@ class _CandidatProfileCvScreenState extends State<CandidatProfileCvScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'Immédiatement',
-                    label: Text('Immédiatement'),
-                  ),
-                  ButtonSegment(value: '1 mois', label: Text('Dans 1 mois')),
-                  ButtonSegment(value: '3 mois', label: Text('Dans 3 mois')),
-                  ButtonSegment(value: 'En poste', label: Text('En poste')),
-                ],
-                selected: {_availability},
-                onSelectionChanged: (v) {
-                  setState(() => _availability = v.first);
-                  _scheduleAutoSave();
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: Color(0xFF1D4ED8),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Votre disponibilité aide les recruteurs à savoir quand vous pouvez démarrer. '
+                        'Cela améliore aussi le tri des candidatures selon l\'urgence du poste.',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: const Color(0xFF1E3A8A),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const options = <MapEntry<String, String>>[
+                    MapEntry('Immédiatement', 'Immédiatement'),
+                    MapEntry('1 mois', 'Dans 1 mois'),
+                    MapEntry('3 mois', 'Dans 3 mois'),
+                    MapEntry('En poste', 'En poste'),
+                  ];
+                  final isCompact = constraints.maxWidth < 560;
+                  if (!isCompact) {
+                    return SegmentedButton<String>(
+                      segments: options
+                          .map(
+                            (o) => ButtonSegment<String>(
+                              value: o.key,
+                              label: Text(o.value),
+                            ),
+                          )
+                          .toList(),
+                      selected: {_availability},
+                      onSelectionChanged: (v) {
+                        setState(() => _availability = v.first);
+                        _scheduleAutoSave();
+                      },
+                    );
+                  }
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: options.map((o) {
+                      final selected = _availability == o.key;
+                      return ChoiceChip(
+                        label: Text(o.value),
+                        selected: selected,
+                        onSelected: (_) {
+                          setState(() => _availability = o.key);
+                          _scheduleAutoSave();
+                        },
+                        selectedColor: const Color(0xFF1A56DB),
+                        backgroundColor: const Color(0xFFF8FAFC),
+                        side: BorderSide(
+                          color: selected
+                              ? const Color(0xFF1A56DB)
+                              : const Color(0xFFE2E8F0),
+                        ),
+                        labelStyle: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF334155),
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      );
+                    }).toList(),
+                  );
                 },
               ),
             ],
@@ -1086,10 +1161,31 @@ class _CandidatProfileCvScreenState extends State<CandidatProfileCvScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: _aboutCtrl,
-                maxLines: 8,
-                maxLength: 800,
-                decoration: const InputDecoration(
+                minLines: 12,
+                maxLines: 24,
+                maxLength: 5000,
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF0F172A),
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+                decoration: InputDecoration(
                   labelText: 'Parlez de votre parcours et motivations',
+                  labelStyle: GoogleFonts.inter(
+                    color: const Color(0xFF0F172A),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  floatingLabelStyle: GoogleFonts.inter(
+                    color: const Color(0xFF0F172A),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  hintText: 'Décrivez votre parcours, vos réalisations et vos motivations...',
+                  hintStyle: GoogleFonts.inter(
+                    color: const Color(0xFF64748B),
+                    fontSize: 13,
+                  ),
                   alignLabelWithHint: true,
                 ),
               ),

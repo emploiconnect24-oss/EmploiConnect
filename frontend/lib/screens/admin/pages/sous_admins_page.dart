@@ -21,6 +21,8 @@ const _kSectionMeta = <String, String>{
   'newsletter': 'Newsletter',
   'newsletter_envoi': 'Envoi newsletter',
   'illustrations': 'Illustrations IA',
+  'messages_contact': 'Messages Contact',
+  'equipe': 'Équipe',
   'apropos': 'Page À propos',
 };
 

@@ -16,15 +16,115 @@ function parseIaJson(texte) {
   const raw = String(texte || '')
     .replace(/```json/gi, '')
     .replace(/```/g, '')
+    .replace(/\uFEFF/g, '')
     .trim();
   try {
     return JSON.parse(raw);
-  } catch (_) {
+  } catch (errDirect) {
     const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start === -1 || end <= start) throw new Error('Réponse IA non JSON');
-    return JSON.parse(raw.slice(start, end + 1));
+    if (start === -1) throw new Error('Réponse IA non JSON');
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+    for (let i = start; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '{') depth += 1;
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) {
+      throw new Error(`Réponse IA non JSON (${errDirect.message})`);
+    }
+    const bloc = raw
+      .slice(start, end + 1)
+      .replace(/,\s*([}\]])/g, '$1') // retire virgules finales invalides
+      .replace(/[\u0000-\u0019]/g, ' ');
+    return JSON.parse(bloc);
   }
+}
+
+function questionsFallback({ poste, domaine, niveau, nbQuestions }) {
+  const base = [
+    {
+      question: `Pouvez-vous vous presenter rapidement et expliquer pourquoi le poste "${poste}" vous interesse ?`,
+      type: 'motivation',
+      theme: 'motivation',
+      conseil: 'Structurez votre reponse en 3 parties: profil, motivations, valeur ajoutee.',
+    },
+    {
+      question: `Parlez d'un projet concret en ${domaine || 'votre domaine'} que vous avez realise et de votre contribution precise.`,
+      type: 'comportemental',
+      theme: 'experience',
+      conseil: 'Utilisez la methode STAR et donnez un resultat chiffre.',
+    },
+    {
+      question: `Comment priorisez-vous vos taches quand plusieurs urgences arrivent en meme temps ?`,
+      type: 'situation',
+      theme: 'stress',
+      conseil: 'Expliquez votre methode de priorisation et vos criteres.',
+    },
+    {
+      question: `Quelles competences techniques sont les plus importantes pour ce poste et comment les appliquez-vous ?`,
+      type: 'technique',
+      theme: 'code',
+      conseil: 'Citez des outils/technos et des exemples concrets d\'utilisation.',
+    },
+    {
+      question: `Comment collaborez-vous avec une equipe (produit, design, metier) sur un projet ?`,
+      type: 'comportemental',
+      theme: 'equipe',
+      conseil: 'Insistez sur communication, feedback et gestion des conflits.',
+    },
+    {
+      question: `Si vous etiez recrute au niveau ${niveau || 'souhaite'}, que feriez-vous durant vos 30 premiers jours ?`,
+      type: 'situation',
+      theme: 'general',
+      conseil: 'Proposez un plan 30-60-90 clair et realiste.',
+    },
+  ];
+  return { questions: base.slice(0, nbQuestions) };
+}
+
+function evaluationFallback() {
+  return {
+    score: 50,
+    feedback: 'Evaluation partielle: la reponse n\'a pas pu etre analysee completement.',
+    points_forts: [],
+    ameliorations: [
+      'Structurez votre reponse avec la methode STAR',
+      'Ajoutez des exemples concrets de vos realisations',
+      'Concluez avec votre valeur ajoutee pour le poste',
+    ],
+  };
+}
+
+function salaireFallback() {
+  return {
+    salaire_min: 1500000,
+    salaire_max: 3500000,
+    salaire_median: 2500000,
+    devise: 'GNF',
+    conseils: [
+      'Preparez des exemples concrets de valeur apportee',
+      'Basez votre negotiation sur vos competences et le marche',
+    ],
+  };
 }
 
 export async function listRessourcesPubliees(req, res) {
@@ -179,15 +279,59 @@ Réponds UNIQUEMENT avec ce JSON :
   ]
 }`;
 
-    const texte = await _appellerIA(prompt, cles, 'parcours');
+    const texte = await _appellerIA(prompt, cles, 'texte');
     if (!texte) return res.status(503).json({ success: false, message: 'IA non disponible' });
 
-    const data = parseIaJson(texte);
-    if (!data?.questions || !Array.isArray(data.questions)) {
-      return res.status(500).json({ success: false, message: 'Format IA inattendu' });
+    let data = null;
+    try {
+      data = parseIaJson(texte);
+    } catch (e1) {
+      console.warn('[genererQuestionsSimulateur] parse initial echoue:', e1?.message || e1);
+      // 2e tentative: demander au modele de reformater strictement le JSON.
+      const fixPrompt = `Corrige ce contenu en JSON STRICT valide, sans markdown, sans commentaire.
+Conserve uniquement le schema:
+{
+  "questions": [
+    {
+      "question": "...",
+      "type": "technique|comportemental|situation|motivation",
+      "theme": "code|equipe|stress|experience|finance|commercial|motivation|situation|general",
+      "conseil": "..."
+    }
+  ]
+}
+Contenu a corriger:
+${String(texte).slice(0, 6000)}`;
+      try {
+        const fixed = await _appellerIA(fixPrompt, cles, 'texte');
+        if (fixed) data = parseIaJson(fixed);
+      } catch (e2) {
+        console.warn('[genererQuestionsSimulateur] parse reformate echoue:', e2?.message || e2);
+      }
     }
 
-    return res.json({ success: true, data });
+    if (!data?.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
+      console.warn('[genererQuestionsSimulateur] fallback questions local utilise');
+      data = questionsFallback({
+        poste: String(poste_vise || 'Poste'),
+        domaine: String(domaine || ''),
+        niveau: String(niveau || ''),
+        nbQuestions: n,
+      });
+    }
+
+    const out = {
+      questions: (data.questions || [])
+        .slice(0, n)
+        .map((q, idx) => ({
+          question: String(q?.question || `Question ${idx + 1}`),
+          type: String(q?.type || 'general').toLowerCase(),
+          theme: String(q?.theme || 'general').toLowerCase(),
+          conseil: String(q?.conseil || 'Structurez votre reponse avec un exemple concret.'),
+        })),
+    };
+
+    return res.json({ success: true, data: out });
   } catch (err) {
     console.error('[genererQuestionsSimulateur]', err);
     return res.status(500).json({ success: false, message: err.message || 'Erreur serveur' });
@@ -232,11 +376,38 @@ Réponds UNIQUEMENT avec ce JSON :
   "ameliorations": ["amélioration 1"]
 }`;
 
-    const texte = await _appellerIA(prompt, cles, 'parcours');
+    const texte = await _appellerIA(prompt, cles, 'texte');
     if (!texte) return res.status(503).json({ success: false, message: 'IA non disponible' });
 
-    const data = parseIaJson(texte);
-    if (data.score == null) data.score = 50;
+    let data = null;
+    try {
+      data = parseIaJson(texte);
+    } catch (e1) {
+      console.warn('[evaluerReponseSimulateur] parse initial echoue:', e1?.message || e1);
+      const fixPrompt = `Corrige ce contenu en JSON STRICT valide, sans markdown.
+Schema attendu:
+{
+  "score": 50,
+  "feedback": "...",
+  "points_forts": ["..."],
+  "ameliorations": ["..."]
+}
+Contenu:
+${String(texte).slice(0, 6000)}`;
+      try {
+        const fixed = await _appellerIA(fixPrompt, cles, 'texte');
+        if (fixed) data = parseIaJson(fixed);
+      } catch (e2) {
+        console.warn('[evaluerReponseSimulateur] parse reformate echoue:', e2?.message || e2);
+      }
+    }
+
+    if (!data || typeof data !== 'object') data = evaluationFallback();
+    if (!Array.isArray(data.points_forts)) data.points_forts = [];
+    if (!Array.isArray(data.ameliorations)) data.ameliorations = evaluationFallback().ameliorations;
+    if (!Number.isFinite(Number(data.score))) data.score = 50;
+    data.score = Math.max(0, Math.min(100, Number(data.score)));
+    if (!String(data.feedback || '').trim()) data.feedback = evaluationFallback().feedback;
 
     return res.json({ success: true, data });
   } catch (err) {
@@ -311,20 +482,45 @@ Réponds UNIQUEMENT avec ce JSON :
 
 Les montants sont des entiers (pas de décimales).`;
 
-    const texte = await _appellerIA(prompt, cles, 'parcours');
+    const texte = await _appellerIA(prompt, cles, 'texte');
     if (!texte) return res.status(503).json({ success: false, message: 'IA non disponible' });
 
-    const data = parseIaJson(texte);
+    let data = null;
+    try {
+      data = parseIaJson(texte);
+    } catch (e1) {
+      console.warn('[calculateurSalaire] parse initial echoue:', e1?.message || e1);
+      const fixPrompt = `Corrige ce contenu en JSON STRICT valide, sans markdown.
+Schema attendu:
+{
+  "salaire_min": 0,
+  "salaire_max": 0,
+  "salaire_median": 0,
+  "devise": "GNF",
+  "conseils": ["..."]
+}
+Contenu:
+${String(texte).slice(0, 6000)}`;
+      try {
+        const fixed = await _appellerIA(fixPrompt, cles, 'texte');
+        if (fixed) data = parseIaJson(fixed);
+      } catch (e2) {
+        console.warn('[calculateurSalaire] parse reformate echoue:', e2?.message || e2);
+      }
+    }
+    if (!data || typeof data !== 'object') data = salaireFallback();
     const coerce = (v) => {
       const n = parseInt(String(v ?? 0).replace(/\s/g, ''), 10);
       return Number.isFinite(n) ? n : 0;
     };
     const out = {
-      salaire_min: coerce(data.salaire_min),
-      salaire_max: coerce(data.salaire_max),
-      salaire_median: coerce(data.salaire_median),
+      salaire_min: coerce(data.salaire_min || salaireFallback().salaire_min),
+      salaire_max: coerce(data.salaire_max || salaireFallback().salaire_max),
+      salaire_median: coerce(data.salaire_median || salaireFallback().salaire_median),
       devise: String(data.devise || 'GNF'),
-      conseils: Array.isArray(data.conseils) ? data.conseils.map((c) => String(c)) : [],
+      conseils: Array.isArray(data.conseils) && data.conseils.length
+        ? data.conseils.map((c) => String(c))
+        : salaireFallback().conseils,
     };
 
     return res.json({ success: true, data: out });

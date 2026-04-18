@@ -41,6 +41,7 @@ class CandidatTopBar extends StatelessWidget {
     '/dashboard/messages': 'Messagerie',
     '/dashboard/conseils': 'Conseils & Ressources',
     '/dashboard/parcours': 'Parcours Carrière',
+    '/dashboard/parcours/simulation': 'Simulation d\'entretien',
     '/dashboard/alertes': 'Alertes emploi',
     '/dashboard/notifications': 'Notifications',
     '/dashboard/parametres': 'Paramètres',

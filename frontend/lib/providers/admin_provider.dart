@@ -56,6 +56,8 @@ class AdminProvider extends ChangeNotifier {
     'newsletter': 'Newsletter',
     'newsletter_envoi': 'Envoi newsletter',
     'illustrations': 'Illustrations',
+    'messages_contact': 'Messages contact',
+    'equipe': 'Équipe',
     'parametres': 'Paramètres',
     'apropos': 'À propos',
   };
@@ -152,6 +154,8 @@ class AdminProvider extends ChangeNotifier {
 
   /// Notifications non lues (GET `/notifications/mes` → `nb_non_lues`).
   int nbNotificationsNonLues = 0;
+  /// Messages de contact non lus (GET `/admin/messages-contact` → `non_lus`).
+  int nbMessagesContactNonLus = 0;
 
   /// Profil admin connecté (GET `/admin/profil`) — pour avatar TopBar / Sidebar sans recharger.
   String? adminNom;
@@ -198,6 +202,21 @@ class AdminProvider extends ChangeNotifier {
   void updateNbNotifications(int nb) {
     nbNotificationsNonLues = nb;
     notifyListeners();
+  }
+
+  void updateNbMessagesContactNonLus(int nb) {
+    nbMessagesContactNonLus = nb < 0 ? 0 : nb;
+    notifyListeners();
+  }
+
+  Future<void> refreshMessagesContactNonLus({bool notify = true}) async {
+    try {
+      final contact = await _service.getMessagesContactAdmin();
+      nbMessagesContactNonLus = _i(contact['non_lus']);
+      if (notify) notifyListeners();
+    } catch (_) {
+      // Conserver la dernière valeur connue si l'endpoint échoue.
+    }
   }
 
   bool peutVoirSection(String? section) {
@@ -302,6 +321,7 @@ class AdminProvider extends ChangeNotifier {
       } catch (_) {
         // Badge reste inchangé si l’endpoint échoue
       }
+      await refreshMessagesContactNonLus(notify: false);
     } catch (e) {
       error = e.toString();
     } finally {

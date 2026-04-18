@@ -22,6 +22,8 @@ const SUPER_SECTIONS = [
   'newsletter',
   'newsletter_envoi',
   'illustrations',
+  'messages_contact',
+  'equipe',
   'parametres',
   'apropos',
 ];

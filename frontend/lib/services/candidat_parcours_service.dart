@@ -55,4 +55,30 @@ class CandidatParcoursService {
     final res = await _api.post('/candidat/calculateur-salaire', body: body, useAuth: true);
     return _ok(res);
   }
+
+  Future<Map<String, dynamic>> demarrerSimulationEntretien(Map<String, dynamic> body) async {
+    final res = await _api.post('/candidat/simulation/demarrer', body: body, useAuth: true);
+    return _ok(res);
+  }
+
+  Future<Map<String, dynamic>> repondreSimulationEntretien(
+    String sessionId,
+    String reponse, {
+    Map<String, dynamic>? recruteur,
+  }) async {
+    final res = await _api.post(
+      '/candidat/simulation/$sessionId/repondre',
+      body: {
+        'reponse_candidat': reponse,
+        if (recruteur != null) 'recruteur': recruteur,
+      },
+      useAuth: true,
+    );
+    return _ok(res);
+  }
+
+  Future<Map<String, dynamic>> historiqueSimulationEntretien() async {
+    final res = await _api.get('/candidat/simulation/historique', useAuth: true);
+    return _ok(res);
+  }
 }

@@ -3,6 +3,7 @@ import { authenticate, requireRole } from '../../middleware/auth.js';
 import { ROLES } from '../../config/constants.js';
 import { supabase } from '../../config/supabase.js';
 import { ameliorerAproposAvecConfig } from '../../services/ameliorerAproposIa.service.js';
+import { traiterAlertesNouveauProfil } from '../../services/matchingAvance.service.js';
 
 const router = Router();
 
@@ -65,6 +66,10 @@ router.put('/profil', async (req, res) => {
       console.error('[PUT /candidat/profil]', uErr);
       return res.status(500).json({ success: false, message: 'Erreur mise à jour' });
     }
+
+    setImmediate(() => {
+      void traiterAlertesNouveauProfil(userId);
+    });
 
     return res.json({ success: true, message: 'Profil mis à jour avec succès' });
   } catch (err) {

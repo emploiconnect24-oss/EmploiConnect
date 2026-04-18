@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -796,9 +797,106 @@ class AdminService {
     return _parseJsonOk(res);
   }
 
+  Future<List<Map<String, dynamic>>> getEquipeAdmin() async {
+    final res = await _api.get('/admin/equipe', useAuth: true);
+    final body = _parseJsonOk(res);
+    final d = body['data'];
+    if (d is List) {
+      return d.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> postEquipeAdmin(Map<String, dynamic> body) async {
+    final res = await _api.post('/admin/equipe', body: body, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> postEquipeAdminMultipart({
+    required Map<String, String> fields,
+    Uint8List? photoBytes,
+    String? photoFilename,
+    MediaType? photoContentType,
+  }) async {
+    final streamed = await _api.postMultipartForm(
+      '/admin/equipe',
+      fields: fields,
+      fileBytes: photoBytes,
+      filename: photoFilename,
+      fileFieldName: 'photo',
+      fileContentType: photoContentType,
+      useAuth: true,
+    );
+    final res = await http.Response.fromStream(streamed);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> putEquipeAdmin(String id, Map<String, dynamic> body) async {
+    final res = await _api.put('/admin/equipe/$id', body: body, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> putEquipeAdminMultipart(
+    String id, {
+    required Map<String, String> fields,
+    Uint8List? photoBytes,
+    String? photoFilename,
+    MediaType? photoContentType,
+  }) async {
+    final streamed = await _api.putMultipartForm(
+      '/admin/equipe/$id',
+      fields: fields,
+      fileBytes: photoBytes,
+      filename: photoFilename,
+      fileFieldName: 'photo',
+      fileContentType: photoContentType,
+      useAuth: true,
+    );
+    final res = await http.Response.fromStream(streamed);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> deleteEquipeAdmin(String id) async {
+    final res = await _api.delete('/admin/equipe/$id', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> getMessagesContactAdmin() async {
+    final res = await _api.get('/admin/messages-contact', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> patchMessageContactLu(String id) async {
+    final res = await _api.patch('/admin/messages-contact/$id/lire', body: {}, useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> postMessageContactRepondre(String id, {required String reponse}) async {
+    final res = await _api.post(
+      '/admin/messages-contact/$id/repondre',
+      body: {'reponse': reponse},
+      useAuth: true,
+    );
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> postMessageContactRepondreIa(String id) async {
+    final res = await _api.post(
+      '/admin/messages-contact/$id/repondre-ia',
+      body: const {},
+      useAuth: true,
+    );
+    return _parseJsonOk(res);
+  }
+
   Future<Map<String, dynamic>> getNewsletterAbonnes({bool actifsOnly = true}) async {
     final q = actifsOnly ? '?actifs=1' : '?actifs=0';
     final res = await _api.get('/admin/newsletter$q', useAuth: true);
+    return _parseJsonOk(res);
+  }
+
+  Future<Map<String, dynamic>> getNewsletterHistorique({int limite = 50}) async {
+    final res = await _api.get('/admin/newsletter/historique?limite=$limite', useAuth: true);
     return _parseJsonOk(res);
   }
 

@@ -3,8 +3,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -116,6 +118,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _contenuLoading = false;
   int _newsletterAbonnesActifs = 0;
   List<Map<String, dynamic>> _aproposSections = [];
+  List<Map<String, dynamic>> _equipeMembres = [];
+  List<Map<String, dynamic>> _messagesContact = [];
+  int _messagesContactNonLus = 0;
 
   bool _aiSuggestions = false;
   double _matchingThreshold = 0;
@@ -142,6 +147,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _iaMatchingActif = true;
   bool _iaSimulateurParcoursActif = true;
   bool _iaCalculateurParcoursActif = true;
+  bool _matchingAlertesActif = true;
+  double _matchingSeuilAlerteCandidat = 65;
+  double _matchingSeuilAlerteEntreprise = 70;
 
   bool _apiTestClaudeEnCours = false;
   bool _apiTestOpenaiEnCours = false;
@@ -410,6 +418,20 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             _boolNotifDefaultTrue(_param(grouped, 'ia_simulateur_actif'));
         _iaCalculateurParcoursActif =
             _boolNotifDefaultTrue(_param(grouped, 'ia_calculateur_actif'));
+        _matchingAlertesActif =
+            _boolNotifDefaultTrue(_param(grouped, 'matching_alertes_actif'));
+        _matchingSeuilAlerteCandidat = (int.tryParse(
+                    _param(grouped, 'matching_seuil_alerte_candidat')
+                        ?.toString() ??
+                        '') ??
+                65)
+            .toDouble();
+        _matchingSeuilAlerteEntreprise = (int.tryParse(
+                    _param(grouped, 'matching_seuil_alerte_entreprise')
+                        ?.toString() ??
+                        '') ??
+                70)
+            .toDouble();
         _googleClientIdCtrl.text =
             _param(grouped, 'google_client_id')?.toString() ?? '';
         _googleClientSecretCtrl.text =
@@ -827,6 +849,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         {'cle': 'ia_matching_actif', 'valeur': _iaMatchingActif},
         {'cle': 'ia_simulateur_actif', 'valeur': _iaSimulateurParcoursActif},
         {'cle': 'ia_calculateur_actif', 'valeur': _iaCalculateurParcoursActif},
+        {'cle': 'matching_alertes_actif', 'valeur': _matchingAlertesActif},
+        {
+          'cle': 'matching_seuil_alerte_candidat',
+          'valeur': _matchingSeuilAlerteCandidat.round(),
+        },
+        {
+          'cle': 'matching_seuil_alerte_entreprise',
+          'valeur': _matchingSeuilAlerteEntreprise.round(),
+        },
         {'cle': 'google_oauth_actif', 'valeur': _googleOauthActif},
         {'cle': 'google_roles_defaut', 'valeur': _googleRolesDefaut},
         {'cle': 'mode_maintenance', 'valeur': _maintenanceMode},
@@ -1673,15 +1704,28 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       final results = await Future.wait([
         _admin.getAproposSectionsAdmin(),
         _admin.getNewsletterAbonnes(actifsOnly: true),
+        _admin.getEquipeAdmin(),
+        _admin.getMessagesContactAdmin(),
       ]);
       if (!mounted) return;
       final apropos = results[0] as List<Map<String, dynamic>>;
       final newsletter = results[1] as Map<String, dynamic>;
+      final equipe = results[2] as List<Map<String, dynamic>>;
+      final messages = results[3] as Map<String, dynamic>;
       final d = newsletter['data'] as Map<String, dynamic>? ?? {};
       final t = d['total'];
+      final msgRows = messages['data'] is List
+          ? (messages['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      final rawNonLus = messages['non_lus'];
       setState(() {
         _aproposSections = apropos;
         _newsletterAbonnesActifs = t is int ? t : int.tryParse(t?.toString() ?? '') ?? 0;
+        _equipeMembres = equipe;
+        _messagesContact = msgRows;
+        _messagesContactNonLus = rawNonLus is int
+            ? rawNonLus
+            : int.tryParse(rawNonLus?.toString() ?? '') ?? 0;
         _contenuLoading = false;
       });
     } catch (_) {
@@ -1749,6 +1793,221 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     titreCtrl.dispose();
     contenuCtrl.dispose();
     iconeCtrl.dispose();
+  }
+
+  Future<void> _showMembreEquipeDialog({Map<String, dynamic>? membre}) async {
+    final nomCtrl = TextEditingController(text: membre?['nom']?.toString() ?? '');
+    final posteCtrl = TextEditingController(text: membre?['poste']?.toString() ?? '');
+    final descCtrl = TextEditingController(text: membre?['description']?.toString() ?? '');
+    final linkedinCtrl = TextEditingController(text: membre?['linkedin']?.toString() ?? '');
+    final ordreCtrl = TextEditingController(text: '${membre?['ordre'] ?? 0}');
+    bool actif = membre?['est_actif'] != false;
+    PlatformFile? photoFichier;
+    final photoUrlExistante = membre?['photo_url']?.toString().trim();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => AlertDialog(
+          title: Text(membre == null ? 'Ajouter un membre' : 'Modifier le membre'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextField(controller: nomCtrl, decoration: const InputDecoration(labelText: 'Nom *')),
+                  const SizedBox(height: 8),
+                  TextField(controller: posteCtrl, decoration: const InputDecoration(labelText: 'Poste')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Description'),
+                  ),
+                  const SizedBox(height: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Photo du membre',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF374151),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            width: 70,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF1A56DB).withValues(alpha: 0.1),
+                              border: Border.all(
+                                color: const Color(0xFF1A56DB).withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: photoFichier?.bytes != null
+                                ? ClipOval(
+                                    child: Image.memory(photoFichier!.bytes!, fit: BoxFit.cover),
+                                  )
+                                : (photoUrlExistante != null && photoUrlExistante.isNotEmpty)
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          photoUrlExistante,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, error, stackTrace) => const Icon(
+                                            Icons.person_rounded,
+                                            color: Color(0xFF1A56DB),
+                                            size: 32,
+                                          ),
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.person_rounded,
+                                        color: Color(0xFF1A56DB),
+                                        size: 32,
+                                      ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.upload_rounded, size: 14),
+                                    label: Text(
+                                      photoFichier != null ? 'Photo choisie' : 'Choisir une photo',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFF1A56DB)),
+                                      foregroundColor: const Color(0xFF1A56DB),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    onPressed: () async {
+                                      final result = await FilePicker.platform.pickFiles(
+                                        type: FileType.custom,
+                                        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+                                        withData: true,
+                                      );
+                                      if (result?.files.isNotEmpty == true) {
+                                        setModal(() => photoFichier = result!.files.first);
+                                      }
+                                    },
+                                  ),
+                                ),
+                                Text(
+                                  'JPG, PNG ou WEBP - format carré recommandé',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    color: const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(controller: linkedinCtrl, decoration: const InputDecoration(labelText: 'URL LinkedIn')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: ordreCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Ordre'),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Membre actif'),
+                    value: actif,
+                    onChanged: (v) => setModal(() => actif = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () async {
+                if (nomCtrl.text.trim().isEmpty) return;
+                final fields = <String, String>{
+                  'nom': nomCtrl.text.trim(),
+                  'poste': posteCtrl.text.trim(),
+                  'description': descCtrl.text.trim(),
+                  'linkedin': linkedinCtrl.text.trim(),
+                  'ordre': '${int.tryParse(ordreCtrl.text.trim()) ?? 0}',
+                  'est_actif': '$actif',
+                };
+                final ext = (photoFichier?.extension ?? '').toLowerCase();
+                final media = switch (ext) {
+                  'png' => MediaType('image', 'png'),
+                  'webp' => MediaType('image', 'webp'),
+                  _ => MediaType('image', 'jpeg'),
+                };
+                if (membre == null) {
+                  await _admin.postEquipeAdminMultipart(
+                    fields: fields,
+                    photoBytes: photoFichier?.bytes,
+                    photoFilename: photoFichier?.name,
+                    photoContentType: photoFichier == null ? null : media,
+                  );
+                } else {
+                  final id = membre['id']?.toString() ?? '';
+                  if (id.isEmpty) return;
+                  await _admin.putEquipeAdminMultipart(
+                    id,
+                    fields: fields,
+                    photoBytes: photoFichier?.bytes,
+                    photoFilename: photoFichier?.name,
+                    photoContentType: photoFichier == null ? null : media,
+                  );
+                }
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                await _refreshContentSectionData();
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nomCtrl.dispose();
+    posteCtrl.dispose();
+    descCtrl.dispose();
+    linkedinCtrl.dispose();
+    ordreCtrl.dispose();
+  }
+
+  Future<void> _supprimerMembreEquipe(String id) async {
+    try {
+      await _admin.deleteEquipeAdmin(id);
+      if (!mounted) return;
+      await _refreshContentSectionData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _marquerMessageContactLu(String id) async {
+    try {
+      await _admin.patchMessageContactLu(id);
+      if (!mounted) return;
+      await _refreshContentSectionData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 
   Future<void> _saveNewsletterPromptBase() async {
@@ -1929,6 +2188,124 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                     icon: const Icon(Icons.edit_rounded, size: 18),
                     onPressed: () => _editAproposSection(s),
                   ),
+                ),
+              ),
+          ],
+        ),
+        _sectionCard(
+          title: '👥 Notre Équipe',
+          children: [
+            Text(
+              'Membres affichés sur la page À propos.',
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showMembreEquipeDialog(),
+                icon: const Icon(Icons.person_add_rounded, size: 16),
+                label: const Text('Ajouter un membre'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A56DB),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_equipeMembres.isEmpty)
+              const Text('Aucun membre configuré.')
+            else
+              ..._equipeMembres.map(
+                (m) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    radius: 20,
+                    backgroundImage: (m['photo_url']?.toString().isNotEmpty ?? false)
+                        ? NetworkImage(m['photo_url'].toString())
+                        : null,
+                    child: (m['photo_url']?.toString().isNotEmpty ?? false)
+                        ? null
+                        : Text(
+                            (m['nom']?.toString().trim().isNotEmpty ?? false)
+                                ? m['nom'].toString().trim()[0].toUpperCase()
+                                : 'A',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                  title: Text(
+                    m['nom']?.toString() ?? '',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    m['poste']?.toString() ?? '',
+                    style: GoogleFonts.inter(fontSize: 11),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_rounded, size: 16),
+                        onPressed: () => _showMembreEquipeDialog(membre: m),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
+                        onPressed: () => _supprimerMembreEquipe(m['id']?.toString() ?? ''),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        _sectionCard(
+          title: '📨 Messages Contact',
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$_messagesContactNonLus message(s) non lus',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A56DB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_messagesContact.isEmpty)
+              const Text('Aucun message pour le moment.')
+            else
+              ..._messagesContact.take(8).map(
+                (m) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    m['est_lu'] == true ? Icons.mark_email_read_outlined : Icons.mark_email_unread_outlined,
+                    color: m['est_lu'] == true ? const Color(0xFF94A3B8) : const Color(0xFF1A56DB),
+                  ),
+                  title: Text(
+                    '${m['nom'] ?? 'Inconnu'} — ${m['email'] ?? ''}',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    (m['message']?.toString() ?? '').replaceAll('\n', ' '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: 11),
+                  ),
+                  trailing: m['est_lu'] == true
+                      ? const Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF10B981))
+                      : TextButton(
+                          onPressed: () => _marquerMessageContactLu(m['id']?.toString() ?? ''),
+                          child: const Text('Marquer lu'),
+                        ),
                 ),
               ),
           ],
@@ -3475,6 +3852,85 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
               controller: _emailSenderNameCtrl,
               decoration: const InputDecoration(labelText: 'Nom expéditeur'),
               onChanged: (_) => _markChanged(),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.notifications_active_rounded,
+                        color: Color(0xFF10B981),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Alertes Matching (emails automatiques)',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: _matchingAlertesActif,
+                        activeThumbColor: const Color(0xFF10B981),
+                        onChanged: (v) {
+                          setState(() {
+                            _matchingAlertesActif = v;
+                            _markChanged();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Alerter candidats et entreprises quand le score de compatibilité atteint le seuil.',
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 10),
+                  _metricLabelWithTooltip(
+                    label: 'Seuil alerte candidat',
+                    tooltip: 'Score minimum pour envoyer un email offre compatible au candidat.',
+                    valueText: '${_matchingSeuilAlerteCandidat.round()}%',
+                  ),
+                  Slider(
+                    min: 40,
+                    max: 90,
+                    divisions: 10,
+                    value: _matchingSeuilAlerteCandidat.clamp(40, 90),
+                    onChanged: (v) => setState(() {
+                      _matchingSeuilAlerteCandidat = v;
+                      _markChanged();
+                    }),
+                  ),
+                  _metricLabelWithTooltip(
+                    label: 'Seuil alerte entreprise',
+                    tooltip: 'Score minimum pour alerter le recruteur d’un profil compatible.',
+                    valueText: '${_matchingSeuilAlerteEntreprise.round()}%',
+                  ),
+                  Slider(
+                    min: 40,
+                    max: 90,
+                    divisions: 10,
+                    value: _matchingSeuilAlerteEntreprise.clamp(40, 90),
+                    onChanged: (v) => setState(() {
+                      _matchingSeuilAlerteEntreprise = v;
+                      _markChanged();
+                    }),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Row(

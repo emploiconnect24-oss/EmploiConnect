@@ -137,6 +137,35 @@ class ApiService {
     return request.send();
   }
 
+  Future<http.StreamedResponse> putMultipartForm(
+    String path, {
+    required Map<String, String> fields,
+    List<int>? fileBytes,
+    String fileFieldName = 'image',
+    String? filename,
+    MediaType? fileContentType,
+    bool useAuth = true,
+  }) async {
+    final uri = Uri.parse(_base + path);
+    final request = http.MultipartRequest('PUT', uri);
+    final token = await AuthService().getToken();
+    if (useAuth && token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    request.fields.addAll(fields);
+    if (fileBytes != null && filename != null && filename.isNotEmpty) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fileFieldName,
+          fileBytes,
+          filename: filename,
+          contentType: fileContentType,
+        ),
+      );
+    }
+    return request.send();
+  }
+
   /// Multipart avec plusieurs fichiers optionnels (ex. ressources Parcours Carrière).
   Future<http.StreamedResponse> postMultipartFormMulti(
     String path, {

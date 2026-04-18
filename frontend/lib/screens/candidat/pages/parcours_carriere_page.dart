@@ -3,14 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../services/candidat_parcours_service.dart';
 import '../widgets/calculateur_salaire.dart';
-import '../widgets/simulateur_entretien_ia.dart';
 import 'parcours_ressource_detail_page.dart';
 
 /// Parcours Carrière candidat : ressources + simulateur + calculateur (PRD §4).
 class ParcoursCarrierePage extends StatefulWidget {
-  const ParcoursCarrierePage({super.key, this.onOpenCvCreate});
+  const ParcoursCarrierePage({super.key, this.onOpenCvCreate, this.onOpenSimulation});
 
   final VoidCallback? onOpenCvCreate;
+  final VoidCallback? onOpenSimulation;
 
   @override
   State<ParcoursCarrierePage> createState() => _ParcoursCarrierePageState();
@@ -28,7 +28,7 @@ class _ParcoursCarrierePageState extends State<ParcoursCarrierePage> with Single
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 3, vsync: this);
+    _tabCtrl = TabController(length: 2, vsync: this);
     _load();
   }
 
@@ -143,7 +143,6 @@ class _ParcoursCarrierePageState extends State<ParcoursCarrierePage> with Single
             indicatorColor: const Color(0xFF1A56DB),
             tabs: const [
               Tab(text: 'Ressources'),
-              Tab(text: 'Simulateur IA'),
               Tab(text: 'Calculateur'),
             ],
           ),
@@ -154,7 +153,6 @@ class _ParcoursCarrierePageState extends State<ParcoursCarrierePage> with Single
             controller: _tabCtrl,
             children: [
               _buildTabRessources(),
-              const SimulateurEntretienIA(),
               const CalculateurSalaire(),
             ],
           ),
@@ -294,7 +292,7 @@ class _ParcoursCarrierePageState extends State<ParcoursCarrierePage> with Single
                   titre: 'Simulateur d’entretien',
                   desc: 'Préparez-vous avec l’IA',
                   couleur: const Color(0xFF8B5CF6),
-                  onTap: () => _tabCtrl.animateTo(1),
+                  onTap: widget.onOpenSimulation,
                 ),
               ),
               const SizedBox(width: 10),

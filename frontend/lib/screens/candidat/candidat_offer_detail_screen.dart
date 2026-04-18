@@ -9,6 +9,7 @@ import '../../providers/candidat_provider.dart';
 import '../../services/candidatures_service.dart';
 import '../../services/matching_service.dart';
 import '../../services/offres_service.dart';
+import '../../widgets/dialog_analyse_postulation.dart';
 import '../../widgets/signalement_content_sheet.dart';
 import 'widgets/apply_bottom_sheet.dart';
 
@@ -119,7 +120,7 @@ class _CandidatOfferDetailScreenState extends State<CandidatOfferDetailScreen> {
     }
   }
 
-  Future<void> _apply() async {
+  Future<void> _ouvrirSheetPostulation() async {
     setState(() => _posting = true);
     final titre = (_offre?['titre'] ?? 'Offre').toString();
     final ok = await showModalBottomSheet<bool>(
@@ -146,6 +147,21 @@ class _CandidatOfferDetailScreenState extends State<CandidatOfferDetailScreen> {
       };
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Candidature envoyée avec succès !')));
+  }
+
+  Future<void> _apply() async {
+    final titre = (_offre?['titre'] ?? 'Offre').toString();
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogAnalysePostulation(
+        offreId: widget.offreId,
+        offreTitre: titre,
+        onConfirmerPostulation: () {
+          _ouvrirSheetPostulation();
+        },
+      ),
+    );
   }
 
   String? _extractEntreprisePeerId(Map<String, dynamic> offre, Map<String, dynamic> ent) {

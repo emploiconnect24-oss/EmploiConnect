@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/candidatures_service.dart';
 import '../../services/matching_service.dart';
 import '../../services/offres_service.dart';
+import '../../widgets/dialog_analyse_postulation.dart';
 import 'widgets/apply_bottom_sheet.dart';
 import 'widgets/offre_ia_card.dart';
 
@@ -162,7 +163,7 @@ class _CandidatRecommendationsScreenState
     return avg.round();
   }
 
-  Future<void> _apply(Map<String, dynamic> offre) async {
+  Future<void> _ouvrirSheetPostulation(Map<String, dynamic> offre) async {
     final id = (offre['id'] ?? '').toString();
     if (id.isEmpty) {
       if (!mounted) return;
@@ -190,6 +191,23 @@ class _CandidatRecommendationsScreenState
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Candidature envoyée avec succès.')),
+    );
+  }
+
+  Future<void> _apply(Map<String, dynamic> offre) async {
+    final id = (offre['id'] ?? '').toString();
+    final title = (offre['titre'] ?? 'Offre').toString();
+    if (id.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogAnalysePostulation(
+        offreId: id,
+        offreTitre: title,
+        onConfirmerPostulation: () {
+          _ouvrirSheetPostulation(offre);
+        },
+      ),
     );
   }
 

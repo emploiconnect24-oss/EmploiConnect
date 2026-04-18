@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { _appellerIA, _getClesIA } from './ia.service.js';
 
 function decryptIfNeeded(input) {
   const value = String(input || '');
@@ -80,41 +81,6 @@ function buildPrompt(texteOriginal, titrePoste, competences) {
   };
 }
 
-async function callAnthropic(apiKey, model, prompt) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: model || 'claude-3-5-haiku-latest',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  const data = await response.json();
-  return String(data?.content?.[0]?.text || '').trim();
-}
-
-async function callOpenAI(apiKey, prompt) {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 400,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  const data = await response.json();
-  return String(data?.choices?.[0]?.message?.content || '').trim();
-}
-
 function fallbackTexte(raw, titrePoste, competences) {
   const base = raw.replace(/\s+/g, ' ').trim();
   let texteAmeliore =
@@ -138,41 +104,27 @@ export async function ameliorerAproposAvecConfig(body) {
   }
 
   const cfg = await fetchIaAmeliorationConfig();
+  const cles = await _getClesIA();
+  if (cfg.provider && cfg.provider !== 'local' && cfg.provider !== 'aucun') {
+    cles.providerTexte = cfg.provider;
+  }
+  if (cfg.anthropicModel) {
+    cles.anthropicModel = cfg.anthropicModel;
+  }
   let texteAmeliore = '';
 
   if (cfg.provider === 'aucun' || cfg.provider === 'local') {
     texteAmeliore = '';
-  } else if (cfg.provider === 'openai' && cfg.openaiKey) {
+  } else if (cles.anthropicKey || cles.openaiKey) {
     try {
-      texteAmeliore = await callOpenAI(cfg.openaiKey, prompt);
+      texteAmeliore = String(await _appellerIA(prompt, cles, 'texte') || '').trim();
     } catch (e) {
-      console.warn('[ameliorerApropos] OpenAI', e?.message || e);
-    }
-  } else if (cfg.anthropicKey) {
-    try {
-      texteAmeliore = await callAnthropic(
-        cfg.anthropicKey,
-        cfg.anthropicModel,
-        prompt,
-      );
-    } catch (e) {
-      console.warn('[ameliorerApropos] Anthropic (BDD)', e?.message || e);
+      console.warn('[ameliorerApropos] IA', e?.message || e);
     }
   }
 
   if (!texteAmeliore) {
-    const envKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
-    if (envKey && cfg.provider !== 'openai' && cfg.provider !== 'aucun' && cfg.provider !== 'local') {
-      try {
-        texteAmeliore = await callAnthropic(
-          envKey,
-          process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
-          prompt,
-        );
-      } catch (e) {
-        console.warn('[ameliorerApropos] Anthropic (.env)', e?.message || e);
-      }
-    }
+    console.warn('[ameliorerApropos] IA indisponible, fallback local');
   }
 
   if (!texteAmeliore) {

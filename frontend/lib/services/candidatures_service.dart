@@ -62,6 +62,18 @@ class CandidaturesService {
     return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
   }
 
+  Future<Map<String, dynamic>> getAnalysePrePostulation(String offreId) async {
+    final res = await _api.get(
+      '/candidat/offres/${Uri.encodeComponent(offreId)}/analyse',
+      useAuth: true,
+    );
+    if (res.statusCode != 200) {
+      throw Exception(ApiService.errorMessage(res) ?? 'Analyse indisponible');
+    }
+    final map = jsonDecode(res.body) as Map<String, dynamic>;
+    return (map['data'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+  }
+
   Future<Map<String, dynamic>> postuler({
     required String offreId,
     required String lettreMotivation,
